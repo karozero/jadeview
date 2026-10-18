@@ -1,5 +1,7 @@
 # JadeView
 
+![preview image](preview.png)
+
 [Русская версия](README.ru.md)
 
 Author: ARK [Discord profile](https://discord.com/users/355708121676644353). Published with the author's permission.
