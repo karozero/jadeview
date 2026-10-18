@@ -10,13 +10,24 @@ A Windows asset viewer and scene editor for **Beyond Good & Evil (2003, PC)**. O
 
 ## Run
 
-Requires Windows, the **.NET 10 SDK**, and your own game archive.
+Download the latest packaged build from [GitHub Releases](https://github.com/karozero/jadeview/releases), extract it, and run `JadeView.exe`. Select your own `sally_clean.bf` with **Open BF**.
+
+## Build
+
+To build from source, install Windows and the **.NET 10 SDK**, then open a terminal in the project directory and run:
+
+```powershell
+dotnet restore
+dotnet build -c Release
+```
+
+To start the source build with your game archive, run:
 
 ```powershell
 dotnet run --project JadeView.csproj -- "C:\Games\Beyond Good & Evil\sally_clean.bf"
 ```
 
-You can also run without an argument and use **Open BF**. To build: `dotnet build -c Release`.
+You can also omit the archive path and select it with **Open BF**.
 
 ## Usage
 
@@ -49,5 +60,7 @@ Animation controls support clip selection and playback for recognized actors. **
 Global editing shortcuts are inactive while editing a field or flying. Hide/isolate changes affect preview only. There are currently no E/R rotation/scale gizmo shortcuts.
 
 ## Current scope
+
+For source organization by feature, with a `Models` directory inside each feature, see [Architecture](docs/ARCHITECTURE.md).
 
 Supports scene inspection, resource previews, GLB export and limited transform editing. Full asset import/replacement and mesh/material editing are not available in the UI. Some scenes use fallback parsing, and some material/UV effects are approximated during export; check **Diagnostics** and export warnings.
