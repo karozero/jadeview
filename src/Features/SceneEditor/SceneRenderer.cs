@@ -84,6 +84,7 @@ public sealed partial class SceneRenderer : IDisposable
         public void Undo() => Apply(before);
     }
     public bool Wireframe = false;
+    public bool ShowSelectionWireframe = true;
     public bool ShowGrid = true;
     public bool ShowGameHidden = false;
     public bool IsGameHidden(SceneObject obj) => !ShowGameHidden && (obj.PreviewHidden || (obj.DrawFlags & 8) == 0 && !IsCollision(obj));
@@ -1331,13 +1332,16 @@ public sealed partial class SceneRenderer : IDisposable
                 UpdateSkin(selGeo,selectedPart);
                 var selMatrix = selectedPart.RenderMatrix;
 
-                // 1. Отрисовка каркаса поверх геометрии
-                Rlgl.EnableWireMode();
-                foreach (var mesh in selGeo.PartMeshes)
+                // Keep the selection outline independent from the animated pose and bounds.
+                if (ShowSelectionWireframe)
                 {
-                    Raylib.DrawMesh(mesh, IsCollision(selectedPart)?_collisionWireMaterial:_selectionWireMaterial, Matrix4x4.Transpose(selMatrix));
+                    Rlgl.EnableWireMode();
+                    foreach (var mesh in selGeo.PartMeshes)
+                    {
+                        Raylib.DrawMesh(mesh, IsCollision(selectedPart)?_collisionWireMaterial:_selectionWireMaterial, Matrix4x4.Transpose(selMatrix));
+                    }
+                    Rlgl.DisableWireMode();
                 }
-                Rlgl.DisableWireMode();
 
                 // 2. Отрисовка ориентированного Bounding Box
                 DrawOrientedBoundingBox(selGeo.LocalBounds, selMatrix, IsCollision(selectedPart)?new Color(65,155,255,255):new Color(80, 255, 150, 255));

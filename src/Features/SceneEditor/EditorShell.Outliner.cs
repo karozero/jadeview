@@ -75,6 +75,10 @@ public sealed partial class EditorShell
         ImGui.SameLine();
         if (ImGui.RadioButton("Restricted", ref _outlinerFilterType, 2)) { }
 
+        bool showSelectionWireframe = Renderer.ShowSelectionWireframe;
+        if (ImGui.Checkbox("Selection wireframe", ref showSelectionWireframe))
+            Renderer.ShowSelectionWireframe = showSelectionWireframe;
+
         ImGui.Separator();
 
         if (ActiveWorld == null || ActiveWorld.Objects.Count == 0)
