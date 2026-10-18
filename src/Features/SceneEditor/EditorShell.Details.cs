@@ -1,0 +1,135 @@
+using System.Numerics;
+using System.Text;
+using ImGuiNET;
+using Raylib_cs;
+using rlImGui_cs;
+using Color = Raylib_cs.Color;
+using Image = Raylib_cs.Image;
+using Forms = System.Windows.Forms;
+
+namespace JadeView;
+
+public sealed partial class EditorShell
+{
+    #region 4. Details (Панель свойств справа снизу)
+
+    private void DrawDetails()
+    {
+        ImGui.TextColored(Green, "DETAILS");
+        ImGui.Separator();
+
+        if (SelectedObject == null)
+        {
+            ImGui.TextDisabled("Select an object in the Outliner or viewport.");
+            return;
+        }
+
+        var obj = SelectedObject;
+
+        // Идентификация
+        ImGui.TextUnformatted(obj.Name);
+        ImGui.TextDisabled($"GaoKey: 0x{obj.GaoKey:X8} | ID: {obj.Id}");
+        ImGui.TextDisabled($"Record: offset 0x{obj.RecordRange.Offset:X8}, Size {obj.RecordRange.Size} B");
+
+        ImGui.Spacing();
+
+        // Status возможностей редактирования (Capabilities)
+        if (obj.Capabilities.CanTranslate)
+        {
+            ImGui.TextColored(Green, "Position editing available (In-place patch)");
+        }
+        else
+        {
+            ImGui.TextColored(Yellow, $"Restriction: {obj.Capabilities.RestrictionReason}");
+        }
+
+        ImGui.Separator();
+        ImGui.TextColored(Muted, "TRANSFORM");
+
+        // Редактирование координат Translation
+        Vector3 curPos = obj.Transform.Translation;
+
+        ImGui.BeginDisabled(!obj.Capabilities.CanTranslate);
+        if (ImGui.DragFloat3("Position X/Y/Z", ref curPos, SnappingEnabled ? SnappingStep : 0.1f))
+        {
+            if (SnappingEnabled && SnappingStep > 1e-4f)
+            {
+                curPos = new Vector3(
+                    MathF.Round(curPos.X / SnappingStep) * SnappingStep,
+                    MathF.Round(curPos.Y / SnappingStep) * SnappingStep,
+                    MathF.Round(curPos.Z / SnappingStep) * SnappingStep
+                );
+            }
+            var cmd = new TransformCommand(obj, curPos, obj.Transform.Rotation, obj.Transform.Scale);
+            History.Execute(cmd);
+            RecordObjectChangeInProject(obj);
+        }
+        ImGui.EndDisabled();
+
+        var rotationMatrix = Matrix4x4.CreateFromQuaternion(obj.Transform.Rotation);
+        Vector3 angles = new(
+            MathF.Asin(Math.Clamp(-rotationMatrix.M32, -1, 1)),
+            MathF.Atan2(rotationMatrix.M31, rotationMatrix.M33),
+            MathF.Atan2(rotationMatrix.M12, rotationMatrix.M22));
+        angles *= 180 / MathF.PI;
+        ImGui.BeginDisabled(!obj.Capabilities.CanRotate);
+        if (ImGui.DragFloat3("Rotation X/Y/Z (degrees)", ref angles, 0.5f))
+        {
+            angles *= MathF.PI / 180;
+            var rotation = Quaternion.Normalize(Quaternion.CreateFromYawPitchRoll(angles.Y, angles.X, angles.Z));
+            History.Execute(new TransformCommand(obj, obj.Transform.Translation, rotation, obj.Transform.Scale));
+        }
+        ImGui.EndDisabled();
+
+        // Масштабирование Scale
+        Vector3 curScale = obj.Transform.Scale;
+        ImGui.BeginDisabled(!obj.Capabilities.CanScale);
+        if (ImGui.DragFloat3("Scale X/Y/Z", ref curScale, 0.05f, 0.01f, 100.0f))
+        {
+            var cmd = new TransformCommand(obj, obj.Transform.Translation, obj.Transform.Rotation, curScale);
+            History.Execute(cmd);
+            RecordObjectChangeInProject(obj);
+        }
+        ImGui.EndDisabled();
+        bool canReset = obj.Capabilities.CanTranslate || obj.Capabilities.CanRotate || obj.Capabilities.CanScale;
+        ImGui.BeginDisabled(!canReset);
+        if (ImGui.SmallButton("Reset to zero"))
+        {
+            Vector3 targetPos = obj.Capabilities.CanTranslate ? Vector3.Zero : obj.Transform.Translation;
+            Quaternion targetRot = obj.Capabilities.CanRotate ? Quaternion.Identity : obj.Transform.Rotation;
+            Vector3 targetScale = obj.Capabilities.CanScale ? Vector3.One : obj.Transform.Scale;
+
+            var cmd = new TransformCommand(obj, targetPos, targetRot, targetScale);
+            History.Execute(cmd);
+            RecordObjectChangeInProject(obj);
+        }
+        ImGui.EndDisabled();
+
+        ImGui.Separator();
+        ImGui.TextColored(Muted, "VISUAL ASSETS");
+
+        // Геометрия
+        ImGui.TextUnformatted($"Geometry GRO: 0x{obj.GeometryKey:X8}");
+        if (Resolver.Geometries.TryGetValue(obj.GeometryKey, out var geo))
+        {
+            ImGui.TextDisabled($"Vertices: {geo.Positions.Length:N0} · Triangles: {geo.Triangles:N0} · Parts: {geo.Parts.Count}");
+        }
+        else
+        {
+            ImGui.TextDisabled("No geometry, or this is a helper object.");
+        }
+
+        // Материал
+        ImGui.TextUnformatted($"Material GRM: 0x{obj.MaterialKey:X8}");
+        if (Resolver.Materials.TryGetValue(obj.MaterialKey, out var mat))
+        {
+            ImGui.TextDisabled($"Type: {(mat.Type == 4 ? "MultiMaterial" : "MultiTexture")} · Submaterials: {mat.SubMaterialKeys.Count} · Textures: {mat.TextureKeys.Count}");
+        }
+        else
+        {
+            ImGui.TextDisabled("No material (default/fallback used).");
+        }
+    }
+
+    #endregion
+}

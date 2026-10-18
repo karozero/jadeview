@@ -5,12 +5,14 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>JadeView</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="src/**/*.cs" />
     <EmbeddedResource Include="formats/live_texture_keys.json.gz" LogicalName="JadeView.LiveTextureKeys" />
     <EmbeddedResource Include="formats/native_texture_key_maps.json.gz" LogicalName="JadeView.NativeTextureKeyMaps" />
     <PackageReference Include="Raylib-cs" Version="7.0.1" />
