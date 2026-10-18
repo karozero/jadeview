@@ -2,6 +2,10 @@
 
 [Русская версия](README.ru.md)
 
+Author: ARK [Discord profile](https://discord.com/users/355708121676644353). Published with the author's permission.
+
+Questions? Join the [Discord server](https://discord.gg/KYsaVU9rg).
+
 A Windows asset viewer and scene editor for **Beyond Good & Evil (2003, PC)**. Opens `sally_clean.bf` archives in the original BIG `0x22` format; HD and console archives are not supported.
 
 ## Run
