@@ -1,0 +1,24 @@
+# .NET build output
+**/bin/
+**/obj/
+artifacts/
+TestResults/
+
+# Local IDE settings
+.vs/
+.idea/
+*.user
+*.suo
+*.sln.docstates
+
+# Game archives, local mod projects and backups
+*.bf
+*.bf.*
+*.bgemod
+JadeView_Backup/
+
+# Temporary files and logs
+*.tmp
+*.log
+Thumbs.db
+Desktop.ini
