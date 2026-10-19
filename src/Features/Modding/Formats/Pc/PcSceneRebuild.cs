@@ -11,6 +11,7 @@ internal sealed partial class PcSceneRebuild
     private readonly PcSceneSource local;
     private readonly List<PcSceneSource> sources;
     private readonly SceneStructureChange[] changes;
+    private readonly Dictionary<string, int> pickupSaveFlags;
     private readonly Archive archive;
     private readonly HashSet<uint> allKeys;
     private readonly HashSet<uint> specialKeys;
@@ -30,6 +31,7 @@ internal sealed partial class PcSceneRebuild
         this.original = original;
         this.document = document;
         this.resolver = resolver;
+        pickupSaveFlags = new(project.PickupSaveFlags);
         replay = PcSceneLoader.Read(original, document.BaseBfPath);
         if (!replay.Complete)
             throw new InvalidDataException("Structural editing requires a complete typed PC FF0 parse: " + replay.Error);

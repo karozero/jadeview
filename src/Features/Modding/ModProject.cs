@@ -64,6 +64,10 @@ public sealed partial class ModProject
     [JsonPropertyName("sceneStructureChanges")]
     public List<SceneStructureChange> SceneStructureChanges { get; set; } = [];
 
+    // Keep allocations after an object is deleted: existing saves still own its bit.
+    [JsonPropertyName("pickupSaveFlags")]
+    public Dictionary<string, int> PickupSaveFlags { get; set; } = [];
+
     [JsonPropertyName("metadata")]
     public Dictionary<string, string> Metadata { get; set; } = [];
 

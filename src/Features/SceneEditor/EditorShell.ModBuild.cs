@@ -56,6 +56,15 @@ public sealed partial class EditorShell
 
         var sourceArchive = Archive;
         string sourceContainer = Document.ContainerName;
+        try
+        {
+            PrepareCurrentPickupPersistence();
+        }
+        catch (Exception error)
+        {
+            SetError($"Cannot assign pickup persistence: {error.Message}");
+            return;
+        }
         var projectSnapshot = CurrentProject.CreateSnapshot();
         var sourceResolver = Resolver;
         StartJob("Building and verifying modified BF archive...", token =>
@@ -77,6 +86,14 @@ public sealed partial class EditorShell
                 _statusMessage = $"Modified archive built and verified: {destBf}";
             };
         });
+    }
+
+    private void PrepareCurrentPickupPersistence(bool verifyExecutable = true)
+    {
+        if (Archive == null || Document == null || CurrentProject == null)
+            return;
+        var entry = Archive.Entries.First(candidate => MatchesContainer(candidate, Document.ContainerName));
+        PcSceneWriter.PreparePickupPersistence(Archive.Read(entry), Document, CurrentProject, verifyExecutable);
     }
 
     private bool PrepareCurrentMod()

@@ -20,7 +20,7 @@ internal sealed partial class PcSceneRebuild
             throw new InvalidDataException($"'{change.Name}' has self-references that require explicit remapping before duplication.");
         uint geometryKey = copySource == null ? change.GeometryKey : CopyGeometry(change.GeometryKey);
         exportedGeometry.Add(change.GaoKey, geometryKey);
-        uint? brainKey = copySource == null ? null : CopyBehavior(templateRecord, worldKey);
+        uint? brainKey = copySource == null ? null : CopyBehavior(templateRecord, worldKey, change.ObjectId);
         if (brainKey.HasValue)
             exportedBrains.Add(change.GaoKey, brainKey.Value);
         byte[] header = original.AsSpan(template.RecordRange.Offset + 4, 22).ToArray();
@@ -76,7 +76,7 @@ internal sealed partial class PcSceneRebuild
     }
 
     private bool IsGeometryKeyOccupied(uint key) => allKeys.Contains(key) || changes.Any(change => change.GaoKey == key) || resolver!.ResourceItems.ContainsKey(key);
-    private uint? CopyBehavior(PcSceneLoader.Record template, uint worldKey)
+    private uint? CopyBehavior(PcSceneLoader.Record template, uint worldKey, string objectId)
     {
         if (template.BrainFieldOffset < 0)
             return null;
@@ -87,18 +87,20 @@ internal sealed partial class PcSceneRebuild
         bool hasSupportedLayout = brain.Length == 12 && BinaryPrimitives.ReadInt32LittleEndian(brain) == 8;
         if (!hasSupportedLayout)
             throw new InvalidDataException("Unsupported duplicated behavior-instance layout.");
-        CopyBehaviorVariables(brain, worldKey);
+        CopyBehaviorVariables(brain, worldKey, objectId);
         uint brainKey = AllocateInstanceKey(sourceKey);
         instanceCopies.Add(brainKey, ('q', brain));
         return brainKey;
     }
 
-    private void CopyBehaviorVariables(byte[] brain, uint worldKey)
+    private void CopyBehaviorVariables(byte[] brain, uint worldKey, string objectId)
     {
         uint sourceKey = BinaryPrimitives.ReadUInt32LittleEndian(brain.AsSpan(8));
         if (sourceKey is 0 or uint.MaxValue)
             return;
         byte[] variables = Supply(new PcSceneLoader.Request(sourceKey, 't'), worldKey).ToArray();
+        if (pickupSaveFlags.TryGetValue(objectId, out int saveFlag))
+            PcPickupVariables.RemapFlags(variables, saveFlag);
         uint variablesKey = AllocateInstanceKey(sourceKey);
         instanceCopies.Add(variablesKey, ('t', variables));
         BinaryPrimitives.WriteUInt32LittleEndian(brain.AsSpan(8), variablesKey);

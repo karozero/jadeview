@@ -159,6 +159,8 @@ public sealed partial class EditorShell
 
         try
         {
+            // Saving metadata need not require the game executable; export verifies its profile.
+            PrepareCurrentPickupPersistence(verifyExecutable: false);
             CurrentProject.Save(path);
             _projectPath = path;
             History.IsDirty = false;
