@@ -21,6 +21,9 @@ public sealed class SceneObject
     public Matrix4x4 RenderMatrix => PreviewMatrix is Matrix4x4 m ? AnimationMath.ToRender(m) : Transform.ToRenderMatrix();
     // Procedural preview keeps the original GRO key and archive patch metadata intact.
     public uint PreviewGeometryKey { get; set; }
+    // Objects created in the editor are stored in the .bgemod scene overlay.
+    public bool IsUserCreated { get; set; }
+    public string? SourceObjectId { get; set; }
     public uint RenderGeometryKey => PreviewGeometryKey != 0 ? PreviewGeometryKey : GeometryKey;
     public uint GeometryKey { get; set; }
     public uint MaterialKey { get; set; }

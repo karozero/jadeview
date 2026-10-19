@@ -34,6 +34,8 @@ public static class SceneWriter
     {
         ArgumentNullException.ThrowIfNull(containerBytes);
         ArgumentNullException.ThrowIfNull(plan);
+        if (plan.RebuiltContainer != null)
+            throw new InvalidOperationException("Structural edits resize the container; use CreatePatchedContainer instead of in-place Apply.");
 
         var preflight = plan.PreflightCheck(containerBytes);
         if (!preflight.IsSuccess)
@@ -59,6 +61,13 @@ public static class SceneWriter
     {
         ArgumentNullException.ThrowIfNull(originalContainerBytes);
         ArgumentNullException.ThrowIfNull(plan);
+
+        if (plan.RebuiltContainer != null)
+        {
+            var check = plan.PreflightCheck(originalContainerBytes);
+            if (!check.IsSuccess) throw new InvalidOperationException("Structural write preflight failed: " + string.Join("; ", check.Errors));
+            return plan.RebuiltContainer.ToArray();
+        }
 
         var patchedBytes = (byte[])originalContainerBytes.Clone();
         Apply(patchedBytes, plan);
@@ -91,6 +100,15 @@ public static class SceneWriter
             TotalBytesCompared = Math.Min(originalBytes.Length, patchedBytes.Length),
             ExpectedBytesModified = plan.TotalBytesToModify
         };
+
+        if (plan.RebuiltContainer != null)
+        {
+            var preflight = plan.PreflightCheck(originalBytes);
+            result.Errors.AddRange(preflight.Errors);
+            if (!plan.RebuiltContainer.AsSpan().SequenceEqual(patchedBytes))
+                result.Errors.Add("Structural output differs from the verified rebuilt container.");
+            return result;
+        }
 
         if (originalBytes.Length != patchedBytes.Length)
         {

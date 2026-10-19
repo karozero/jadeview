@@ -16,8 +16,9 @@ public sealed class WritePlan
     public string ExpectedContainerSha256 { get; init; } = "";
     public List<TransformPatch> Patches { get; } = [];
     public List<string> Diagnostics { get; } = [];
+    public byte[]? RebuiltContainer { get; internal set; }
 
-    public int TotalBytesToModify => Patches.Sum(p => p.HasChanges ? JadeMatrix.SizeInBytes : 0);
+    public int TotalBytesToModify => RebuiltContainer?.Length ?? Patches.Sum(patch => patch.HasChanges ? JadeMatrix.SizeInBytes : 0);
 
     /// <summary>
     /// Добавляет точечный патч для перемещения объекта (Translation-only).
@@ -220,7 +221,7 @@ public sealed class WritePlan
             }
         }
 
-        result.BytesToModify = bytesToModify;
+        result.BytesToModify = RebuiltContainer?.Length ?? bytesToModify;
         return result;
     }
 
@@ -229,6 +230,8 @@ public sealed class WritePlan
     /// </summary>
     public WritePlan CreateInversePlan()
     {
+        if (RebuiltContainer != null)
+            throw new InvalidOperationException("Structural edits require the original container to restore; they have no in-place inverse patch.");
         var inverse = new WritePlan
         {
             ContainerName = ContainerName,

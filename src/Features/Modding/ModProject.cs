@@ -5,23 +5,20 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace JadeView;
-
 /// <summary>
 /// Сериализуемый в JSON проект модификаций Beyond Good &amp; Evil (.bgemod / .json).
 /// Хранит метаданные, привязку к базовому BF по SHA-256 и список изменений по стабильным ID.
 /// </summary>
-public sealed class ModProject
+public sealed partial class ModProject
 {
     public const int CurrentFormatVersion = 1;
     public const string DefaultFileExtension = ".bgemod";
-
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
-
     [JsonPropertyName("formatVersion")]
     public int FormatVersion { get; set; } = CurrentFormatVersion;
 
@@ -29,11 +26,7 @@ public sealed class ModProject
     public string Name { get; set; } = "New modification";
 
     [JsonIgnore]
-    public string ModName
-    {
-        get => Name;
-        set => Name = value;
-    }
+    public string ModName { get => Name; set => Name = value; }
 
     [JsonPropertyName("author")]
     public string Author { get; set; } = Environment.UserName;
@@ -68,14 +61,17 @@ public sealed class ModProject
     [JsonPropertyName("changes")]
     public List<ModObjectChange> Changes { get; set; } = [];
 
+    [JsonPropertyName("sceneStructureChanges")]
+    public List<SceneStructureChange> SceneStructureChanges { get; set; } = [];
+
     [JsonPropertyName("metadata")]
     public Dictionary<string, string> Metadata { get; set; } = [];
 
     [JsonIgnore]
-    public bool IsEmpty => Changes.Count == 0;
+    public bool IsEmpty => Changes.Count == 0 && SceneStructureChanges.Count == 0;
 
     [JsonIgnore]
-    public bool HasChanges => Changes.Any(c => c.HasChanges);
+    public bool HasChanges => Changes.Any(candidateChange => candidateChange.HasChanges) || SceneStructureChanges.Count > 0;
 
     /// <summary>
     /// Создает новый пустой проект мода, привязанный к SceneDocument.
@@ -94,7 +90,7 @@ public sealed class ModProject
             }
             catch
             {
-                // Игнорируем ошибку чтения при создании
+            // Игнорируем ошибку чтения при создании
             }
         }
 
@@ -112,7 +108,6 @@ public sealed class ModProject
     }
 
     public static ModProject CreateNew(SceneDocument document) => CreateForDocument(document);
-
     public void RecordModification(SceneObject obj, Vector3 eulerDeg = default)
     {
         ArgumentNullException.ThrowIfNull(obj);
@@ -120,10 +115,8 @@ public sealed class ModProject
     }
 
     public void ApplyTo(SceneDocument document) => ApplyToDocument(document);
-
-    public WritePlan BuildWritePlan(byte[] originalContainerBytes, SceneDocument document) =>
-        BuildWritePlan(document, originalContainerBytes);
-
+    public ModProject CreateSnapshot() => JsonSerializer.Deserialize<ModProject>(JsonSerializer.Serialize(this, JsonOptions), JsonOptions) ?? throw new InvalidDataException("Cannot snapshot the current project.");
+    public WritePlan BuildWritePlan(byte[] originalContainerBytes, SceneDocument document) => BuildWritePlan(document, originalContainerBytes);
     /// <summary>
     /// Проверяет совпадение контрольной суммы SHA-256 базового BF-архива.
     /// Защищает от случайного применения мода к другой версии игры или поврежденному архиву.
@@ -145,8 +138,7 @@ public sealed class ModProject
 
         if (!string.Equals(BaseBfSha256.Trim(), actualSha256.Trim(), StringComparison.OrdinalIgnoreCase))
         {
-            error = $"Base BF version mismatch. Expected SHA-256: {BaseBfSha256.ToLowerInvariant()}, actual: {actualSha256.ToLowerInvariant()}. " +
-                    "Mod application rejected to prevent data corruption.";
+            error = $"Base BF version mismatch. Expected SHA-256: {BaseBfSha256.ToLowerInvariant()}, actual: {actualSha256.ToLowerInvariant()}. " + "Mod application rejected to prevent data corruption.";
             return false;
         }
 
@@ -191,22 +183,12 @@ public sealed class ModProject
     /// <summary>
     /// Регистрирует или обновляет изменение трансформации объекта в проекте.
     /// </summary>
-    public ModObjectChange RecordChange(
-        SceneObject target,
-        string containerName,
-        uint worldKey,
-        TransformData oldTransform,
-        TransformData newTransform,
-        bool translationOnly = false)
+    public ModObjectChange RecordChange(SceneObject target, string containerName, uint worldKey, TransformData oldTransform, TransformData newTransform, bool translationOnly = false)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(oldTransform);
         ArgumentNullException.ThrowIfNull(newTransform);
-
-        var existing = Changes.FirstOrDefault(c =>
-            string.Equals(c.ObjectId, target.Id, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(c.ContainerName, containerName, StringComparison.OrdinalIgnoreCase));
-
+        var existing = Changes.FirstOrDefault(candidateChange => string.Equals(candidateChange.ObjectId, target.Id, StringComparison.OrdinalIgnoreCase) && string.Equals(candidateChange.ContainerName, containerName, StringComparison.OrdinalIgnoreCase));
         if (existing != null)
         {
             existing.NewTransform = ModTransform.FromTransformData(newTransform);
@@ -228,7 +210,6 @@ public sealed class ModProject
             IsTranslationOnly = translationOnly,
             ModifiedAt = DateTimeOffset.UtcNow
         };
-
         Changes.Add(change);
         ModifiedAt = DateTimeOffset.UtcNow;
         return change;
@@ -239,247 +220,35 @@ public sealed class ModProject
     /// </summary>
     public bool RemoveChange(string objectId, string containerName)
     {
-        int count = Changes.RemoveAll(c =>
-            string.Equals(c.ObjectId, objectId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(c.ContainerName, containerName, StringComparison.OrdinalIgnoreCase));
-
+        int count = Changes.RemoveAll(candidateChange => string.Equals(candidateChange.ObjectId, objectId, StringComparison.OrdinalIgnoreCase) && string.Equals(candidateChange.ContainerName, containerName, StringComparison.OrdinalIgnoreCase));
         if (count > 0)
         {
             ModifiedAt = DateTimeOffset.UtcNow;
             return true;
         }
+
         return false;
     }
 
     /// <summary>
     /// Проверяет наличие зарегистрированного изменения для объекта.
     /// </summary>
-    public bool HasChange(string objectId, string containerName) =>
-        Changes.Any(c =>
-            string.Equals(c.ObjectId, objectId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(c.ContainerName, containerName, StringComparison.OrdinalIgnoreCase) &&
-            c.HasChanges);
-
+    public bool HasChange(string objectId, string containerName) => Changes.Any(candidateChange => string.Equals(candidateChange.ObjectId, objectId, StringComparison.OrdinalIgnoreCase) && string.Equals(candidateChange.ContainerName, containerName, StringComparison.OrdinalIgnoreCase) && candidateChange.HasChanges);
     /// <summary>
     /// Возвращает зарегистрированное изменение объекта, если оно есть.
     /// </summary>
-    public ModObjectChange? GetChange(string objectId, string containerName) =>
-        Changes.FirstOrDefault(c =>
-            string.Equals(c.ObjectId, objectId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(c.ContainerName, containerName, StringComparison.OrdinalIgnoreCase));
-
+    public ModObjectChange? GetChange(string objectId, string containerName) => Changes.FirstOrDefault(candidateChange => string.Equals(candidateChange.ObjectId, objectId, StringComparison.OrdinalIgnoreCase) && string.Equals(candidateChange.ContainerName, containerName, StringComparison.OrdinalIgnoreCase));
     /// <summary>
     /// Возвращает все изменения для указанного контейнера.
     /// </summary>
-    public List<ModObjectChange> GetChangesForContainer(string containerName) =>
-        Changes.Where(c => string.Equals(c.ContainerName, containerName, StringComparison.OrdinalIgnoreCase)).ToList();
-
+    public List<ModObjectChange> GetChangesForContainer(string containerName) => Changes.Where(candidateChange => string.Equals(candidateChange.ContainerName, containerName, StringComparison.OrdinalIgnoreCase)).ToList();
     /// <summary>
     /// Очищает все зарегистрированные изменения в проекте.
     /// </summary>
     public void ClearChanges()
     {
         Changes.Clear();
+        SceneStructureChanges.Clear();
         ModifiedAt = DateTimeOffset.UtcNow;
-    }
-
-    /// <summary>
-    /// Приняет изменения из проекта мода к переданному SceneDocument.
-    /// </summary>
-    public ModApplyResult ApplyToDocument(SceneDocument document, bool ignoreHashMismatch = false)
-    {
-        ArgumentNullException.ThrowIfNull(document);
-        var result = new ModApplyResult();
-
-        bool hasFingerprint = !string.IsNullOrWhiteSpace(BaseBfSha256) || !string.IsNullOrWhiteSpace(document.BaseBfSha256);
-        if (!ignoreHashMismatch && hasFingerprint && !VerifyBaseBf(document, out var hashError))
-        {
-            result.Errors.Add(hashError!);
-            return result;
-        }
-
-        string currentContainer = document.ContainerName;
-        var relevantChanges = string.IsNullOrEmpty(currentContainer)
-            ? Changes
-            : Changes.Where(c => string.Equals(c.ContainerName, currentContainer, StringComparison.OrdinalIgnoreCase)).ToList();
-
-        foreach (var change in relevantChanges)
-        {
-            var target = document.FindObjectById(change.ObjectId);
-
-            // Если не нашли по прямому ID, пробуем найти по GaoKey в активном мире
-            if (target == null && change.GaoKey != 0)
-            {
-                foreach (var w in document.Worlds)
-                {
-                    target = w.Objects.FirstOrDefault(o => o.GaoKey == change.GaoKey);
-                    if (target != null) break;
-                }
-            }
-
-            if (target == null)
-            {
-                result.ObjectsNotFound++;
-                result.MissingObjectIds.Add(change.ObjectId);
-                result.Warnings.Add($"Object '{change.ObjectName}' (ID: {change.ObjectId}, GAO: 0x{change.GaoKey:X8}) not found in scene.");
-                continue;
-            }
-
-            // Применяем трансформацию
-            change.NewTransform.ApplyTo(target.Transform);
-            result.ObjectsUpdated++;
-            result.UpdatedObjectNames.Add(target.Name);
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// Создает WritePlan для SceneWriter на основе зарегистрированных изменений для указанного контейнера.
-    /// </summary>
-    public WritePlan BuildWritePlan(SceneDocument document, byte[] containerBytes)
-    {
-        ArgumentNullException.ThrowIfNull(document);
-        ArgumentNullException.ThrowIfNull(containerBytes);
-
-        string containerName = document.ContainerName;
-        var plan = new WritePlan
-        {
-            ContainerName = containerName,
-            ExpectedContainerSize = containerBytes.Length,
-            ExpectedContainerSha256 = ""
-        };
-
-        var containerChanges = GetChangesForContainer(containerName);
-        foreach (var change in containerChanges)
-        {
-            if (!change.HasChanges) continue;
-
-            var target = document.FindObjectById(change.ObjectId);
-            if (target == null && change.GaoKey != 0)
-            {
-                foreach (var w in document.Worlds)
-                {
-                    target = w.Objects.FirstOrDefault(o => o.GaoKey == change.GaoKey);
-                    if (target != null) break;
-                }
-            }
-
-            if (target == null)
-            {
-                plan.Diagnostics.Add($"Warning: object '{change.ObjectName}' (0x{change.GaoKey:X8}) skipped: not found in SceneDocument.");
-                continue;
-            }
-
-            if (!target.Transform.MatrixByteRange.IsValid || target.Transform.MatrixByteRange.Size != JadeMatrix.SizeInBytes)
-            {
-                plan.Diagnostics.Add($"Warning: object '{change.ObjectName}' skipped: invalid MatrixByteRange.");
-                continue;
-            }
-
-            if (change.IsTranslationOnly)
-            {
-                plan.AddTranslationPatch(target, change.NewTransform.ToTranslation(), containerBytes);
-            }
-            else
-            {
-                plan.AddTransformPatch(
-                    target,
-                    change.NewTransform.ToTranslation(),
-                    change.NewTransform.ToRotation(),
-                    change.NewTransform.ToScale(),
-                    containerBytes);
-            }
-        }
-
-        return plan;
-    }
-
-    /// <summary>
-    /// Генерирует сводный манифест проекта модификации.
-    /// </summary>
-    public ModManifest GenerateManifest()
-    {
-        var containers = Changes.Select(c => c.ContainerName).Where(c => !string.IsNullOrEmpty(c)).Distinct().ToList();
-        var summaries = Changes.Select(c =>
-            $"[{c.ContainerName}] {c.ObjectName} (GAO: 0x{c.GaoKey:X8}) -> T:({c.NewTransform.Tx:F1}, {c.NewTransform.Ty:F1}, {c.NewTransform.Tz:F1})"
-        ).ToList();
-
-        return new ModManifest
-        {
-            ModName = Name,
-            FormatVersion = FormatVersion,
-            BaseBfSha256 = BaseBfSha256,
-            TotalModifiedContainers = containers.Count,
-            TotalModifiedObjects = Changes.Count,
-            AffectedContainers = containers,
-            ObjectSummaries = summaries,
-            GeneratedAt = DateTimeOffset.UtcNow
-        };
-    }
-
-    /// <summary>
-    /// Сериализует проект в JSON-строку.
-    /// </summary>
-    public string ToJson(bool indented = true)
-    {
-        var options = indented ? JsonOptions : new JsonSerializerOptions(JsonOptions) { WriteIndented = false };
-        return JsonSerializer.Serialize(this, options);
-    }
-
-    /// <summary>
-    /// Десериализует проект из JSON-строки.
-    /// </summary>
-    public static ModProject FromJson(string json)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(json);
-        var project = JsonSerializer.Deserialize<ModProject>(json, JsonOptions);
-        if (project == null)
-            throw new InvalidDataException("Failed to parse mod project JSON.");
-
-        return project;
-    }
-
-    /// <summary>
-    /// Сохраняет проект модификации в файл (.bgemod / .json).
-    /// </summary>
-    public void Save(string filePath)
-    {
-        if (string.IsNullOrWhiteSpace(filePath))
-            throw new ArgumentException("Project file path must not be empty.", nameof(filePath));
-
-        ModifiedAt = DateTimeOffset.UtcNow;
-        string json = ToJson(indented: true);
-
-        string? dir = Path.GetDirectoryName(filePath);
-        if (!string.IsNullOrEmpty(dir))
-            Directory.CreateDirectory(dir);
-
-        string temp = filePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        try
-        {
-            File.WriteAllText(temp, json, System.Text.Encoding.UTF8);
-            File.Move(temp, filePath, overwrite: true);
-        }
-        finally
-        {
-            if (File.Exists(temp))
-            {
-                try { File.Delete(temp); } catch { /* ignore */ }
-            }
-        }
-    }
-
-    /// <summary>
-    /// Загружает проект модификации из файла (.bgemod / .json).
-    /// </summary>
-    public static ModProject Load(string filePath)
-    {
-        if (!File.Exists(filePath))
-            throw new FileNotFoundException($"Mod project file not found: {filePath}", filePath);
-
-        string json = File.ReadAllText(filePath, System.Text.Encoding.UTF8);
-        return FromJson(json);
     }
 }
-

@@ -3,7 +3,6 @@ using System.Security.Cryptography;
 using Microsoft.Win32;
 
 namespace JadeView;
-
 /// <summary>
 /// Сервис тестирования мода в оригинальной игре Beyond Good &amp; Evil (Агент A6).
 /// Выполняет:
@@ -13,7 +12,7 @@ namespace JadeView;
 ///   4. Запуск процесса игры с защитой от повторного запуска (PID/Mutex check).
 ///   5. Гарантированное восстановление оригинального sally_clean.bf из бэкапа.
 /// </summary>
-public sealed class GameLauncher : IDisposable
+public sealed partial class GameLauncher : IDisposable
 {
     public const string ProcessName = "BGE";
     public const string MutexName = "BeyondGoodAndEvilGame";
@@ -21,27 +20,20 @@ public sealed class GameLauncher : IDisposable
     public const string DefaultCleanBf = GameInstallation.DefaultGameDirectory + @"\sally_clean.bf";
     public const string TargetBfName = "sally.bf";
     public const string GameExeName = "BGE.exe";
-
     private Process? _activeGameProcess;
     private bool _isModInstalled;
     private string? _installedModName;
     private readonly object _lock = new();
-
     public GameInstallation Installation { get; private set; }
-
     public bool IsModInstalled => _isModInstalled;
     public string? InstalledModName => _installedModName;
-
     public Process? ActiveProcess => _activeGameProcess;
 
     public event Action<GameInstallation>? OnInstallationChanged;
     public event Action<Process>? OnGameStarted;
     public event Action<int>? OnGameExited;
     public event Action<float>? OnOperationProgress;
-
-    public static string FindGameExecutable(string? candidateDir = null) =>
-        GameInstallation.Discover(candidateDir).ExePath;
-
+    public static string FindGameExecutable(string? candidateDir = null) => GameInstallation.Discover(candidateDir).ExePath;
     public static bool IsGameRunning()
     {
         try
@@ -73,16 +65,13 @@ public sealed class GameLauncher : IDisposable
     {
         if (!File.Exists(moddedBfPath))
             return (false, $"Mod file not found: {moddedBfPath}");
-
         var install = GameInstallation.Discover(string.IsNullOrEmpty(gameExePath) ? null : Path.GetDirectoryName(gameExePath));
         if (IsGameRunning())
             return (false, "Game is running. Close BGE.exe before installing a mod.");
-
         var launcher = new GameLauncher(install.GameDirectory);
         var backupRes = launcher.EnsureBackupExists();
         if (!backupRes.IsSuccess)
             return (false, $"Failed to create backup: {backupRes.Error}");
-
         try
         {
             File.Copy(moddedBfPath, install.BfPath, overwrite: true);
@@ -117,7 +106,6 @@ public sealed class GameLauncher : IDisposable
     public bool IsGameRunning(out int? runningPid)
     {
         runningPid = null;
-
         lock (_lock)
         {
             if (_activeGameProcess != null && !_activeGameProcess.HasExited)
@@ -138,7 +126,7 @@ public sealed class GameLauncher : IDisposable
         }
         catch
         {
-            // Игнорируем ошибки опроса процессов
+        // Игнорируем ошибки опроса процессов
         }
 
         // Проверяем глобальный именованный мьютекс игры, если создан
@@ -152,313 +140,10 @@ public sealed class GameLauncher : IDisposable
         }
         catch
         {
-            // Игнорируем
+        // Игнорируем
         }
 
         return false;
-    }
-
-    /// <summary>
-    /// Формирует сводную preflight-информацию с путями и статусами перед тестированием.
-    /// </summary>
-    public GameLaunchPreflight GetPreflightInfo(ModProject? activeMod = null)
-    {
-        bool isRunning = IsGameRunning(out int? pid);
-
-        var preflight = new GameLaunchPreflight
-        {
-            GameDirectory = Installation.GameDirectory,
-            ExePath = Installation.ExePath,
-            BfPath = Installation.BfPath,
-            BackupPath = Installation.BackupPath,
-            IsExePresent = Installation.ExeExists,
-            IsBfPresent = Installation.BfExists,
-            IsBackupPresent = Installation.BackupExists,
-            IsModInstalled = _isModInstalled,
-            IsGameRunning = isRunning,
-            RunningPid = pid,
-            ActiveModName = _installedModName ?? activeMod?.Name
-        };
-
-        if (!preflight.IsExePresent)
-            preflight.Errors.Add($"BGE.exe not found: {Installation.ExePath}");
-
-        if (!preflight.IsBfPresent)
-            preflight.Errors.Add($"sally_clean.bf not found: {Installation.BfPath}");
-
-        if (isRunning)
-            preflight.Warnings.Add($"BGE.exe is already running (PID {pid}). Close the game before installing a mod or restarting.");
-
-        if (activeMod != null && !string.IsNullOrEmpty(activeMod.BaseBfSha256) && preflight.IsBfPresent)
-        {
-            // Проверка хеша при наличии
-            try
-            {
-                using var s = File.OpenRead(Installation.BfPath);
-                var actualHash = Convert.ToHexStringLower(SHA256.HashData(s));
-                if (!string.Equals(activeMod.BaseBfSha256, actualHash, StringComparison.OrdinalIgnoreCase))
-                {
-                    preflight.Warnings.Add($"Warning: active BF SHA-256 ({actualHash}) does not match the mod base hash ({activeMod.BaseBfSha256}). " +
-                                          "Another mod may already be installed.");
-                }
-            }
-            catch (Exception ex)
-            {
-                preflight.Warnings.Add($"Failed to compute BF checksum: {ex.Message}");
-            }
-        }
-
-        return preflight;
-    }
-
-    /// <summary>
-    /// Гарантирует наличие безопасной резервной копии оригинального игрового архива.
-    /// Если бэкап уже существует, он НИКОГДА не перезаписывается, защищая чистый оригинал от затирания модом.
-    /// </summary>
-    public BackupResult EnsureBackupExists(Action<float>? progress = null)
-    {
-        if (!Installation.BfExists)
-        {
-            return BackupResult.Failed($"Source archive not found: {Installation.BfPath}");
-        }
-
-        string backupPath = Installation.BackupPath;
-
-        // Если бэкап уже есть на диске и его размер больше 0, не трогаем его
-        if (File.Exists(backupPath))
-        {
-            var existingInfo = new FileInfo(backupPath);
-            if (existingInfo.Length > 0)
-            {
-                return BackupResult.Success(backupPath, existingInfo.Length, null, wasPresent: true);
-            }
-        }
-
-        // Создаем резервную копию
-        string? backupDir = Path.GetDirectoryName(backupPath);
-        if (!string.IsNullOrEmpty(backupDir) && !Directory.Exists(backupDir))
-        {
-            Directory.CreateDirectory(backupDir);
-        }
-
-        string tempBackup = backupPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-
-        try
-        {
-            long totalBytes = new FileInfo(Installation.BfPath).Length;
-            long copiedBytes = 0;
-
-            using (var src = new FileStream(Installation.BfPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4 * 1024 * 1024))
-            using (var dst = new FileStream(tempBackup, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4 * 1024 * 1024))
-            {
-                byte[] buffer = new byte[4 * 1024 * 1024];
-                int read;
-                while ((read = src.Read(buffer, 0, buffer.Length)) > 0)
-                {
-                    dst.Write(buffer, 0, read);
-                    copiedBytes += read;
-                    float p = totalBytes > 0 ? (float)copiedBytes / totalBytes : 0f;
-                    progress?.Invoke(p);
-                    OnOperationProgress?.Invoke(p);
-                }
-                dst.Flush(true);
-            }
-
-            File.Move(tempBackup, backupPath, overwrite: true);
-
-            var finalInfo = new FileInfo(backupPath);
-            return BackupResult.Success(backupPath, finalInfo.Length, null, wasPresent: false);
-        }
-        catch (Exception ex)
-        {
-            return BackupResult.Failed($"Failed to create backup: {ex.Message}");
-        }
-        finally
-        {
-            if (File.Exists(tempBackup))
-            {
-                try { File.Delete(tempBackup); } catch { /* ignore */ }
-            }
-        }
-    }
-
-    /// <summary>
-    /// Гарантированное восстановление оригинального архива из резервной копии.
-    /// Перед восстановлением проверяет, что процесс игры не запущен.
-    /// </summary>
-    public RestoreResult RestoreOriginalBf(Action<float>? progress = null)
-    {
-        if (IsGameRunning(out int? pid))
-        {
-            return RestoreResult.Failed($"Cannot restore archive: BGE.exe is running (PID {pid}). Close the game before restoring.");
-        }
-
-        string backupPath = Installation.BackupPath;
-        if (!File.Exists(backupPath))
-        {
-            // Проверяем альтернативный путь бэкапа в корне
-            string altBackup = Path.Combine(Installation.GameDirectory, GameInstallation.BackupFileName);
-            if (File.Exists(altBackup))
-            {
-                backupPath = altBackup;
-            }
-            else
-            {
-                return RestoreResult.Failed($"Backup file not found at: {Installation.BackupPath}");
-            }
-        }
-
-        string targetBf = Installation.BfPath;
-        string tempTarget = targetBf + "." + Guid.NewGuid().ToString("N") + ".tmp";
-
-        try
-        {
-            long totalBytes = new FileInfo(backupPath).Length;
-            long copiedBytes = 0;
-
-            using (var src = new FileStream(backupPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4 * 1024 * 1024))
-            using (var dst = new FileStream(tempTarget, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4 * 1024 * 1024))
-            {
-                byte[] buffer = new byte[4 * 1024 * 1024];
-                int read;
-                while ((read = src.Read(buffer, 0, buffer.Length)) > 0)
-                {
-                    dst.Write(buffer, 0, read);
-                    copiedBytes += read;
-                    float p = totalBytes > 0 ? (float)copiedBytes / totalBytes : 0f;
-                    progress?.Invoke(p);
-                    OnOperationProgress?.Invoke(p);
-                }
-                dst.Flush(true);
-            }
-
-            File.Move(tempTarget, targetBf, overwrite: true);
-
-            _isModInstalled = false;
-            _installedModName = null;
-
-            var finalInfo = new FileInfo(targetBf);
-            return RestoreResult.Success(targetBf, finalInfo.Length);
-        }
-        catch (Exception ex)
-        {
-            return RestoreResult.Failed($"Failed to restore original archive: {ex.Message}");
-        }
-        finally
-        {
-            if (File.Exists(tempTarget))
-            {
-                try { File.Delete(tempTarget); } catch { /* ignore */ }
-            }
-        }
-    }
-
-    /// <summary>
-    /// Собирает новый BF со staging-патчами и устанавливает его в тестовую игру.
-    /// Исходный архив baseArchive открывается исключительно на чтение.
-    /// Перед установкой автоматически гарантируется создание резервной копии.
-    /// </summary>
-    public ModInstallResult InstallMod(
-        Archive baseArchive,
-        WritePlan writePlan,
-        byte[] patchedContainerBytes,
-        string modName = "Test mod",
-        Action<float>? progress = null)
-    {
-        ArgumentNullException.ThrowIfNull(baseArchive);
-        ArgumentNullException.ThrowIfNull(writePlan);
-        ArgumentNullException.ThrowIfNull(patchedContainerBytes);
-
-        if (IsGameRunning(out int? pid))
-        {
-            return ModInstallResult.Failed($"Cannot install mod: BGE.exe is running (PID {pid}). Close the game.");
-        }
-
-        if (!Installation.IsValid)
-        {
-            return ModInstallResult.Failed($"Invalid game installation: {string.Join("; ", Installation.ValidationErrors)}");
-        }
-
-        // 1. Гарантируем создание бэкапа оригинала перед любой модификацией
-        var backupRes = EnsureBackupExists(p => progress?.Invoke(p * 0.3f));
-        if (!backupRes.IsSuccess)
-        {
-            return ModInstallResult.Failed($"Failed to back up original: {backupRes.Error}");
-        }
-
-        // 2. Preflight-проверка плана записи
-        var preflight = writePlan.PreflightCheck(patchedContainerBytes);
-        if (!preflight.IsSuccess)
-        {
-            return ModInstallResult.Failed($"Write plan preflight rejected: {string.Join("; ", preflight.Errors)}", preflight);
-        }
-
-        // 3. Находим запись контейнера в базовом архиве
-        var containerEntry = baseArchive.Entries.FirstOrDefault(e =>
-            string.Equals(e.Name, writePlan.ContainerName, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(e.Id, writePlan.ContainerName, StringComparison.OrdinalIgnoreCase));
-
-        if (containerEntry == null)
-        {
-            return ModInstallResult.Failed($"Container '{writePlan.ContainerName}' not found in base archive {baseArchive.PathName}.", preflight);
-        }
-
-        // 4. Сборка нового BF во временный staging-файл
-        string stagingBf = Path.Combine(Path.GetTempPath(), $"bge_staging_{Guid.NewGuid():N}.bf");
-
-        try
-        {
-            SceneWriter.BuildAndSaveArchive(
-                baseArchive,
-                stagingBf,
-                containerEntry.Index,
-                patchedContainerBytes,
-                p =>
-                {
-                    float totalProgress = 0.3f + p * 0.6f;
-                    progress?.Invoke(totalProgress);
-                    OnOperationProgress?.Invoke(totalProgress);
-                });
-
-            // 5. Проверка собранного staging архива на валидность BIG 0x22
-            var verifyArchive = new Archive(stagingBf);
-            if (verifyArchive.Entries.Count != baseArchive.Entries.Count)
-            {
-                throw new InvalidDataException("Built archive entry count differs from the base archive.");
-            }
-
-            // 6. Атомарная установка в игру
-            if (IsGameRunning(out pid))
-            {
-                return ModInstallResult.Failed($"Game was started during the build (PID {pid}). Installation cancelled.");
-            }
-
-            File.Move(stagingBf, Installation.BfPath, overwrite: true);
-
-            _isModInstalled = true;
-            _installedModName = modName;
-
-            progress?.Invoke(1.0f);
-            OnOperationProgress?.Invoke(1.0f);
-
-            return ModInstallResult.Success(
-                Installation.BfPath,
-                stagingBf,
-                writePlan.Patches.Count,
-                preflight.BytesToModify,
-                preflight);
-        }
-        catch (Exception ex)
-        {
-            return ModInstallResult.Failed($"Failed to build and install mod: {ex.Message}", preflight);
-        }
-        finally
-        {
-            if (File.Exists(stagingBf))
-            {
-                try { File.Delete(stagingBf); } catch { /* ignore */ }
-            }
-        }
     }
 
     /// <summary>
@@ -468,9 +153,7 @@ public sealed class GameLauncher : IDisposable
     {
         if (IsGameRunning(out int? runningPid))
         {
-            return GameLaunchResult.AlreadyRunningResult(
-                runningPid!.Value,
-                $"Beyond Good & Evil is already running (PID {runningPid}). Duplicate launch prevented.");
+            return GameLaunchResult.AlreadyRunningResult(runningPid!.Value, $"Beyond Good & Evil is already running (PID {runningPid}). Duplicate launch prevented.");
         }
 
         if (!Installation.ExeExists)
@@ -487,13 +170,21 @@ public sealed class GameLauncher : IDisposable
                 Arguments = customArguments ?? "/B sally_clean.bf",
                 UseShellExecute = false
             };
-
-            var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
-
+            var process = new Process
+            {
+                StartInfo = psi,
+                EnableRaisingEvents = true
+            };
             process.Exited += (sender, args) =>
             {
                 int exitCode = -1;
-                try { exitCode = process.ExitCode; } catch { /* ignore */ }
+                try
+                {
+                    exitCode = process.ExitCode;
+                }
+                catch
+                { /* ignore */
+                }
 
                 lock (_lock)
                 {
@@ -505,7 +196,6 @@ public sealed class GameLauncher : IDisposable
 
                 OnGameExited?.Invoke(exitCode);
             };
-
             if (!process.Start())
             {
                 return GameLaunchResult.Failed("Failed to start BGE.exe.");
@@ -551,10 +241,17 @@ public sealed class GameLauncher : IDisposable
         try
         {
             var procs = Process.GetProcessesByName(ProcessName);
-            foreach (var p in procs)
+            foreach (var candidateProcess in procs)
             {
-                try { p.Kill(); } catch { /* ignore */ }
+                try
+                {
+                    candidateProcess.Kill();
+                }
+                catch
+                { /* ignore */
+                }
             }
+
             return procs.Length > 0;
         }
         catch

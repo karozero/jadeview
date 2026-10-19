@@ -85,55 +85,7 @@ public sealed partial class EditorShell
         }
     }
 
-    private void DrawSceneObjectsTable()
-    {
-        if (ActiveWorld == null)
-        {
-            ImGui.TextDisabled("No scene loaded.");
-            return;
-        }
 
-        if (ImGui.BeginTable("ObjectsTable", 5, ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.Resizable))
-        {
-            ImGui.TableSetupScrollFreeze(0, 1);
-            ImGui.TableSetupColumn("Object name", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableSetupColumn("GAO Key", ImGuiTableColumnFlags.WidthFixed, 90 * _scale);
-            ImGui.TableSetupColumn("GRO Key", ImGuiTableColumnFlags.WidthFixed, 90 * _scale);
-            ImGui.TableSetupColumn("Status", ImGuiTableColumnFlags.WidthFixed, 100 * _scale);
-            ImGui.TableSetupColumn("Position X,Y,Z", ImGuiTableColumnFlags.WidthFixed, 180 * _scale);
-            ImGui.TableHeadersRow();
-
-            foreach (var o in ActiveWorld.Objects)
-            {
-                ImGui.TableNextRow();
-                ImGui.TableNextColumn();
-
-                bool isSelected = SelectedObject?.Id == o.Id;
-                if (ImGui.Selectable($"{o.Name}##{o.Id}", isSelected, ImGuiSelectableFlags.SpanAllColumns))
-                {
-                    SelectedObject = o;
-                }
-
-                DrawObjectContextMenu(o);
-                if(_revealContent==o){ImGui.SetScrollHereY(.5f);_revealContent=null;}
-                ImGui.TableNextColumn();
-                ImGui.TextDisabled(o.GaoKey.ToString("X8"));
-
-                ImGui.TableNextColumn();
-                ImGui.TextDisabled(o.GeometryKey != 0 ? o.GeometryKey.ToString("X8") : "—");
-
-                ImGui.TableNextColumn();
-                if (o.Capabilities.CanTranslate)
-                    ImGui.TextColored(Green, "Static");
-                else
-                    ImGui.TextColored(Yellow, "Restricted");
-
-                ImGui.TableNextColumn();
-                ImGui.TextDisabled($"{o.Transform.Translation.X:F1}, {o.Transform.Translation.Y:F1}, {o.Transform.Translation.Z:F1}");
-            }
-            ImGui.EndTable();
-        }
-    }
 
     private void DrawTexturesTab()
     {
@@ -176,23 +128,23 @@ public sealed partial class EditorShell
 
                 if (ImGui.Button("Export PNG"))
                 {
-                    using var d = new Forms.SaveFileDialog
+                    using var dialog = new Forms.SaveFileDialog
                     {
                         Filter = "PNG image (*.png)|*.png",
                         FileName = SceneExporter.SafeFileName(tex.Id.ToString()) + ".png"
                     };
-                    if (d.ShowDialog() == Forms.DialogResult.OK)
+                    if (dialog.ShowDialog() == Forms.DialogResult.OK)
                     {
                         try
                         {
                             byte[] rgba = Preview.DecodeTga(tex.ToTextureAsset());
                             unsafe
                             {
-                                fixed (byte* p = rgba)
+                                fixed (byte* point = rgba)
                                 {
-                                    Image img = new() { Data = p, Width = tex.Width, Height = tex.Height, Format = PixelFormat.UncompressedR8G8B8A8, Mipmaps = 1 };
-                                    File.WriteAllBytes(d.FileName, Png(img));
-                                    _statusMessage = $"Texture exported: {d.FileName}";
+                                    Image img = new() { Data = point, Width = tex.Width, Height = tex.Height, Format = PixelFormat.UncompressedR8G8B8A8, Mipmaps = 1 };
+                                    File.WriteAllBytes(dialog.FileName, Png(img));
+                                    _statusMessage = $"Texture exported: {dialog.FileName}";
                                 }
                             }
                         }
@@ -225,7 +177,7 @@ public sealed partial class EditorShell
             ImGui.TextDisabled("Select an audio file (.wad, .waa, .wam, .wac) in the BF archive.");
             if (Archive != null && ImGui.Button("Find first audio file"))
             {
-                var soundEntry = Archive.Entries.FirstOrDefault(e => e.Name.EndsWith(".waa", StringComparison.OrdinalIgnoreCase) || e.Name.EndsWith(".wad", StringComparison.OrdinalIgnoreCase));
+                var soundEntry = Archive.Entries.FirstOrDefault(catalogEntry => catalogEntry.Name.EndsWith(".waa", StringComparison.OrdinalIgnoreCase) || catalogEntry.Name.EndsWith(".wad", StringComparison.OrdinalIgnoreCase));
                 if (soundEntry != null) SelectCatalogEntry(soundEntry);
             }
             return;
@@ -271,15 +223,15 @@ public sealed partial class EditorShell
         ImGui.SameLine();
         if (ImGui.Button("Export WAV"))
         {
-            using var d = new Forms.SaveFileDialog
+            using var dialog = new Forms.SaveFileDialog
             {
                 Filter = "WAVE Audio (*.wav)|*.wav",
                 FileName = Path.GetFileNameWithoutExtension(_selectedCatalogEntry?.Name ?? "sound") + ".wav"
             };
-            if (d.ShowDialog() == Forms.DialogResult.OK)
+            if (dialog.ShowDialog() == Forms.DialogResult.OK)
             {
-                File.WriteAllBytes(d.FileName, audio.Wav);
-                _statusMessage = $"Audio exported: {d.FileName}";
+                File.WriteAllBytes(dialog.FileName, audio.Wav);
+                _statusMessage = $"Audio exported: {dialog.FileName}";
             }
         }
     }
@@ -291,7 +243,7 @@ public sealed partial class EditorShell
             ImGui.TextDisabled("Select a text file (fd-prefixed .bin) in the BF archive.");
             if (Archive != null && ImGui.Button("Find first text file"))
             {
-                var textEntry = Archive.Entries.FirstOrDefault(e => e.Name.StartsWith("fd", StringComparison.OrdinalIgnoreCase));
+                var textEntry = Archive.Entries.FirstOrDefault(catalogEntry => catalogEntry.Name.StartsWith("fd", StringComparison.OrdinalIgnoreCase));
                 if (textEntry != null) SelectCatalogEntry(textEntry);
             }
             return;
@@ -302,15 +254,15 @@ public sealed partial class EditorShell
 
         if (ImGui.Button("Export JSON"))
         {
-            using var d = new Forms.SaveFileDialog
+            using var dialog = new Forms.SaveFileDialog
             {
                 Filter = "Jade text JSON (*.json)|*.json",
                 FileName = (_selectedCatalogEntry?.Name ?? "text") + ".json"
             };
-            if (d.ShowDialog() == Forms.DialogResult.OK)
+            if (dialog.ShowDialog() == Forms.DialogResult.OK)
             {
-                File.WriteAllText(d.FileName, txtDoc.Json());
-                _statusMessage = $"Text exported: {d.FileName}";
+                File.WriteAllText(dialog.FileName, txtDoc.Json());
+                _statusMessage = $"Text exported: {dialog.FileName}";
             }
         }
 
@@ -320,149 +272,11 @@ public sealed partial class EditorShell
         ImGui.EndChild();
     }
 
-    private void DrawCatalogTab()
-    {
-        if (Archive == null)
-        {
-            ImGui.TextDisabled("No BigFile archive loaded.");
-            return;
-        }
 
-        // Дерево папок и таблица files из Archive
-        float treeWidth = 240.0f * _scale;
-        ImGui.BeginChild("CatalogFolders", new Vector2(treeWidth, 0), ImGuiChildFlags.Borders);
-        {
-            if (ImGui.Selectable($"All folders ({_rootFolder.Count})", _catalogFolder.Length == 0))
-            {
-                _catalogFolder = "";
-                FilterCatalog();
-            }
-            foreach (var child in _rootFolder.Children.Values)
-            {
-                DrawFolderNode(child);
-            }
-        }
-        ImGui.EndChild();
 
-        ImGui.SameLine();
 
-        ImGui.BeginChild("CatalogFiles", new Vector2(0, 0), ImGuiChildFlags.Borders);
-        {
-            ImGui.SetNextItemWidth(260 * _scale);
-            if (ImGui.InputTextWithHint("##CatSearch", "Search archive...", ref _catalogSearch, 128)) FilterCatalog();
-            ImGui.SameLine();
-            ImGui.SetNextItemWidth(150 * _scale);
-            if (ImGui.Combo("##CatFilter", ref _catalogFilter, _catalogFilterNames, _catalogFilterNames.Length)) FilterCatalog();
-            ImGui.SameLine();
-            ImGui.TextDisabled($"{_visibleCatalogEntries.Count:N0} files");
 
-            if (_selectedCatalogEntry != null && (_selectedCatalogEntry.Name.StartsWith("ff0", StringComparison.OrdinalIgnoreCase) || _selectedCatalogEntry.Id.StartsWith("FF0", StringComparison.OrdinalIgnoreCase)))
-            {
-                ImGui.SameLine();
-                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.12f, 0.45f, 0.25f, 1.0f));
-                if (ImGui.Button($"Open {_selectedCatalogEntry.Id} as scene"))
-                {
-                    OpenSceneContainer(_selectedCatalogEntry);
-                }
-                ImGui.PopStyleColor();
-            }
 
-            if (ImGui.BeginTable("CatalogTable", 4, ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.Resizable))
-            {
-                ImGui.TableSetupColumn("Filename", ImGuiTableColumnFlags.WidthStretch);
-                ImGui.TableSetupColumn("FAT key", ImGuiTableColumnFlags.WidthFixed, 85 * _scale);
-                ImGui.TableSetupColumn("Size", ImGuiTableColumnFlags.WidthFixed, 85 * _scale);
-                ImGui.TableSetupColumn("Folder", ImGuiTableColumnFlags.WidthStretch);
-                ImGui.TableHeadersRow();
-
-                unsafe
-                {
-                    var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
-                    clipper.Begin(_visibleCatalogEntries.Count);
-                    while (clipper.Step())
-                    {
-                        for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
-                        {
-                            var e = _visibleCatalogEntries[i];
-                            ImGui.PushID(e.Index);
-                            ImGui.TableNextRow();
-                            ImGui.TableNextColumn();
-
-                            bool isSelected = _selectedCatalogEntry?.Index == e.Index;
-                            if (ImGui.Selectable(e.Name, isSelected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowDoubleClick))
-                            {
-                                SelectCatalogEntry(e);
-                                if (ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left) && (e.Name.StartsWith("ff0", StringComparison.OrdinalIgnoreCase) || e.Id.StartsWith("FF0", StringComparison.OrdinalIgnoreCase)))
-                                {
-                                    OpenSceneContainer(e);
-                                }
-                            }
-
-                            ImGui.TableNextColumn();
-                            ImGui.TextDisabled(e.Id);
-                            ImGui.TableNextColumn();
-                            ImGui.TextDisabled(FormatSize(e.StoredSize));
-                            ImGui.TableNextColumn();
-                            ImGui.TextDisabled(e.Folder);
-
-                            ImGui.PopID();
-                        }
-                    }
-                    clipper.End();
-                    clipper.Destroy();
-                }
-                ImGui.EndTable();
-            }
-        }
-        ImGui.EndChild();
-    }
-
-    private void DrawFolderNode(FolderNode node)
-    {
-        ImGui.PushID(node.Path);
-        var flags = ImGuiTreeNodeFlags.OpenOnArrow | ImGuiTreeNodeFlags.SpanAvailWidth;
-        if (node.Children.Count == 0) flags |= ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen;
-        if (_catalogFolder == node.Path) flags |= ImGuiTreeNodeFlags.Selected;
-
-        bool open = ImGui.TreeNodeEx($"{node.Name} ({node.Count})", flags);
-        if (ImGui.IsItemClicked() && !ImGui.IsItemToggledOpen())
-        {
-            _catalogFolder = node.Path;
-            FilterCatalog();
-        }
-        if (open && node.Children.Count > 0)
-        {
-            foreach (var c in node.Children.Values) DrawFolderNode(c);
-            ImGui.TreePop();
-        }
-        ImGui.PopID();
-    }
-
-    private void DrawDiagnosticsTab()
-    {
-        ImGui.TextColored(Green, "SCENE AND ASSET DIAGNOSTICS");
-        ImGui.Separator();
-
-        if (Document != null)
-        {
-            ImGui.TextUnformatted($"Base BF: {Document.BaseBfPath}");
-            ImGui.TextUnformatted($"SHA-256 BF: {Document.BaseBfSha256}");
-            ImGui.TextUnformatted($"Container: {Document.ContainerName}");
-            ImGui.Spacing();
-
-            string text = $"Base BF: {Document.BaseBfPath}\nSHA-256: {Document.BaseBfSha256}\nContainer: {Document.ContainerName}\n\n" +
-                string.Join("\n", Resolver.TextureLoaderStatus.Select(status => $"{status.Key}: {status.Value}")) + "\n" +
-                string.Join("\n", Document.Diagnostics);
-            if (ImGui.Button("Copy all")) ImGui.SetClipboardText(text);
-            ImGui.InputTextMultiline("##DiagLog", ref text, (uint)Math.Max(4096, System.Text.Encoding.UTF8.GetByteCount(text) + 1),
-                new Vector2(-1, -1), ImGuiInputTextFlags.ReadOnly);
-
-        }
-        else
-        {
-            ImGui.TextDisabled("No scene document loaded.");
-        }
-    }
 
     #endregion
 }

@@ -36,7 +36,7 @@ public sealed partial class EditorShell
         // Status возможностей редактирования (Capabilities)
         if (obj.Capabilities.CanTranslate)
         {
-            ImGui.TextColored(Green, "Position editing available (In-place patch)");
+            ImGui.TextColored(Green, obj.IsUserCreated ? "Editor object: transform will be written to a new GAO" : "Position editing available (In-place patch)");
         }
         else
         {

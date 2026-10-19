@@ -48,6 +48,7 @@ public static class SceneLoader
             var replay = PcSceneLoader.Read(bytes, bfPath);
             if (replay.Complete)
             {
+                doc.ReservedResourceKeys.UnionWith(replay.Records.Select(record => record.Key));
                 foreach (var worldRecord in replay.Worlds)
                 {
                     var world = new WorldData { Key = worldRecord.Key, Name = worldRecord.Name,
@@ -161,6 +162,8 @@ public static class SceneLoader
         }
 
         doc.Diagnostics.Add($"Document created: worlds = {doc.Worlds.Count}, objects = {doc.Worlds.Sum(w => w.Objects.Count)}, confirmed GRO/material references = {doc.Resources.Count}.");
+        doc.ReservedResourceKeys.UnionWith(doc.Worlds.SelectMany(world => world.Objects).Select(sceneObject => sceneObject.GaoKey));
+        doc.ReservedResourceKeys.UnionWith(doc.Resources.Keys);
         return doc;
     }
 
@@ -290,7 +293,7 @@ public static class SceneLoader
         // Поля WOW:
         // +0:  4s magic (".wow")
         // +4:  uint version (3)
-        // +8:  uint nbGameObjects
+        // +8:  uint opaque state/flags (not an object count in PC containers)
         // +12: uint ambientColor
         // +16: char name[60]
         // +76: Matrix (64 bytes floats + 4 bytes type)
