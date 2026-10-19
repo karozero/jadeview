@@ -30,6 +30,7 @@ public sealed partial class SceneExporter
         foreach (var sceneObject in objects.Where(Included))
             ActorMesh(actor, sceneObject, group, nodeMap, bindPose);
         WriteAnimations(actor, animated);
+        WriteMorphAnimations(actor);
     }
 
     private Matrix4x4 ActorPlacement(SceneActor actor)
@@ -97,10 +98,11 @@ public sealed partial class SceneExporter
         int skin = WriteSkin(actor, sceneObject, group, nodeMap, bindPose, bindings, inverseMeshBind);
         int meshNode = nodes.Count;
         nodes.Add(D("name", sceneObject.Name, "skin", skin,
-            "mesh", Mesh(sceneObject, geometry, positions, bindings.Select(binding => binding.Source).ToArray()),
+            "mesh", Mesh(sceneObject, geometry, positions, bindings.Select(binding => binding.Source).ToArray(), meshBind),
             "extras", D("gaoKey", sceneObject.GaoKey.ToString("X8"), "actor", actor.Root.Name, "sourceId", sceneObject.Id)));
         // Joints include placement; applying the actor group to this mesh would transform it twice.
         roots.Add(meshNode);
+        CaptureMorphTimeline(actor, sceneObject, meshNode);
     }
 
     private void AddChild(int parent, int child)

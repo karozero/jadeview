@@ -5,7 +5,8 @@ namespace JadeView;
 
 public sealed partial class SceneExporter
 {
-    private int Mesh(SceneObject sceneObject, Geometry geometry, Vector3[] positions, SkinBinding[]? bindings)
+    private int Mesh(SceneObject sceneObject, Geometry geometry, Vector3[] positions, SkinBinding[]? bindings,
+        Matrix4x4? morphSpace = null)
     {
         var parts = geometry.Parts.Where((part, index) => part.VertexIndices.Length > 0 &&
             (geometry.Particles == null || index < geometry.ParticlePart)).ToList();
@@ -16,11 +17,15 @@ public sealed partial class SceneExporter
         var normals = AnimationMath.Normals(positions, parts);
         var uvPositions = sceneObject.Actor?.Skin(sceneObject, geometry) ?? positions;
         var influences = BuildInfluences(positions.Length, bindings);
+        var morph = bindings != null ? ReadMorph(sceneObject, geometry) : null;
         var primitives = new List<Obj>();
         foreach (var part in parts)
-            primitives.Add(MeshPart(sceneObject, geometry, positions, uvPositions, normals, part, influences, bindings != null));
+            primitives.Add(MeshPart(sceneObject, geometry, positions, uvPositions, normals, part, influences, bindings != null,
+                morph, morphSpace ?? Matrix4x4.Identity));
         int meshIndex = meshes.Count;
-        meshes.Add(D("name", sceneObject.Name, "primitives", primitives));
+        var mesh = D("name", sceneObject.Name, "primitives", primitives);
+        if (morph != null) WriteMorphMetadata(mesh, morph, sceneObject);
+        meshes.Add(mesh);
         return meshIndex;
     }
 
@@ -33,14 +38,16 @@ public sealed partial class SceneExporter
     }
 
     private Obj MeshPart(SceneObject sceneObject, Geometry geometry, Vector3[] positions, Vector3[] uvPositions,
-        Vector3[] normals, Geometry.Part part, List<(int Joint, float Weight)>[] influences, bool skinned)
+        Vector3[] normals, Geometry.Part part, List<(int Joint, float Weight)>[] influences, bool skinned,
+        FaceMorphData? morph, Matrix4x4 morphSpace)
     {
         var material = ResolvePartMaterial(sceneObject, part);
         var layers = JadeMaterialLayer.Read(material?.SourceBytes).Where(layer => !layer.Disabled).ToList();
+        var baked = BakeLayeredMaterial(sceneObject, geometry, part, uvPositions, layers);
         var colorLayer = layers.FirstOrDefault(layer => layer.WriteRgb && layer.Blend is 0 or 7 &&
             layer.Texture is not (0 or uint.MaxValue)) ?? layers.FirstOrDefault(layer =>
             layer.WriteRgb && layer.Texture is not (0 or uint.MaxValue)) ?? layers.FirstOrDefault(layer => layer.WriteRgb);
-        if (layers.Count > 1)
+        if (layers.Count > 1 && baked == null)
             warnings.Add("Multi-pass Jade materials export their primary color layer; game-specific effects are not glTF shaders.");
         if (skinned && colorLayer?.UvMode == 6)
             warnings.Add("Skinned planar UV is baked at the selected pose; animation-driven UV projection is not exported.");
@@ -58,7 +65,7 @@ public sealed partial class SceneExporter
             bool validUv = uvIndex >= 0 && uvIndex < geometry.Uvs.Length;
             if (!validUv && colorLayer != null && colorLayer.UvMode != 6)
                 warnings.Add($"'{sceneObject.Name}' has missing/invalid corner UVs; affected corners use (0,0).");
-            var key = new ExportVertexKey(vertex, validUv ? uvIndex : -1);
+            var key = new ExportVertexKey(vertex, baked != null ? corner : validUv ? uvIndex : -1);
             if (!vertexMap.TryGetValue(key, out uint outputVertex))
             {
                 outputVertex = checked((uint)sourceVertices.Count);
@@ -69,7 +76,7 @@ public sealed partial class SceneExporter
                 Append(outputPositions, Geometry.ToRender(positions[vertex]));
                 Append(outputNormals, normal);
                 Vector2 uv = validUv ? geometry.Uvs[uvIndex] : Vector2.Zero;
-                uv = ExportUv(sceneObject, uvPositions[vertex], uv, colorLayer);
+                uv = baked?.CornerUvs[corner] ?? ExportUv(sceneObject, uvPositions[vertex], uv, colorLayer);
                 outputUvs.Add(uv.X);
                 outputUvs.Add(uv.Y);
             }
@@ -83,8 +90,11 @@ public sealed partial class SceneExporter
             attributes["TEXCOORD_0"] = Floats(outputUvs.ToArray(), 2, "VEC2", false, 34962);
         if (skinned)
             WriteInfluences(attributes, sourceVertices, influences);
-        return D("attributes", attributes, "indices", Indices(indices),
-            "material", Material(sceneObject, material, colorLayer), "mode", 4);
+        WriteVertexColors(attributes, geometry, sourceVertices, colorLayer);
+        var primitive = D("attributes", attributes, "indices", Indices(indices),
+            "material", baked != null ? BakedMaterial(sceneObject, material, baked) : Material(sceneObject, material, colorLayer), "mode", 4);
+        if (morph != null) primitive["targets"] = MorphTargets(morph, sourceVertices, morphSpace);
+        return primitive;
     }
 
     private ResolvedMaterial? ResolvePartMaterial(SceneObject sceneObject, Geometry.Part part)

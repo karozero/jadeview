@@ -70,9 +70,11 @@ public sealed partial class ModProject
 
     [JsonPropertyName("metadata")]
     public Dictionary<string, string> Metadata { get; set; } = [];
+    [JsonPropertyName("morphPreviews")]
+    public List<ModMorphPreview> MorphPreviews { get; set; } = [];
 
     [JsonIgnore]
-    public bool IsEmpty => Changes.Count == 0 && SceneStructureChanges.Count == 0;
+    public bool IsEmpty => Changes.Count == 0 && SceneStructureChanges.Count == 0 && MorphPreviews.Count == 0;
 
     [JsonIgnore]
     public bool HasChanges => Changes.Any(candidateChange => candidateChange.HasChanges) || SceneStructureChanges.Count > 0;

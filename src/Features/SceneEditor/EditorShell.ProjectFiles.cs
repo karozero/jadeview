@@ -135,9 +135,12 @@ public sealed partial class EditorShell
         }
 
         CurrentProject = project;
+        var morphWarnings = project.BindMorphPreviews(Document, Resolver);
         _projectPath = projectPath;
         History.Reset();
         _statusMessage = $"Mod project loaded: {Path.GetFileName(projectPath)} (updated {applied.ObjectsUpdated} objects)";
+        if (project.MorphPreviews.Count > 0) _statusMessage += $" · {project.MorphPreviews.Count} saved morph profile(s)";
+        if (morphWarnings.Count > 0) _statusMessage += $" · {morphWarnings.Count} morph source mismatch(es); see Diagnostics";
     }
 
     public bool SaveCurrentProject(string? saveAsPath = null)
@@ -161,6 +164,7 @@ public sealed partial class EditorShell
         {
             // Saving metadata need not require the game executable; export verifies its profile.
             PrepareCurrentPickupPersistence(verifyExecutable: false);
+            CurrentProject.CaptureMorphPreviews(Document);
             CurrentProject.Save(path);
             _projectPath = path;
             History.IsDirty = false;

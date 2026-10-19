@@ -20,7 +20,7 @@ internal sealed class ActorExportSnapshot : IDisposable
         rootMotion = actor.RootMotion;
         members = actor.Members.Select(member => new MemberState(member, member.GeometryKey,
             member.MaterialKey, member.RliColors, member.DrawFlags, member.Flags, member.PreviewHidden,
-            member.AppearanceRevision, member.PreviewMatrix, member.ActorNode?.Links, member.ActorNode?.Matrices)).ToArray();
+            member.AppearanceRevision, member.PreviewMatrix, member.ActorNode?.Links, member.ActorNode?.Matrices, member.Modifiers, member.MorphPreview)).ToArray();
     }
 
     public void Dispose()
@@ -41,6 +41,8 @@ internal sealed class ActorExportSnapshot : IDisposable
             member.PreviewHidden = state.Hidden;
             member.AppearanceRevision = state.Revision;
             member.PreviewMatrix = state.Matrix;
+            member.Modifiers = state.Modifiers;
+            member.MorphPreview = state.MorphPreview;
             if (member.ActorNode == null) continue;
             member.ActorNode.Links = state.Links!;
             member.ActorNode.Matrices = state.Matrices!;
@@ -49,5 +51,5 @@ internal sealed class ActorExportSnapshot : IDisposable
 
     private sealed record MemberState(SceneObject Object, uint Geometry, uint Material, uint[] Colors,
         uint DrawFlags, uint Flags, bool Hidden, int Revision, Matrix4x4? Matrix,
-        ActorBoneLink[]? Links, Matrix4x4[]? Matrices);
+        ActorBoneLink[]? Links, Matrix4x4[]? Matrices, List<SceneModifier> Modifiers, FaceMorphPreview? MorphPreview);
 }

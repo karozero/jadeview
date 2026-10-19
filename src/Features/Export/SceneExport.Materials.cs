@@ -4,6 +4,22 @@ namespace JadeView;
 
 public sealed partial class SceneExporter
 {
+    private int BakedMaterial(SceneObject sceneObject, ResolvedMaterial? source, BakedMaterialTexture baked)
+    {
+        int image = images.Count;
+        images.Add(D("name", $"{sceneObject.Name} masked layers", "mimeType", "image/png",
+            "bufferView", View(Png(baked.Size, baked.Size, baked.Rgba))));
+        int texture = textures.Count;
+        textures.Add(D("source", image, "sampler", samplers.Count));
+        samplers.Add(D("wrapS", 33071, "wrapT", 33071, "magFilter", 9729, "minFilter", 9729));
+        int material = materials.Count;
+        materials.Add(D("name", $"{sceneObject.Name} {source?.Id}", "doubleSided", true,
+            "extensions", D("KHR_materials_unlit", D()), "extras", D("bakedMaskedLayers", true),
+            "pbrMetallicRoughness", D("baseColorFactor", new[] { 1f, 1f, 1f, 1f },
+                "baseColorTexture", D("index", texture), "metallicFactor", 0f, "roughnessFactor", 1f)));
+        return material;
+    }
+
     private int Material(SceneObject sceneObject, ResolvedMaterial? source, JadeMaterialLayer? layer)
     {
         var pbr = D("baseColorFactor", ExportBaseColor(source, layer), "metallicFactor", 0f, "roughnessFactor", 1f);
@@ -14,9 +30,21 @@ public sealed partial class SceneExporter
         else if (options.Textures && layer != null)
             WriteMaterialTexture(pbr, sceneObject, layer);
         WriteMaterialAlpha(material, layer);
+        WarnUnsupportedBlending(sceneObject, layer);
         int index = materials.Count;
         materials.Add(material);
         return index;
+    }
+
+    private void WarnUnsupportedBlending(SceneObject sceneObject, JadeMaterialLayer? layer)
+    {
+        if (layer == null) return;
+        bool customBlend = layer.Blend is not (0 or 1 or 7);
+        bool inverseBlend = layer.Blend == 1 && (layer.Flags & 0x80) != 0;
+        bool combinedAlphaTest = layer.Blend is not (0 or 7) && (layer.Flags & 0x10) != 0;
+        bool inverseAlphaTest = (layer.Flags & 0x90) == 0x90;
+        if (customBlend || inverseBlend || combinedAlphaTest || inverseAlphaTest)
+            warnings.Add($"'{sceneObject.Name}' uses blend/alpha flags {layer.Flags:X8} that cannot be represented exactly by one glTF material; transparency is approximate.");
     }
 
     private void WriteMaterialTexture(Obj pbr, SceneObject sceneObject, JadeMaterialLayer layer)

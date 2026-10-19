@@ -43,6 +43,7 @@ public sealed class SceneActor
             var model=models[source];target.PreviewHidden=false;
             target.AppearanceRevision++;target.GeometryKey=model.GeometryKey;target.MaterialKey=model.MaterialKey;
             target.RliColors=model.RliColors;target.DrawFlags=model.DrawFlags;
+            target.Modifiers = model.Modifiers;
             target.Flags=(target.Flags&~0x1200000u)|(model.Flags&0x1200000u);
             if(target.ActorNode!=null && model.ActorNode!=null){target.ActorNode.Links=model.ActorNode.Links;target.ActorNode.Matrices=model.ActorNode.Matrices;}
         }
@@ -50,6 +51,7 @@ public sealed class SceneActor
 
     public void Evaluate(float delta)
     {
+        foreach (var member in Members) member.MorphPreview?.Advance(delta);
         PoseRevision++;
         if (Clip != null)
         {
@@ -108,7 +110,9 @@ public sealed class SceneActor
     }
     public Vector3[]? Skin(SceneObject obj, Geometry geometry)
     {
-        if (geometry.Skin.Length == 0 || obj.ActorNode == null || (obj.Flags & 0x200000) == 0) return null;
+        var sourcePositions = FaceMorphPreview.Get(obj, geometry)?.Positions() ?? geometry.Positions;
+        if (geometry.Skin.Length == 0 || obj.ActorNode == null || (obj.Flags & 0x200000) == 0)
+            return ReferenceEquals(sourcePositions, geometry.Positions) ? null : sourcePositions;
         if (!Matrix4x4.Invert(obj.PreviewMatrix ?? AnimationMath.Trs(obj.Transform), out var inverseMesh)) return null;
         var positions = new Vector3[geometry.Positions.Length]; var touched = new bool[positions.Length];
         foreach (var binding in geometry.Skin)
@@ -134,11 +138,11 @@ public sealed class SceneActor
                 int vertex = (int)(packed & 65535);
                 if (vertex >= positions.Length) continue;
                 float weight = BitConverter.UInt32BitsToSingle(packed);
-                positions[vertex] += Vector3.Transform(geometry.Positions[vertex], matrix) * weight;
+                positions[vertex] += Vector3.Transform(sourcePositions[vertex], matrix) * weight;
                 touched[vertex] = true;
             }
         }
-        for (int i = 0; i < positions.Length; i++) if (!touched[i]) positions[i] = geometry.Positions[i];
+        for (int i = 0; i < positions.Length; i++) if (!touched[i]) positions[i] = sourcePositions[i];
         return positions;
     }
 }

@@ -105,9 +105,14 @@ public sealed partial class SceneExporter
     private static byte[] Png(ResolvedTexture tex)
     {
         byte[] rgba=Preview.DecodeTga(tex.ToTextureAsset());
-        using var bitmap=new System.Drawing.Bitmap(tex.Width,tex.Height,PixelFormat.Format32bppArgb);
-        var data=bitmap.LockBits(new System.Drawing.Rectangle(0,0,tex.Width,tex.Height),ImageLockMode.WriteOnly,PixelFormat.Format32bppArgb);
-        try{for(int i=0;i<rgba.Length;i+=4)(rgba[i],rgba[i+2])=(rgba[i+2],rgba[i]);for(int y=0;y<tex.Height;y++)Marshal.Copy(rgba,y*tex.Width*4,data.Scan0+y*data.Stride,tex.Width*4);}finally{bitmap.UnlockBits(data);}
+        return Png(tex.Width, tex.Height, rgba);
+    }
+    private static byte[] Png(int width, int height, byte[] source)
+    {
+        byte[] rgba = (byte[])source.Clone();
+        using var bitmap=new System.Drawing.Bitmap(width,height,PixelFormat.Format32bppArgb);
+        var data=bitmap.LockBits(new System.Drawing.Rectangle(0,0,width,height),ImageLockMode.WriteOnly,PixelFormat.Format32bppArgb);
+        try{for(int i=0;i<rgba.Length;i+=4)(rgba[i],rgba[i+2])=(rgba[i+2],rgba[i]);for(int y=0;y<height;y++)Marshal.Copy(rgba,y*width*4,data.Scan0+y*data.Stride,width*4);}finally{bitmap.UnlockBits(data);}
         using var stream=new MemoryStream();bitmap.Save(stream,ImageFormat.Png);return stream.ToArray();
     }
     private int View(byte[] bytes,int target=0)

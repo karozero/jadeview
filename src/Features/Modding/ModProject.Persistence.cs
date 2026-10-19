@@ -48,6 +48,7 @@ public sealed partial class ModProject
         var project = JsonSerializer.Deserialize<ModProject>(json, JsonOptions);
         if (project == null)
             throw new InvalidDataException("Failed to parse mod project JSON.");
+        project.ValidateMorphPreviews();
         return project;
     }
 
@@ -56,6 +57,7 @@ public sealed partial class ModProject
     /// </summary>
     public void Save(string filePath)
     {
+        ValidateMorphPreviews();
         if (string.IsNullOrWhiteSpace(filePath))
             throw new ArgumentException("Project file path must not be empty.", nameof(filePath));
         ModifiedAt = DateTimeOffset.UtcNow;

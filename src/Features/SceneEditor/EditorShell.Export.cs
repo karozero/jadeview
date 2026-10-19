@@ -33,7 +33,10 @@ public sealed partial class EditorShell
         ImGui.BeginDisabled(!hasAnimations);
         ImGui.Checkbox("Animations and skinning", ref _exportOptions.Animations);
         if (_exportOptions.Animations)
+        {
             ImGui.Checkbox("All clips (otherwise current / first)", ref _exportOptions.AllClips);
+            ImGui.Checkbox("Manual morph animations", ref _exportOptions.MorphAnimations);
+        }
         ImGui.EndDisabled();
         ImGui.SetNextItemWidth(-1);
         ImGui.Combo("##ExportPlacement", ref _exportOptions.Placement, new[] { "Current placement", "Original game placement", "At origin" }, 3);

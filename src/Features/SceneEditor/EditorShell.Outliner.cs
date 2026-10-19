@@ -29,6 +29,7 @@ public sealed partial class EditorShell
         var shown = filtered.ToHashSet();
         ImGui.BeginChild("OutlinerList", Vector2.Zero, ImGuiChildFlags.None);
         DrawAnimationControls();
+        DrawMorphControls();
         foreach (var actor in ActiveWorld.Actors.Where(actor => actor.Members.Any(shown.Contains)))
             DrawOutlinerActor(actor);
         foreach (var sceneObject in filtered.Where(sceneObject => sceneObject.Actor == null))

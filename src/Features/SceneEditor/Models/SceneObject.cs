@@ -17,6 +17,9 @@ public sealed class SceneObject
     public bool PreviewHidden { get; set; }
     public SceneActor? Actor { get; set; }
     public ActorNode? ActorNode { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public FaceMorphPreview? MorphPreview { get; set; }
+    internal Action<FaceMorphPreview>? RestoreMorphPreview { get; set; }
     public Matrix4x4? PreviewMatrix { get; set; }
     public Matrix4x4 RenderMatrix => PreviewMatrix is Matrix4x4 m ? AnimationMath.ToRender(m) : Transform.ToRenderMatrix();
     // Procedural preview keeps the original GRO key and archive patch metadata intact.

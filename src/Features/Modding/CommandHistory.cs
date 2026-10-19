@@ -51,6 +51,13 @@ public sealed class CommandHistory
     }
 
     public void Reset() => Clear();
+    // Authoring edits outside the command stack must remain dirty even after transform undo.
+    public void MarkExternalChange()
+    {
+        bool wasDirty = IsDirty;
+        _savedIndex = -1;
+        if (!wasDirty) OnDirtyChanged?.Invoke(true);
+    }
 
     public event Action? OnHistoryChanged;
     public event Action<bool>? OnDirtyChanged;
