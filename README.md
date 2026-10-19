@@ -76,6 +76,8 @@ Animation controls support clip selection and playback for recognized actors. **
 | H / Shift+H / Alt+H              | Hide selection / isolate selection / show all                  |
 | Ctrl+Z / Ctrl+Y                  | Undo / redo                                                    |
 | Ctrl+S                           | Save mod project                                               |
+| Delete                           | Delete the selected static object from the scene                |
+| Ctrl+C / Ctrl+V                   | Copy / paste a static object within the same world               |
 
 Global editing shortcuts are inactive while editing a field or flying. Hide/isolate changes affect preview only. There are currently no E/R rotation/scale gizmo shortcuts.
 
