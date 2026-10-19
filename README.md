@@ -10,6 +10,11 @@ Questions? Join the [Discord server](https://discord.gg/KYsaVU9rg).
 
 A Windows modding tool for **Beyond Good & Evil (2003, PC)**: asset viewer, scene editor and BF archive builder. Opens `sally_clean.bf` archives in the original BIG `0x22` format; HD and console archives are not supported.
 
+## Tutorials
+
+1. [Getting started](https://www.youtube.com/watch?v=rNxhhfUgnSM)
+2. [Model export, animation viewing and editing](https://www.youtube.com/watch?v=38Vjf9DlMq4)
+
 ## Feature status
 
 | Feature | Status |
