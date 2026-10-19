@@ -119,3 +119,30 @@ Export-specific option validation stays in `SceneExport.MouthCycle`.
 
 The verification executable dispatches optional audit commands through
 `VerificationCommands`; its main entry point runs the verification suite.
+
+## Editor layout and theme
+
+`SceneEditor/UI/Components/EditorUi.Headings` provides shared window titles (green accent), category
+titles (regular text with a separator) and gray help markers. Logical panel blocks
+use category titles; Outliner scene selectors use a two-column label/control table.
+
+`EditorShell.Layout` composes the viewport, scene Outliner and separate Asset Inspector.
+The inspector owns Properties/Animation/Morphs tabs; the resource browser keeps its
+own tab selection. Scene objects are listed only in the Outliner; the resource
+browser does not place assets into the scene.
+`Application/Theming/EditorTheme` owns the palette, base font size and shared widget
+styling. Panel-specific layout remains beside each panel. `ShowColliders` affects
+rendering, picking and selection overlays, without changing source objects or export.
+
+### UI modules
+
+- `SceneEditor/UI/Components`: shared headings, help markers, splitter interaction and ImGui tab interop; independent of editor document state.
+- `SceneEditor/UI/Layout`: workspace composition and connections to panel sizing.
+- `SceneEditor/UI/Panels/Outliner`: hierarchy, scene/world selection and display controls.
+- `SceneEditor/UI/Panels/Inspector`: selected-asset actions, properties and animation controls. Facial controls remain in the existing `SceneEditor/Morphs` module.
+- `SceneEditor/UI/Panels/ContentBrowser`: category navigation, archive catalog, diagnostics and separate texture/audio/text views.
+- `SceneEditor/UI/Models`: panel sizing and named content-browser categories. Category values preserve the existing integer navigation API.
+- `SceneEditor/UI/EditorShell.Navigation`: navigation state owned by the shell.
+
+`Application/Theming/EditorTheme` remains responsible for fonts and the shared palette.
+Camera capture remains with the renderer; UI components do not change game data.

@@ -1,11 +1,6 @@
+using static JadeView.EditorUi;
 using System.Numerics;
-using System.Text;
 using ImGuiNET;
-using Raylib_cs;
-using rlImGui_cs;
-using Color = Raylib_cs.Color;
-using Image = Raylib_cs.Image;
-using Forms = System.Windows.Forms;
 
 namespace JadeView;
 
@@ -23,6 +18,7 @@ public sealed partial class EditorShell
         float treeWidth = 240.0f * _scale;
         ImGui.BeginChild("CatalogFolders", new Vector2(treeWidth, 0), ImGuiChildFlags.Borders);
         {
+            DrawCategoryTitle("Folders");
             if (ImGui.Selectable($"All folders ({_rootFolder.Count})", _catalogFolder.Length == 0))
             {
                 _catalogFolder = "";
@@ -39,6 +35,7 @@ public sealed partial class EditorShell
 
         ImGui.BeginChild("CatalogFiles", new Vector2(0, 0), ImGuiChildFlags.Borders);
         {
+            DrawCategoryTitle("Search and filters");
             ImGui.SetNextItemWidth(260 * _scale);
             if (ImGui.InputTextWithHint("##CatSearch", "Search archive...", ref _catalogSearch, 128)) FilterCatalog();
             ImGui.SameLine();
@@ -50,7 +47,7 @@ public sealed partial class EditorShell
             if (_selectedCatalogEntry != null && (_selectedCatalogEntry.Name.StartsWith("ff0", StringComparison.OrdinalIgnoreCase) || _selectedCatalogEntry.Id.StartsWith("FF0", StringComparison.OrdinalIgnoreCase)))
             {
                 ImGui.SameLine();
-                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.12f, 0.45f, 0.25f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.Button, EditorTheme.StagedButton);
                 if (ImGui.Button($"Open {_selectedCatalogEntry.Id} as scene"))
                 {
                     OpenSceneContainer(_selectedCatalogEntry);
@@ -58,6 +55,7 @@ public sealed partial class EditorShell
                 ImGui.PopStyleColor();
             }
 
+            DrawCategoryTitle("Archive assets");
             if (ImGui.BeginTable("CatalogTable", 4, ImGuiTableFlags.RowBg | ImGuiTableFlags.ScrollY | ImGuiTableFlags.Resizable))
             {
                 ImGui.TableSetupColumn("Filename", ImGuiTableColumnFlags.WidthStretch);
@@ -129,29 +127,4 @@ public sealed partial class EditorShell
         ImGui.PopID();
     }
 
-    private void DrawDiagnosticsTab()
-    {
-        ImGui.TextColored(Green, "SCENE AND ASSET DIAGNOSTICS");
-        ImGui.Separator();
-
-        if (Document != null)
-        {
-            ImGui.TextUnformatted($"Base BF: {Document.BaseBfPath}");
-            ImGui.TextUnformatted($"SHA-256 BF: {Document.BaseBfSha256}");
-            ImGui.TextUnformatted($"Container: {Document.ContainerName}");
-            ImGui.Spacing();
-
-            string text = $"Base BF: {Document.BaseBfPath}\nSHA-256: {Document.BaseBfSha256}\nContainer: {Document.ContainerName}\n\n" +
-                string.Join("\n", Resolver.TextureLoaderStatus.Select(status => $"{status.Key}: {status.Value}")) + "\n" +
-                string.Join("\n", Document.Diagnostics);
-            if (ImGui.Button("Copy all")) ImGui.SetClipboardText(text);
-            ImGui.InputTextMultiline("##DiagLog", ref text, (uint)Math.Max(4096, System.Text.Encoding.UTF8.GetByteCount(text) + 1),
-                new Vector2(-1, -1), ImGuiInputTextFlags.ReadOnly);
-
-        }
-        else
-        {
-            ImGui.TextDisabled("No scene document loaded.");
-        }
-    }
 }

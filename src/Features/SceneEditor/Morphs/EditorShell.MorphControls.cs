@@ -1,3 +1,4 @@
+using static JadeView.EditorUi;
 using ImGuiNET;
 
 namespace JadeView;
@@ -13,7 +14,12 @@ public sealed partial class EditorShell
         if (actor == null) return;
         var candidates = actor.Members.Where(member => !member.PreviewHidden &&
             actor.HasMorphAppearance(member)).ToArray();
-        if (candidates.Length == 0 || !ImGui.CollapsingHeader("Facial / vertex morphs")) return;
+        DrawCategoryTitle("Morph mesh", "Choose an actor mesh and its source appearance, then adjust morph channels or preview supported expressions.");
+        if (candidates.Length == 0)
+        {
+            ImGui.TextDisabled("No supported morph meshes in this actor.");
+            return;
+        }
         if (!candidates.Contains(morphPreviewTarget))
             morphPreviewTarget = candidates.OrderByDescending(member => GetMorphPreview(member)?.Data?.Groups.Length ?? 0).First();
         if (ImGui.BeginCombo("Morph mesh", morphPreviewTarget!.Name))
@@ -31,6 +37,7 @@ public sealed partial class EditorShell
             ImGui.TextWrapped(preview?.Error ?? "No unambiguous morph payload for the selected mesh.");
             return;
         }
+        DrawCategoryTitle("Preview controls");
         ImGui.TextWrapped("User-authored morph preview. Original facial timing is not reconstructed. Controls and keys are saved in .bgemod; evaluated weights export to GLB. BF builds do not include them.");
         if (preview.Expressions.Count == 0)
             ImGui.TextWrapped("This appearance has no nonzero morph targets. Select another Morph appearance if available.");
@@ -41,11 +48,14 @@ public sealed partial class EditorShell
             RecordMorphProjectEdit(actor, preview);
         }
         ImGui.Checkbox("Show empty groups", ref showEmptyMorphGroups);
+        DrawCategoryTitle("Channels and expressions");
         DrawMorphChannels(actor, preview);
         DrawMorphBlink(actor, preview);
         DrawMorphMouth(actor, morphPreviewTarget, preview);
         DrawMorphExpressions(actor, preview);
+        DrawCategoryTitle("Morph weights");
         DrawMorphWeights(actor, preview);
+        DrawCategoryTitle("Saved animation");
         DrawMorphTimeline(actor, preview);
     }
 

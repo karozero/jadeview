@@ -85,6 +85,8 @@ public sealed partial class SceneRenderer : IDisposable
     }
     public bool Wireframe = false;
     public bool ShowSelectionWireframe = true;
+    public bool ShowColliders = true;
+    private bool IsCollisionHidden(SceneObject sceneObject) => (GameView || !ShowColliders) && IsCollision(sceneObject);
     public bool ShowGrid = true;
     public bool ShowGameHidden = false;
     public bool IsGameHidden(SceneObject obj) => !ShowGameHidden && (obj.PreviewHidden || (obj.DrawFlags & 8) == 0 && !IsCollision(obj));
@@ -332,11 +334,7 @@ public sealed partial class SceneRenderer : IDisposable
         HoveredAxis = GizmoAxis.None;
         ActiveAxis = GizmoAxis.None;
         IsDraggingGizmo = false;
-        if (IsFlying)
-        {
-            IsFlying = false;
-            Raylib.EnableCursor();
-        }
+        ReleaseCameraMouse();
     }
 
     /// <summary>
@@ -769,17 +767,7 @@ public sealed partial class SceneRenderer : IDisposable
     public void UpdateCamera(bool isHovered)
     {
         float dt = Raylib.GetFrameTime();
-        if (isHovered && Raylib.IsMouseButtonPressed(MouseButton.Right))
-        {
-            IsFlying = true;
-            Raylib.DisableCursor();
-        }
-
-        if (IsFlying && !Raylib.IsMouseButtonDown(MouseButton.Right))
-        {
-            IsFlying = false;
-            Raylib.EnableCursor();
-        }
+        UpdateCameraMouseCapture(isHovered);
 
         if (IsFlying)
         {
@@ -840,7 +828,7 @@ public sealed partial class SceneRenderer : IDisposable
         if (world == null) return null;
         foreach (var obj in world.Objects)
         {
-            if (obj.GeometryKey == 0 || IsHidden(obj) || IsGameHidden(obj) || GameView && IsCollision(obj)) continue;
+            if (obj.GeometryKey == 0 || IsHidden(obj) || IsGameHidden(obj) || IsCollisionHidden(obj)) continue;
             var geo = GetOrUploadGeometry(obj.RenderGeometryKey);
             if (geo == null) continue;
             UpdateSkin(geo,obj);
@@ -928,7 +916,7 @@ public sealed partial class SceneRenderer : IDisposable
 
         // 2. Определение наведения луча на оси Gizmo
         HoveredAxis = GizmoAxis.None;
-        if (SelectedObject != null && !IsHidden(SelectedObject) && ShowGizmo && !GameView && GizmoMode == TransformGizmoMode.Translate)
+        if (SelectedObject != null && !IsHidden(SelectedObject) && !IsCollisionHidden(SelectedObject) && ShowGizmo && !GameView && GizmoMode == TransformGizmoMode.Translate)
         {
             Vector3 gizmoPos = TransformData.ToRender(SelectedObject.Transform.Translation);
             float distToCam = Vector3.Distance(Camera.Position, gizmoPos);
@@ -986,17 +974,7 @@ public sealed partial class SceneRenderer : IDisposable
         }
 
         // 4. Свободная камера в стиле UE5 (зажатая ПКМ + WASD/QE + Shift)
-        if (isHovered && Raylib.IsMouseButtonPressed(MouseButton.Right))
-        {
-            IsFlying = true;
-            Raylib.DisableCursor();
-        }
-
-        if (IsFlying && !Raylib.IsMouseButtonDown(MouseButton.Right))
-        {
-            IsFlying = false;
-            Raylib.EnableCursor();
-        }
+        UpdateCameraMouseCapture(isHovered);
 
         if (IsFlying)
         {
@@ -1241,7 +1219,7 @@ public sealed partial class SceneRenderer : IDisposable
             var forward = Vector3.Normalize(Camera.Target-Camera.Position);
             foreach (var obj in world.Objects)
             {
-                if (obj.GeometryKey == 0 || IsHidden(obj) || IsGameHidden(obj) || GameView && IsCollision(obj)) continue;
+                if (obj.GeometryKey == 0 || IsHidden(obj) || IsGameHidden(obj) || IsCollisionHidden(obj)) continue;
                 var geo=GetOrUploadGeometry(obj.RenderGeometryKey); if(geo==null)continue;
                 UpdateSkin(geo,obj);
                 var (low,high)=TransformBoundingBox(geo.LocalBounds,obj.RenderMatrix);
@@ -1327,7 +1305,7 @@ public sealed partial class SceneRenderer : IDisposable
         foreach(var selectedPart in SelectedObject?.Actor is { } selectedActor && SelectedObject==selectedActor.Root
             ? selectedActor.Members : SelectedObject != null ? new List<SceneObject>{SelectedObject} : [])
         {
-            if (!GameView && !IsHidden(selectedPart) && !IsGameHidden(selectedPart) && _geometryCache.TryGetValue(selectedPart.GeometryKey, out var selGeo))
+            if (!GameView && !IsHidden(selectedPart) && !IsGameHidden(selectedPart) && !IsCollisionHidden(selectedPart) && _geometryCache.TryGetValue(selectedPart.GeometryKey, out var selGeo))
             {
                 UpdateSkin(selGeo,selectedPart);
                 var selMatrix = selectedPart.RenderMatrix;
@@ -1349,7 +1327,7 @@ public sealed partial class SceneRenderer : IDisposable
         }
 
         // Отрисовка 3D Transform Gizmo поверх геометрии
-        if (SelectedObject != null && !IsHidden(SelectedObject) && ShowGizmo && !GameView)
+        if (SelectedObject != null && !IsHidden(SelectedObject) && !IsCollisionHidden(SelectedObject) && ShowGizmo && !GameView)
         {
             if (GizmoMode == TransformGizmoMode.Translate) DrawTransformGizmo(SelectedObject);
         }

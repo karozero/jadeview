@@ -1,3 +1,4 @@
+using static JadeView.EditorUi;
 using System.Numerics;
 using ImGuiNET;
 using Raylib_cs;
@@ -10,11 +11,13 @@ public sealed partial class EditorShell
     {
         if (!ImGui.BeginPopup("AddSceneObjectFromAsset"))
             return;
-        ImGui.TextUnformatted("Add scene / FIX geometry to the active scene");
+        DrawPanelTitle("ADD OBJECT", "Create an object from already loaded scene/FIX geometry in the active world.");
+        DrawCategoryTitle("Placement");
         ImGui.TextDisabled("The object starts near the selection; use the existing gizmo to place it.");
+        DrawCategoryTitle("Search");
         ImGui.SetNextItemWidth(360 * _scale);
         ImGui.InputTextWithHint("##AddGeometrySearch", "Filter by name or key...", ref _addGeometrySearch, 128);
-        ImGui.Separator();
+        DrawCategoryTitle("Available geometry");
         ImGui.BeginChild("AddGeometryList", new Vector2(420 * _scale, 300 * _scale), ImGuiChildFlags.Borders);
         var geometries = Resolver.Geometries.Values
             .Where(CanAddGeometry)

@@ -1,3 +1,4 @@
+using static JadeView.EditorUi;
 using System.Numerics;
 using System.Text;
 using ImGuiNET;
@@ -27,7 +28,8 @@ public sealed partial class EditorShell
             bool running = Launcher.IsGameRunning(out int? pid);
             string exe = Launcher.Installation.ExePath;
 
-            ImGui.TextColored(Green, "Launch the original game to test modifications");
+            DrawPanelTitle("LAUNCH GAME", "Launch the original game with scene changes, or restore its original archive.");
+            DrawCategoryTitle("Game installation");
             ImGui.TextDisabled($"Executable: {exe}");
             ImGui.Spacing();
 
@@ -36,6 +38,7 @@ public sealed partial class EditorShell
                 ImGui.TextColored(Yellow, $"BGE.exe is already running (PID {pid})!");
             }
 
+            DrawCategoryTitle("Actions");
             ImGui.BeginDisabled(running);
 
             if (ImGui.Button("1. Launch game with current mod"))
@@ -81,8 +84,13 @@ public sealed partial class EditorShell
 
         if (ImGui.BeginPopupModal("About JadeView", ImGuiWindowFlags.AlwaysAutoResize))
         {
-            ImGui.TextColored(Green, "JadeView — Beyond Good & Evil scene editor");
-            ImGui.TextWrapped("See EDITOR_PLAN.md for the editor design.\nLayout: Toolbar, Viewport, Outliner, Details, Content Browser.\nModules: SceneContract, SceneLoader, SceneWriter, ResourceResolver, ModProject, SceneRenderer, GameLauncher.\nShortcuts: W (move), F (focus), G (game view), H (hide), Shift+H (isolate), Alt+H (show all), Delete (delete selection), Ctrl+C/Ctrl+V (copy/paste in the same world), Ctrl+Z/Ctrl+Y (undo/redo), Ctrl+S (save).");
+            DrawPanelTitle("ABOUT JADEVIEW", "A scene and asset editor for Beyond Good & Evil on PC.");
+            DrawCategoryTitle("Editor");
+            ImGui.TextWrapped("JadeView — Beyond Good & Evil scene editor. See EDITOR_PLAN.md for the editor design.");
+            DrawCategoryTitle("Panels");
+            ImGui.TextWrapped("Toolbar, Viewport, Asset Inspector, Outliner, Content Browser.");
+            DrawCategoryTitle("Shortcuts");
+            ImGui.TextWrapped("W (move), F (focus), G (game view), H (hide), Shift+H (isolate), Alt+H (show all), Delete (delete selection), Ctrl+C/Ctrl+V (copy/paste in the same world), Ctrl+Z/Ctrl+Y (undo/redo), Ctrl+S (save).");
             ImGui.Spacing();
             if (ImGui.Button("OK", new Vector2(120 * _scale, 0)))
             {

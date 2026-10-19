@@ -6,7 +6,15 @@
 
 1. Start JadeView and use **Open BF** to select your `sally_clean.bf`.
 2. Choose a scene and world in **Outliner**, or double-click an FF0 container in the archive catalog.
-3. Select an object in the viewport or Outliner. **Details** shows its transform and resources; the content browser previews textures, audio and text.
+3. Select an object in the viewport or Outliner. **Asset Inspector → Properties** shows its transform and resources; the content browser previews textures, audio and text.
+
+## Editor panels
+
+Drag the vertical panel dividers to resize the viewport, Outliner and Asset Inspector; drag the horizontal divider to change Content Browser height. Double-click a divider to reset its layout. Sizes are retained for the current session.
+
+- **Outliner** is the scene hierarchy. Search/select objects here; **Selection wireframe** and **Colliders** control viewport overlays. Hidden colliders cannot be picked in the viewport.
+- **Asset Inspector**, beside the Outliner, follows the selection: **Properties**, **Animation** and **Morphs**, plus **Frame** and **Export asset**.
+- **Content Browser** previews resources. Placing assets into the scene from this browser is not supported yet; **Outliner → Add object** uses loaded scene/FIX geometry. Selecting an object does not switch resource tabs.
 
 ## Edit and save a scene
 
@@ -27,7 +35,7 @@ In Blender, import the GLB, select the armature and use **Dope Sheet → Action 
 
 **Experimental mouth cycle:** automatically available when the actor's recovered controller and head appearance are compatible (verified on Sally, Pey'j and militaire). Choose the head in **Morph mesh**, open **Experimental mouth cycle** and press **Play mouth cycle**. Restart after changing strength/speed. Stop restores the previous pose; Reset clears it. To export motion, keep it playing, enable **Animations and skinning → Active experimental mouth cycle** in Export and set the duration. Blender receives a separate `Experimental mouth cycle · …` Action/NLA track. This is a simulation, not dialogue lip-sync; `.bgemod` keeps the starting pose.
 
-1. Select Sally (or another supported actor), expand **Facial / vertex morphs**, and choose the head in **Morph mesh**.
+1. Select Sally (or another supported actor), open **Asset Inspector → Morphs → Facial / vertex morphs**, and choose the head in **Morph mesh**.
 2. Adjust `PC_Morph_XX`, or use **PC morph channels → Weight / Progression**. Progression follows ordered references, not group numbers. Sally's channels **0 + 1**, weight **1**, progression **1** close the eyelids.
 3. **PC Sally expressions → Kit 2/3/4/5** previews settled PC expression poses; kits 3 and 5 match. **PC Sally blink → Preview blink / Stop blink** previews one cycle from the current eyelid pose. Pey'j and militaire HD heads also offer **PC head blink**. Stop/completion restores the starting pose; no new clip is recorded. **Reset morph weights** restores neutral.
 4. Save `.bgemod` to retain the current pose/channel controls, and export GLB to keep the evaluated Shape Key weights. Existing saved clips remain available under **Saved morph animation**; enable **Manual morph animations** to export them. Creating/replacing keys and baking new clips are temporarily hidden.

@@ -1,3 +1,4 @@
+using static JadeView.EditorUi;
 using System.Numerics;
 using ImGuiNET;
 using Raylib_cs;
@@ -17,10 +18,12 @@ public sealed partial class EditorShell
         ImGui.SetNextWindowSize(new Vector2(460 * _scale, 0), ImGuiCond.Appearing);
         if (!ImGui.BeginPopupModal("Export GLB", ImGuiWindowFlags.AlwaysAutoResize))
             return;
+        DrawPanelTitle("EXPORT GLB", "Export the current world or selected asset as a Blender-compatible GLB file.");
+        DrawCategoryTitle("Target");
         ImGui.TextWrapped(_exportTarget == null ? $"Level: {ActiveWorld?.Name}" : $"Object: {_exportTarget.Name}");
         if (_exportTarget?.Actor is { } actor && _exportTarget == actor.Root)
             ImGui.TextDisabled($"Actor with {actor.Members.Count - 1} components");
-        ImGui.Separator();
+        DrawCategoryTitle("Assets");
         ImGui.Checkbox("Embed textures", ref _exportOptions.Textures);
         if (_exportTarget == null)
             ImGui.Checkbox("Include actors", ref _exportOptions.Actors);
@@ -29,6 +32,7 @@ public sealed partial class EditorShell
         if (_exportOptions.UnknownObjects)
             ImGui.TextWrapped("GAOs without decoded geometry become named empty objects with their source keys.");
         ImGui.Checkbox("Include game-hidden objects", ref _exportOptions.GameHidden);
+        DrawCategoryTitle("Animation");
         bool hasAnimations = _exportTarget?.Actor != null || _exportTarget == null && ActiveWorld?.Actors.Count > 0;
         ImGui.BeginDisabled(!hasAnimations);
         ImGui.Checkbox("Animations and skinning", ref _exportOptions.Animations);
@@ -45,10 +49,11 @@ public sealed partial class EditorShell
             }
         }
         ImGui.EndDisabled();
+        DrawCategoryTitle("Placement");
         ImGui.SetNextItemWidth(-1);
         ImGui.Combo("##ExportPlacement", ref _exportOptions.Placement, new[] { "Current placement", "Original game placement", "At origin" }, 3);
         ImGui.TextWrapped("One .glb file for Blender. Jade multi-pass effects are simplified; animations use the current mesh appearance.");
-        ImGui.Separator();
+        DrawCategoryTitle("Output");
         if (ImGui.Button("Export...", new Vector2(120 * _scale, 0)) && ActiveWorld != null)
         {
             using var dialog = new Forms.SaveFileDialog

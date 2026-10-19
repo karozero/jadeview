@@ -1,7 +1,6 @@
+using static JadeView.EditorUi;
 using System.Numerics;
 using ImGuiNET;
-using Raylib_cs;
-using Forms = System.Windows.Forms;
 
 namespace JadeView;
 public sealed partial class EditorShell
@@ -11,10 +10,9 @@ public sealed partial class EditorShell
         var actor = SelectedObject?.Actor;
         if (actor == null)
             return;
-        if (!ImGui.CollapsingHeader($"Animation · {actor.Root.Name}##ActorAnimation", ImGuiTreeNodeFlags.DefaultOpen))
-            return;
-        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(5, 2));
-        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(6, 3));
+        DrawCategoryTitle("Animation clip", "Choose a decoded skeletal clip, or Default pose to restore the base appearance.");
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, EditorTheme.CompactFramePadding * _scale);
+        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, EditorTheme.CompactItemSpacing * _scale);
         ImGui.SetNextItemWidth(-1);
         if (ImGui.BeginCombo("##ActorClip", actor.Clip?.Name ?? "Default pose"))
         {
@@ -42,6 +40,7 @@ public sealed partial class EditorShell
             ImGui.TextDisabled("No animations found in loaded packages.");
         if (actor.Clip is { } activeClip)
         {
+            DrawCategoryTitle("Playback");
             if (ImGui.Button(actor.Playing ? "Pause" : "Play"))
             {
                 if (!actor.Playing && actor.Time >= activeClip.Duration)

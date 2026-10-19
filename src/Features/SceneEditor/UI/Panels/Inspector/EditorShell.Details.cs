@@ -1,11 +1,6 @@
+using static JadeView.EditorUi;
 using System.Numerics;
-using System.Text;
 using ImGuiNET;
-using Raylib_cs;
-using rlImGui_cs;
-using Color = Raylib_cs.Color;
-using Image = Raylib_cs.Image;
-using Forms = System.Windows.Forms;
 
 namespace JadeView;
 
@@ -15,8 +10,7 @@ public sealed partial class EditorShell
 
     private void DrawDetails()
     {
-        ImGui.TextColored(Green, "DETAILS");
-        ImGui.Separator();
+        DrawCategoryTitle("Identity", "Object identifiers and source record information.");
 
         if (SelectedObject == null)
         {
@@ -31,7 +25,7 @@ public sealed partial class EditorShell
         ImGui.TextDisabled($"GaoKey: 0x{obj.GaoKey:X8} | ID: {obj.Id}");
         ImGui.TextDisabled($"Record: offset 0x{obj.RecordRange.Offset:X8}, Size {obj.RecordRange.Size} B");
 
-        ImGui.Spacing();
+        DrawCategoryTitle("Editing capabilities");
 
         // Status возможностей редактирования (Capabilities)
         if (obj.Capabilities.CanTranslate)
@@ -43,8 +37,7 @@ public sealed partial class EditorShell
             ImGui.TextColored(Yellow, $"Restriction: {obj.Capabilities.RestrictionReason}");
         }
 
-        ImGui.Separator();
-        ImGui.TextColored(Muted, "TRANSFORM");
+        DrawCategoryTitle("Transform", "Editable controls depend on the object's capabilities; restricted controls are disabled.");
 
         // Редактирование координат Translation
         Vector3 curPos = obj.Transform.Translation;
@@ -105,8 +98,7 @@ public sealed partial class EditorShell
         }
         ImGui.EndDisabled();
 
-        ImGui.Separator();
-        ImGui.TextColored(Muted, "VISUAL ASSETS");
+        DrawCategoryTitle("Geometry");
 
         // Геометрия
         ImGui.TextUnformatted($"Geometry GRO: 0x{obj.GeometryKey:X8}");
@@ -119,6 +111,7 @@ public sealed partial class EditorShell
             ImGui.TextDisabled("No geometry, or this is a helper object.");
         }
 
+        DrawCategoryTitle("Material");
         // Материал
         ImGui.TextUnformatted($"Material GRM: 0x{obj.MaterialKey:X8}");
         if (Resolver.Materials.TryGetValue(obj.MaterialKey, out var mat))

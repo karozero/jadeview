@@ -43,7 +43,7 @@ public sealed partial class EditorShell
         ImGui.SameLine();
 
         bool isDirty = History.IsDirty;
-        if (isDirty) ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.18f, 0.42f, 0.25f, 1.0f));
+        if (isDirty) ImGui.PushStyleColor(ImGuiCol.Button, EditorTheme.DirtyButton);
         string saveLabel = isDirty ? "Save project *" : "Save project";
         if (ImGui.Button(saveLabel)) SaveCurrentProject();
         if (isDirty) ImGui.PopStyleColor();
@@ -63,8 +63,8 @@ public sealed partial class EditorShell
         float targetX = ImGui.GetWindowWidth() - rightControlsWidth;
         if (targetX > curX) ImGui.SameLine(targetX);
 
-        ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.12f, 0.50f, 0.28f, 1.0f));
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.18f, 0.65f, 0.36f, 1.0f));
+        ImGui.PushStyleColor(ImGuiCol.Button, EditorTheme.PrimaryButton);
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, EditorTheme.PrimaryButtonHovered);
         if (ImGui.Button("PLAY (BGE)", new Vector2(120.0f * _scale, 0)))
         {
             _showPlayModal = true;

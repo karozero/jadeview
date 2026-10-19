@@ -18,8 +18,6 @@ sealed class App : IDisposable
 {
     public const string DefaultArchive = @"C:\GAME\Beyond Good & Evil\sally_clean.bf";
 
-    private static readonly Vector4 Green = new(0.35f, 0.90f, 0.54f, 1.0f);
-    private static readonly Vector4 Muted = new(0.56f, 0.62f, 0.60f, 1.0f);
 
     private readonly EditorShell _shell;
     private readonly float _scale;
@@ -74,19 +72,12 @@ sealed class App : IDisposable
         // Настройка шрифтов ImGui с поддержкой кириллицы
         rlImGui.LoadFontAwesome = false;
         rlImGui.LoadDefaultFont = false;
-        rlImGui.SetupUserFonts = io =>
-        {
-            string fontPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "segoeui.ttf");
-            if (File.Exists(fontPath))
-            {
-                io.Fonts.AddFontFromFileTTF(fontPath, 17.0f * _scale, null, io.Fonts.GetGlyphRangesCyrillic());
-            }
-        };
+        rlImGui.SetupUserFonts = io => EditorTheme.LoadFonts(io, _scale);
 
         rlImGui.Setup(true, false);
         ImGui.GetIO().NativePtr->IniFilename = null;
 
-        ApplyEditorStyle();
+        EditorTheme.Apply(_scale);
 
         _shell = new EditorShell(_scale);
 
@@ -125,52 +116,6 @@ sealed class App : IDisposable
         return CallWindowProc(_prevWndProc, hWnd, msg, wParam, lParam);
     }
 
-    private void ApplyEditorStyle()
-    {
-        var s = ImGui.GetStyle();
-        s.WindowPadding = new Vector2(14, 10);
-        s.FramePadding = new Vector2(9, 6);
-        s.ItemSpacing = new Vector2(8, 7);
-        s.WindowRounding = 0;
-        s.ChildRounding = 6;
-        s.FrameRounding = 4;
-        s.GrabRounding = 4;
-        s.ScrollbarRounding = 6;
-        s.WindowBorderSize = 0;
-        s.ChildBorderSize = 1;
-        s.FrameBorderSize = 0;
-
-        // Фирменная тёмно-зеленая цветовая схема JadeView
-        s.Colors[(int)ImGuiCol.WindowBg] = new Vector4(0.055f, 0.070f, 0.065f, 1.0f);
-        s.Colors[(int)ImGuiCol.ChildBg] = new Vector4(0.075f, 0.090f, 0.085f, 1.0f);
-        s.Colors[(int)ImGuiCol.Text] = new Vector4(0.88f, 0.92f, 0.90f, 1.0f);
-        s.Colors[(int)ImGuiCol.TextDisabled] = Muted;
-        s.Colors[(int)ImGuiCol.Border] = new Vector4(0.15f, 0.20f, 0.17f, 1.0f);
-        s.Colors[(int)ImGuiCol.FrameBg] = new Vector4(0.12f, 0.15f, 0.13f, 1.0f);
-        s.Colors[(int)ImGuiCol.FrameBgHovered] = new Vector4(0.17f, 0.23f, 0.19f, 1.0f);
-        s.Colors[(int)ImGuiCol.FrameBgActive] = new Vector4(0.19f, 0.30f, 0.23f, 1.0f);
-        s.Colors[(int)ImGuiCol.Button] = new Vector4(0.12f, 0.21f, 0.16f, 1.0f);
-        s.Colors[(int)ImGuiCol.ButtonHovered] = new Vector4(0.18f, 0.35f, 0.24f, 1.0f);
-        s.Colors[(int)ImGuiCol.ButtonActive] = new Vector4(0.21f, 0.43f, 0.28f, 1.0f);
-        s.Colors[(int)ImGuiCol.Header] = new Vector4(0.13f, 0.29f, 0.19f, 1.0f);
-        s.Colors[(int)ImGuiCol.HeaderHovered] = new Vector4(0.17f, 0.32f, 0.22f, 1.0f);
-        s.Colors[(int)ImGuiCol.HeaderActive] = new Vector4(0.19f, 0.40f, 0.25f, 1.0f);
-        s.Colors[(int)ImGuiCol.CheckMark] = Green;
-        s.Colors[(int)ImGuiCol.SliderGrab] = Green;
-        s.Colors[(int)ImGuiCol.SliderGrabActive] = Green;
-        s.Colors[(int)ImGuiCol.Tab] = new Vector4(0.10f, 0.15f, 0.12f, 1.0f);
-        s.Colors[(int)ImGuiCol.TabSelected] = new Vector4(0.16f, 0.30f, 0.20f, 1.0f);
-        s.Colors[(int)ImGuiCol.TabHovered] = new Vector4(0.19f, 0.36f, 0.24f, 1.0f);
-        s.Colors[(int)ImGuiCol.TableHeaderBg] = new Vector4(0.10f, 0.14f, 0.115f, 1.0f);
-        s.Colors[(int)ImGuiCol.TableRowBgAlt] = new Vector4(0.12f, 0.17f, 0.135f, 0.25f);
-        s.Colors[(int)ImGuiCol.PlotHistogram] = Green;
-
-        if (_scale != 1.0f)
-        {
-            s.ScaleAllSizes(_scale);
-        }
-    }
-
     public void Run()
     {
         while (!Raylib.WindowShouldClose())
@@ -182,6 +127,7 @@ sealed class App : IDisposable
             Raylib.BeginDrawing();
             Raylib.ClearBackground(new Color(14, 18, 16, 255));
 
+            UpdateViewportMouseCapture();
             rlImGui.Begin();
             _shell.Draw();
             rlImGui.End();
@@ -194,6 +140,20 @@ sealed class App : IDisposable
                 break;
             }
         }
+    }
+
+    private void UpdateViewportMouseCapture()
+    {
+        // Apply before ImGui.NewFrame: wheel routing happens before panels are drawn.
+        // Raylib still receives relative mouse movement and wheel input for flight.
+        // Keep ImGui disabled through the RMB-release frame too. The renderer
+        // restores the cursor during this frame; panels must not receive its release.
+        bool cameraOwnsMouse = _shell.Renderer.IsFlying;
+        var io = ImGui.GetIO();
+        if (cameraOwnsMouse)
+            io.ConfigFlags |= ImGuiConfigFlags.NoMouse;
+        else
+            io.ConfigFlags &= ~ImGuiConfigFlags.NoMouse;
     }
 
     private void UpdateWindowTitle()
@@ -241,7 +201,7 @@ sealed class App : IDisposable
             var forward = Vector3.Normalize(_shell.Renderer.Camera.Target - _shell.Renderer.Camera.Position);
             _shell.Renderer.Camera.Position += forward * (_shell.Renderer.MoveSpeed * .35f);
             _shell.Renderer.Camera.Target = _shell.Renderer.Camera.Position + forward;
-            _shell.ContentBrowserTab = 1; // переключаемся на вкладку текстур
+            _shell.ContentBrowserTab = (int)ContentBrowserCategory.Textures; // переключаемся на вкладку текстур
             _smokeNext = Raylib.GetTime() + 0.5; // даем ImGui отрисовать кадр с вкладкой текстур
             _smokeStage = 1;
             return false;
@@ -254,7 +214,7 @@ sealed class App : IDisposable
             _smokeVisibleAfterMove = _shell.Renderer.StatVisibleObjects;
             Screenshot("jadeview-after-navigation.png");
             Screenshot("jadeview-textures.png");
-            _shell.ContentBrowserTab = 4; // переключаемся на вкладку каталога BF
+            _shell.ContentBrowserTab = (int)ContentBrowserCategory.AllAssets; // переключаемся на вкладку каталога BF
             _smokeNext = Raylib.GetTime() + 0.5; // даем ImGui отрисовать кадр с каталогом
             _smokeStage = 2;
             return false;

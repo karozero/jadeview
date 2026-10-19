@@ -1,3 +1,4 @@
+using static JadeView.EditorUi;
 using System.Numerics;
 using ImGuiNET;
 
@@ -6,18 +7,18 @@ public sealed partial class EditorShell
 {
     private void DrawOutliner()
     {
-        ImGui.TextColored(Green, "OUTLINER");
-        ImGui.SameLine();
-        ImGui.TextDisabled(ActiveWorld != null ? $"{ActiveWorld.Name} ({ActiveWorld.Objects.Count})" : "No world");
-        ImGui.SameLine();
+        DrawPanelTitle("OUTLINER", "Objects placed in the current world, grouped by actor. Search and select objects here; right-click for scene actions. Double-click to frame an object.");
+        DrawOutlinerSearch();
+        DrawOutlinerSceneSelection();
+        DrawOutlinerDisplay();
+        DrawCategoryTitle("Scene objects", "Objects in the selected world, grouped by actor. Filters below affect this list only.");
+        ImGui.TextWrapped(ActiveWorld != null ? $"{ActiveWorld.Name} ({ActiveWorld.Objects.Count} objects)" : "No world");
         bool canAddObjects = ActiveWorld != null && Resolver.Geometries.Count > 0;
         ImGui.BeginDisabled(!canAddObjects);
         if (ImGui.Button("Add object"))
             ImGui.OpenPopup("AddSceneObjectFromAsset");
         ImGui.EndDisabled();
         DrawAddSceneObjectPopup();
-        DrawOutlinerArchivePicker();
-        DrawOutlinerWorldPicker();
         DrawOutlinerFilters();
         if (ActiveWorld == null || ActiveWorld.Objects.Count == 0)
         {
@@ -28,8 +29,6 @@ public sealed partial class EditorShell
         var filtered = ActiveWorld.Objects.Where(MatchesOutlinerFilter).ToList();
         var shown = filtered.ToHashSet();
         ImGui.BeginChild("OutlinerList", Vector2.Zero, ImGuiChildFlags.None);
-        DrawAnimationControls();
-        DrawMorphControls();
         foreach (var actor in ActiveWorld.Actors.Where(actor => actor.Members.Any(shown.Contains)))
             DrawOutlinerActor(actor);
         foreach (var sceneObject in filtered.Where(sceneObject => sceneObject.Actor == null))
@@ -37,73 +36,20 @@ public sealed partial class EditorShell
         ImGui.EndChild();
     }
 
-    private void DrawOutlinerArchivePicker()
+    private void DrawOutlinerSearch()
     {
-        if (Archive == null || _archiveScenes.Count == 0)
-            return;
+        DrawCategoryTitle("Search", "Find objects by name or GAO key in the selected world.");
         ImGui.SetNextItemWidth(-1);
-        ImGui.BeginDisabled(_activeJob != null);
-        var activeScene = _archiveScenes.FirstOrDefault(scene => string.Equals(Document?.ContainerName, scene.Entry.Name, StringComparison.OrdinalIgnoreCase));
-        string preview = activeScene != null ? $"{activeScene.Label} · {activeScene.Entry.Id}" : "Archive scenes";
-        if (ImGui.BeginCombo("##ArchiveScenePicker", preview))
-        {
-            foreach (var scene in _archiveScenes)
-                DrawArchiveSceneOption(scene);
-            ImGui.EndCombo();
-        }
-
-        ImGui.EndDisabled();
-    }
-
-    private void DrawArchiveSceneOption(ArchiveSceneItem scene)
-    {
-        string label = $"{scene.Label} · {scene.Entry.Id}";
-        bool selected = Document?.ContainerName.Equals(scene.Entry.Name, StringComparison.OrdinalIgnoreCase) == true;
-        if (ImGui.Selectable(label, selected))
-            OpenSceneContainer(scene.Entry);
-        if (selected)
-            ImGui.SetItemDefaultFocus();
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(label + (scene.Diagnostic != null ? "\n" + scene.Diagnostic : ""));
-    }
-
-    private void DrawOutlinerWorldPicker()
-    {
-        if (Document == null || Document.Worlds.Count <= 1)
-            return;
-        if (!ImGui.BeginCombo("##WorldPicker", ActiveWorld?.Name ?? "Select world"))
-            return;
-        foreach (var world in Document.Worlds)
-        {
-            bool selected = world == ActiveWorld;
-            if (ImGui.Selectable($"{world.Name} ({world.Objects.Count} objects)", selected))
-            {
-                ActiveWorld = world;
-                Renderer.ActiveWorld = world;
-                SelectedObject = world.Objects.FirstOrDefault();
-                Renderer.FrameAll();
-            }
-
-            if (selected)
-                ImGui.SetItemDefaultFocus();
-        }
-
-        ImGui.EndCombo();
+        ImGui.InputTextWithHint("##SearchOutliner", "Search name or GAO key...", ref _searchOutliner, 128);
     }
 
     private void DrawOutlinerFilters()
     {
-        ImGui.SetNextItemWidth(-1);
-        ImGui.InputTextWithHint("##SearchOutliner", "Search name or GAO key...", ref _searchOutliner, 128);
         ImGui.RadioButton("All", ref _outlinerFilterType, 0);
         ImGui.SameLine();
-        ImGui.RadioButton("Static", ref _outlinerFilterType, 1);
+        ImGui.RadioButton("Movable", ref _outlinerFilterType, 1);
         ImGui.SameLine();
         ImGui.RadioButton("Restricted", ref _outlinerFilterType, 2);
-        bool showSelectionWireframe = Renderer.ShowSelectionWireframe;
-        if (ImGui.Checkbox("Selection wireframe", ref showSelectionWireframe))
-            Renderer.ShowSelectionWireframe = showSelectionWireframe;
-        ImGui.Separator();
     }
 
     private bool MatchesOutlinerFilter(SceneObject sceneObject)

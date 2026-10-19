@@ -13,17 +13,17 @@ namespace JadeView;
 /// Реализует разделы 4 и 6 плана EDITOR_PLAN.md:
 /// 1. Верхняя панель (Toolbar) с режимами Transform (W/E/R), сохранением проекта, сборкой BF и запуском игры.
 /// 2. Центральный большой Viewport с рендерингом через SceneRenderer.
-/// 3. Справа сверху: Outliner (дерево миров и objects SceneObject, поиск, выбор).
-/// 4. Справа снизу: Details (свойства, GaoKey, Transform X/Y/Z с редактированием и Undo/Redo, возможности Capabilities, геометрия и материалы).
-/// 5. Снизу: Content Browser (ресурсы мира, вкладки Объекты / Textures / Audio / Text / BF archive / Diagnostics).
+/// 3. Справа: Outliner (дерево миров и objects SceneObject, поиск, выбор).
+/// 4. Между viewport и Outliner: Asset Inspector (Properties, Animation, Morphs; GaoKey, Transform X/Y/Z с редактированием и Undo/Redo, возможности Capabilities, геометрия и материалы).
+/// 5. Снизу: Content Browser (ресурсы мира, вкладки All Assets / Textures / Audio / Text / Diagnostics).
 /// 6. Горячие клавиши (W, F, H, Delete, Ctrl+C/V, Ctrl+Z/Y, Ctrl+S) и подтверждение при выходе.
 /// </summary>
 public sealed partial class EditorShell : IDisposable
 {
-    private static readonly Vector4 Green = new(0.35f, 0.90f, 0.54f, 1.0f);
-    private static readonly Vector4 Yellow = new(0.95f, 0.80f, 0.25f, 1.0f);
-    private static readonly Vector4 Red = new(0.95f, 0.35f, 0.35f, 1.0f);
-    private static readonly Vector4 Muted = new(0.56f, 0.62f, 0.60f, 1.0f);
+    private static readonly Vector4 Green = EditorTheme.Green;
+    private static readonly Vector4 Yellow = EditorTheme.Yellow;
+    private static readonly Vector4 Red = EditorTheme.Red;
+    private static readonly Vector4 Muted = EditorTheme.Muted;
     private readonly float _scale;
     private readonly string _cacheDir;
     // Документ и сервисы редактора
@@ -53,22 +53,6 @@ public sealed partial class EditorShell : IDisposable
                     Renderer.ActiveWorld = owningWorld;
                 }
             }
-        }
-    }
-
-    // Состояние UI
-    private SceneObject? _revealOutliner, _revealContent;
-    private string _searchOutliner = "";
-    private int _outlinerFilterType = 0; // 0: All, 1: Статические, 2: Restricted
-    private int _contentBrowserTab = 0;
-    private int? _requestedContentBrowserTab = null;
-    public int ContentBrowserTab
-    {
-        get => _contentBrowserTab;
-        set
-        {
-            _contentBrowserTab = value;
-            _requestedContentBrowserTab = value;
         }
     }
 
@@ -121,12 +105,10 @@ public sealed partial class EditorShell : IDisposable
         {
             SelectedObject = obj;
             _revealOutliner = obj;
-            _revealContent = obj;
             if (obj != null)
             {
                 _searchOutliner = "";
                 _outlinerFilterType = 0;
-                ContentBrowserTab = 0;
             }
         };
         Renderer.OnObjectTransformed += (obj, command) =>
@@ -209,46 +191,7 @@ public sealed partial class EditorShell : IDisposable
         // 1. Верхняя панель инструментов (Toolbar)
         DrawToolbar();
         ImGui.Separator();
-        // Расчет геометрии компоновки UE5
-        float availX = ImGui.GetContentRegionAvail().X;
-        float availY = ImGui.GetContentRegionAvail().Y;
-        float statusHeight = 24.0f * _scale;
-        float bodyHeight = availY - statusHeight - 6.0f;
-        float bottomPanelHeight = Math.Clamp(bodyHeight * 0.32f, 180.0f * _scale, 320.0f * _scale);
-        float topPanelsHeight = bodyHeight - bottomPanelHeight - 6.0f;
-        float rightPanelWidth = Math.Clamp(availX * 0.28f, 320.0f * _scale, 480.0f * _scale);
-        float viewportWidth = availX - rightPanelWidth - 8.0f;
-        // ВЕРХНИЙ РЯД: Вьюпорт (слева) + Outliner & Details (справа)
-        ImGui.BeginChild("TopRowArea", new Vector2(availX, topPanelsHeight), ImGuiChildFlags.None);
-        {
-            // Центральный большой Viewport
-            ImGui.BeginChild("CentralViewportContainer", new Vector2(viewportWidth, topPanelsHeight), ImGuiChildFlags.Borders, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
-            Renderer.DrawViewport("MainViewport", ImGui.GetContentRegionAvail());
-            ImGui.EndChild();
-            ImGui.SameLine();
-            // Правая колонка: Outliner (сверху) и Details (снизу)
-            ImGui.BeginChild("RightColumn", new Vector2(rightPanelWidth, topPanelsHeight), ImGuiChildFlags.None);
-            {
-                float outlinerHeight = topPanelsHeight * (SelectedObject?.Actor != null ? 0.68f : 0.46f);
-                float detailsHeight = topPanelsHeight - outlinerHeight - 6.0f;
-                ImGui.BeginChild("OutlinerPanel", new Vector2(rightPanelWidth, outlinerHeight), ImGuiChildFlags.Borders);
-                DrawOutliner();
-                ImGui.EndChild();
-                ImGui.Spacing();
-                ImGui.BeginChild("DetailsPanel", new Vector2(rightPanelWidth, detailsHeight), ImGuiChildFlags.Borders);
-                DrawDetails();
-                ImGui.EndChild();
-            }
-
-            ImGui.EndChild();
-        }
-
-        ImGui.EndChild();
-        ImGui.Spacing();
-        // НИЖНИЙ РЯД: Content Browser
-        ImGui.BeginChild("ContentBrowserPanel", new Vector2(availX, bottomPanelHeight), ImGuiChildFlags.Borders);
-        DrawContentBrowser();
-        ImGui.EndChild();
+        DrawWorkspace();
         // 6. Statusная строка в самом низу
         DrawStatusBar();
         // Модальные окна
