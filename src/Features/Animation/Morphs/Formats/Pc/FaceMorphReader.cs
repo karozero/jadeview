@@ -30,12 +30,11 @@ public static class FaceMorphReader
     {
         int count = Count(reader, 16);
         var indices = new int[count];
-        var seen = new HashSet<int>();
         for (int entry = 0; entry < count; entry++)
         {
             int vertex = reader.ReadInt32();
-            if (vertex < 0 || vertex >= vertexCount || !seen.Add(vertex))
-                throw new InvalidDataException($"Invalid/duplicate vertex in face morph group {index}.");
+            if (vertex < 0 || vertex >= vertexCount)
+                throw new InvalidDataException($"Invalid vertex in face morph group {index}.");
             indices[entry] = vertex;
         }
         var deltas = new Vector3[count];
@@ -51,7 +50,7 @@ public static class FaceMorphReader
         uint weight = reader.ReadUInt32(), progression = reader.ReadUInt32();
         var references = new uint[count];
         for (int entry = 0; entry < count; entry++) references[entry] = reader.ReadUInt32();
-        // Preserve repeats, holes and exact float words; their PC controller semantics are unresolved.
+        // Preserve source state and holes; runtime progression is evaluated separately.
         return new(weight, progression, references);
     }
 

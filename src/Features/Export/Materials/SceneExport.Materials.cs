@@ -22,68 +22,36 @@ public sealed partial class SceneExporter
 
     private int Material(SceneObject sceneObject, ResolvedMaterial? source, JadeMaterialLayer? layer)
     {
-        var pbr = D("baseColorFactor", ExportBaseColor(source, layer), "metallicFactor", 0f, "roughnessFactor", 1f);
+        bool inverseMask = options.Textures && CanBakeInverseMask(layer) &&
+            resolver.TryResolveTexture(layer!.Texture, out _);
+        var color = ExportBaseColor(source, layer);
+        if (inverseMask) color[3] = 1;
+        var pbr = D("baseColorFactor", color, "metallicFactor", 0f, "roughnessFactor", 1f);
         var material = D("name", $"{sceneObject.Name} {source?.Id.ToString() ?? "default"}",
             "pbrMetallicRoughness", pbr, "doubleSided", true, "extensions", D("KHR_materials_unlit", D()));
         if (SceneRenderer.IsCollision(sceneObject))
             pbr["baseColorFactor"] = new[] { .25f, .6f, 1f, 1f };
         else if (options.Textures && layer != null)
-            WriteMaterialTexture(pbr, sceneObject, layer);
-        WriteMaterialAlpha(material, layer);
-        WarnUnsupportedBlending(sceneObject, layer);
+            WriteMaterialTexture(pbr, sceneObject, layer, inverseMask);
+        WriteMaterialAlpha(material, layer, inverseMask);
+        if (inverseMask) material["extras"] = D("bakedInverseAlphaTest", true);
+        WarnUnsupportedBlending(sceneObject, layer, inverseMask);
         int index = materials.Count;
         materials.Add(material);
         return index;
     }
 
-    private void WarnUnsupportedBlending(SceneObject sceneObject, JadeMaterialLayer? layer)
+    private void WarnUnsupportedBlending(SceneObject sceneObject, JadeMaterialLayer? layer, bool inverseMask)
     {
         if (layer == null) return;
         bool customBlend = layer.Blend is not (0 or 1 or 7);
         bool inverseBlend = layer.Blend == 1 && (layer.Flags & 0x80) != 0;
         bool combinedAlphaTest = layer.Blend is not (0 or 7) && (layer.Flags & 0x10) != 0;
-        bool inverseAlphaTest = (layer.Flags & 0x90) == 0x90;
+        bool inverseAlphaTest = (layer.Flags & 0x90) == 0x90 && !inverseMask;
         if (customBlend || inverseBlend || combinedAlphaTest || inverseAlphaTest)
             warnings.Add($"'{sceneObject.Name}' uses blend/alpha flags {layer.Flags:X8} that cannot be represented exactly by one glTF material; transparency is approximate.");
     }
 
-    private void WriteMaterialTexture(Obj pbr, SceneObject sceneObject, JadeMaterialLayer layer)
-    {
-        if (layer.Texture is 0 or uint.MaxValue) return;
-        if (!resolver.TryResolveTexture(layer.Texture, out var texture))
-        {
-            warnings.Add($"'{sceneObject.Name}' has an unresolved texture {layer.Texture:X8}.");
-            return;
-        }
-        string key = texture.ToTextureAsset().Name;
-        if (!imageCache.TryGetValue(key, out int image))
-        {
-            image = images.Count;
-            images.Add(D("name", texture.Id.ToString(), "mimeType", "image/png", "bufferView", View(Png(texture))));
-            imageCache[key] = image;
-        }
-        int sampler = samplers.Count;
-        int textureIndex = textures.Count;
-        textures.Add(D("source", image, "sampler", sampler));
-        pbr["baseColorTexture"] = D("index", textureIndex);
-        bool linear = (layer.Flags & 4) != 0;
-        samplers.Add(D("wrapS", (layer.Flags & 1) != 0 ? 10497 : 33071,
-            "wrapT", (layer.Flags & 2) != 0 ? 10497 : 33071,
-            "magFilter", linear ? 9729 : 9728, "minFilter", linear ? 9729 : 9728));
-    }
-
-    private static void WriteMaterialAlpha(Obj material, JadeMaterialLayer? layer)
-    {
-        if (layer == null) return;
-        if (layer.Blend is not (0 or 7))
-        {
-            material["alphaMode"] = "BLEND";
-            return;
-        }
-        if ((layer.Flags & 0x10) == 0) return;
-        material["alphaMode"] = "MASK";
-        material["alphaCutoff"] = (layer.Flags >> 22 & 0xfc) / 255f;
-    }
     private static float[] ExportBaseColor(ResolvedMaterial? source, JadeMaterialLayer? layer)
     {
         var color = new[] { 1f, 1f, 1f, 1f };

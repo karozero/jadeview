@@ -6,8 +6,9 @@ public sealed partial class EditorShell
 {
     private void DrawMorphTimeline(SceneActor actor, FaceMorphPreview preview)
     {
-        if (!ImGui.TreeNode("Manual morph animation")) return;
         var timeline = preview.Timeline;
+        if (timeline.Keys.Count == 0 && !MorphKeyCreationVisible) return;
+        if (!ImGui.TreeNode("Saved morph animation")) return;
         ImGui.TextWrapped("User-authored keys. Saved in .bgemod and exported as a separate GLB clip; BF builds do not include them.");
         float time = timeline.Time;
         if (ImGui.InputFloat("Morph time (s)", ref time, .1f, 1, "%.3f") && float.IsFinite(time))
@@ -16,12 +17,15 @@ public sealed partial class EditorShell
             actor.Evaluate(0);
             RecordMorphProjectEdit(actor, preview);
         }
-        if (ImGui.Button("Record / replace morph key"))
+        if (MorphKeyCreationVisible)
         {
-            timeline.Record(timeline.Time, preview.CopyWeights());
-            RecordMorphProjectEdit(actor, preview);
+            if (ImGui.Button("Record / replace morph key"))
+            {
+                timeline.Record(timeline.Time, preview.CopyWeights());
+                RecordMorphProjectEdit(actor, preview);
+            }
+            ImGui.SameLine();
         }
-        ImGui.SameLine();
         if (ImGui.Button("Remove morph key") && timeline.RemoveCurrentKey()) RecordMorphProjectEdit(actor, preview);
         ImGui.BeginDisabled(timeline.Duration <= 0);
         if (ImGui.Button(timeline.Playing ? "Pause morphs" : "Play morphs"))

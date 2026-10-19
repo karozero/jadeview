@@ -3,7 +3,7 @@ using System.Numerics;
 namespace JadeView;
 
 // Preview state is separate from editable transforms and never produces archive patches.
-public sealed class SceneActor
+public sealed partial class SceneActor
 {
     public SceneObject Root = null!;
     public List<SceneObject> Members = [];
@@ -25,30 +25,11 @@ public sealed class SceneActor
     {
         ApplyShape(DefaultShape);
         if (clip != null && ClipShapes.TryGetValue(clip, out var shape) && shape != DefaultShape) ApplyShape(shape);
+        ApplyAppearanceOverrides();
         if (clip?.SceneMotion == true) RootMotion = true;
         Clip = clip; Time = 0; clip?.EnsureLoaded(); Playing = clip != null && clip.Error == null;
         Evaluate(0);
     }
-    public void ApplyShape(uint key)
-    {
-        if (!Shapes.TryGetValue(key,out var shape)) return;
-        for(int i=0;i<shape[0];i++)
-        {
-            int p=1+i*3;if(p+2>=shape.Length)break;
-            int bone=(sbyte)shape[p], source=(sbyte)shape[p+2];
-            if(bone<0 || bone>=Bones.Count || Bones[bone] is not {} target)continue;
-            if(source==-3){target.PreviewHidden=true;continue;}
-            if(source==-2){target.PreviewHidden=false;continue;}
-            if(source<0 || !SourceMeshes.TryGetValue(bone,out var models) || source>=models.Count)continue;
-            var model=models[source];target.PreviewHidden=false;
-            target.AppearanceRevision++;target.GeometryKey=model.GeometryKey;target.MaterialKey=model.MaterialKey;
-            target.RliColors=model.RliColors;target.DrawFlags=model.DrawFlags;
-            target.Modifiers = model.Modifiers;
-            target.Flags=(target.Flags&~0x1200000u)|(model.Flags&0x1200000u);
-            if(target.ActorNode!=null && model.ActorNode!=null){target.ActorNode.Links=model.ActorNode.Links;target.ActorNode.Matrices=model.ActorNode.Matrices;}
-        }
-    }
-
     public void Evaluate(float delta)
     {
         foreach (var member in Members) member.MorphPreview?.Advance(delta);

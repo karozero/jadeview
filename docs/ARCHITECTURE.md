@@ -14,7 +14,20 @@ JadeView currently builds as one application. Source folders group responsibilit
 - `src/Features/GameIntegration`: game discovery, launch, installation, backup and restoration. `Models` contains operation results.
 - `src/Features/SceneEditor/SceneRenderer.Verification.cs`: existing renderer verification routines, invoked by `--test-renderer`.
 - `formats`: embedded texture mapping data. Resource names remain unchanged.
-- `formats`: embedded texture mapping data. Resource names remain unchanged.
+
+## Facial preview and material export
+
+- `Animation/Morphs/Formats/Pc`: type-4 payload reader and shared packed expression-command decoder.
+- `Animation/Morphs/Models`: source records, keys, timelines, expression descriptions and playback state.
+- `Animation/Morphs/Preview`: direct weights, channels, transient blink and expression preview. The partial class shares state; its files divide behaviors rather than define separate services.
+- `Animation/Morphs/Profiles/Pc`: verified source qualification and expression tables. Geometry keys, channel signatures and known source issues stay here, outside the generic preview and UI. These are still explicit profiles, not automatically recovered controller bindings.
+- `Animation/Appearances`: shape application, session overrides and appearance discovery. `Models` describes companion bindings; `Profiles/Pc` contains the temporary verified head/accessory pairing.
+- `SceneEditor/Morphs`: ImGui controls. They consume preview capabilities and preset descriptions rather than independently recognizing characters.
+- `Export/Materials`: material selection and composition rules, atlas rasterization, UV projection, texture writing and alpha conversion. `Models` owns atlas/layout/selection data. `MaterialLayerRules` and `MaterialAtlasBaker` do not depend on actor names or mutable glTF output state; `SceneExport.*` files coordinate resources and output.
+
+Known profiles are deliberately separate from binary-format rules. A new geometry
+can still expose its source morph targets without matching a blink/expression
+profile. Adding a profile must not imply native timing or shader parity.
 
 ## Main flow
 

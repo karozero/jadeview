@@ -17,14 +17,15 @@ public sealed partial class ModProject
         if (worldIndex < 0 || preview.Data == null || preview.Data.Groups.Length == 0) return;
         var world = document.Worlds[worldIndex];
         var weights = preview.CopyWeights();
-        bool empty = preview.Timeline.Keys.Count == 0 && weights.All(weight => weight == 0);
+        bool empty = !preview.ChannelsActive && preview.Timeline.Keys.Count == 0 && weights.All(weight => weight == 0);
         var record = new ModMorphPreview
         {
             Container = document.ContainerName, WorldKey = world.Key, WorldIndex = worldIndex,
             ActorId = actor.Root.Id, ObjectId = member.Id, GeometryKey = preview.Geometry.Key,
             GeometrySha256 = MorphProjectSource.GeometryHash(preview.Geometry),
             ModifierSha256 = MorphProjectSource.ModifierHash(preview), TargetCount = weights.Length,
-            Weights = weights, Keys = preview.Timeline.CopyKeys(), Time = preview.Timeline.Time, Loop = preview.Timeline.Loop
+            Weights = weights, Keys = preview.Timeline.CopyKeys(), Time = preview.Timeline.Time, Loop = preview.Timeline.Loop,
+            ChannelState = preview.CopyChannelState()
         };
         record.Validate();
         MorphPreviews.RemoveAll(candidate => MatchesOwner(candidate, document.ContainerName, world.Key, worldIndex, actor, member) &&
@@ -73,7 +74,8 @@ public sealed partial class ModProject
         if (record == null) return;
         bool uniqueOwner = document.Worlds[worldIndex].Actors.Where(candidate => candidate.Root.Id == record.ActorId)
             .SelectMany(candidate => candidate.Members).Count(candidate => candidate.Id == record.ObjectId) == 1;
-        bool sourceMatches = uniqueOwner && preview.Data?.Groups.Length == record.TargetCount &&
+        bool channelCountMatches = record.ChannelState == null || record.ChannelState.Length == preview.ChannelCount;
+        bool sourceMatches = uniqueOwner && channelCountMatches && preview.Data?.Groups.Length == record.TargetCount &&
             record.GeometrySha256.Equals(MorphProjectSource.GeometryHash(preview.Geometry), StringComparison.OrdinalIgnoreCase) &&
             record.ModifierSha256.Equals(MorphProjectSource.ModifierHash(preview), StringComparison.OrdinalIgnoreCase);
         if (!sourceMatches)
@@ -88,6 +90,7 @@ public sealed partial class ModProject
         preview.Timeline.Loop = record.Loop;
         preview.Seek(record.Time);
         for (int group = 0; group < record.Weights.Length; group++) preview.SetWeight(group, record.Weights[group]);
+        if (record.ChannelState != null) preview.RestoreChannelState(record.ChannelState);
         actor.Evaluate(0);
     }
 

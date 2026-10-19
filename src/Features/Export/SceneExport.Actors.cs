@@ -27,6 +27,7 @@ public sealed partial class SceneExporter
         var bindPose = ReadBindPose(actor);
         var nodeMap = actor.Members.ToDictionary(member => member, member => Node(member, Matrix4x4.Identity, true));
         var animated = ActorHierarchy(actor, group, nodeMap);
+        AddRootDisplayTip(actor, nodeMap, bindPose);
         foreach (var sceneObject in objects.Where(Included))
             ActorMesh(actor, sceneObject, group, nodeMap, bindPose);
         WriteAnimations(actor, animated);

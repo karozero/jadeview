@@ -61,7 +61,9 @@ public sealed partial class SceneExporter
             AddAnimationChannel("rotation", values[nodeIndex].Rotation, 4, "VEC4", animated[nodeIndex].Node, input, channels, samplers);
             AddAnimationChannel("scale", values[nodeIndex].Scale, 3, "VEC3", animated[nodeIndex].Node, input, channels, samplers);
         }
-        animations.Add(D("name", $"{actor.Root.Name} {clip.Name}", "samplers", samplers, "channels", channels));
+        var animation = D("name", $"{actor.Root.Name} {clip.Name}", "samplers", samplers, "channels", channels);
+        AddSourceAnimationRecords(animation, clip);
+        animations.Add(animation);
     }
 
     private void AddAnimationChannel(string path, List<float> values, int size, string type,

@@ -70,6 +70,11 @@ public sealed partial class SceneExporter
             inverse.AddRange(Matrix(ancestorBind));
         }
         // The placement container is the armature object, not a deforming joint.
+        if (rootDisplayTips.TryGetValue(actor, out var tip))
+        {
+            joints.Add(tip.Node);
+            inverse.AddRange(Matrix(tip.InverseBind));
+        }
         int skinIndex = skins.Count;
         skins.Add(D("joints", joints.ToArray(), "inverseBindMatrices", Floats(inverse.ToArray(), 16, "MAT4"), "skeleton", group));
         return skinIndex;

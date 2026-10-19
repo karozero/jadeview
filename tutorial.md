@@ -26,14 +26,15 @@ In Blender, import the GLB, select the armature and use **Dope Sheet → Action 
 ## Facial morphs
 
 1. Select Sally (or another supported actor), expand **Facial / vertex morphs**, and choose the head in **Morph mesh**.
-2. Adjust the `PC_Morph_XX` sliders. Sally's groups **01 + 02** close the eyelids together. **Reset morph weights** restores neutral weights.
-3. Open **Manual morph animation**. Set **Morph time (s)**, adjust the weights, and click **Record / replace morph key**.
-4. For a test blink, record neutral at **0 s**, groups 01/02 at **1** at **0.1 s**, then reset weights and record at **0.2 s**. Use **Play morphs** and **Loop morphs** to preview.
-5. Save `.bgemod` to retain weights and keys. On reopening, playback is paused; profiles apply only to matching source models. Export with **Animations and skinning** and **Manual morph animations** enabled.
+2. Adjust `PC_Morph_XX`, or use **PC morph channels → Weight / Progression**. Progression follows ordered references, not group numbers. Sally's channels **0 + 1**, weight **1**, progression **1** close the eyelids.
+3. **PC Sally expressions → Kit 2/3/4/5** previews settled PC expression poses; kits 3 and 5 match. **PC Sally blink → Preview blink / Stop blink** previews one cycle from the current eyelid pose. Pey'j and militaire HD heads also offer **PC head blink**. Stop/completion restores the starting pose; no new clip is recorded. **Reset morph weights** restores neutral.
+4. Save `.bgemod` to retain the current pose/channel controls, and export GLB to keep the evaluated Shape Key weights. Existing saved clips remain available under **Saved morph animation**; enable **Manual morph animations** to export them. Creating/replacing keys and baking new clips are temporarily hidden.
 
-In Blender, select the **head mesh**, not the armature: **Object Data Properties** (green triangle) → **Shape Keys**. Change a key's **Value**, or open **Dope Sheet → Shape Key Editor** and select the `Manual morphs · …` Action.
+**Discovered morph poses** automatically lists nonzero targets for any supported actor mesh. When you first open a morph mesh with empty targets, JadeView selects the loaded source appearance with the most nonzero poses. For Pey'j, choosing **B_peyj_Tete.gao** automatically selects **S_Peyj_TeteHD_Boucheneutre.gao** (13 poses). You can change it using **Morph appearance**; returning to **Use clip appearance** disables automatic selection for that mesh for the session. The appearance choice is preview-only and stays selected across clips; **Use clip appearance** restores the clip's model. Saved poses restore when you select their matching appearance again. Group names are source indices, not identified emotions.
 
-These are user-authored facial clips; original game facial timing and lip-sync are not recovered. Sally's raw group **37** has known artifacts and is marked `[!]`. Animated UVs and some material layers remain approximate. Technical findings: [face-morph-analysis.md](docs/face-morph-analysis.md).
+In Blender, select the **head mesh**, not the armature: **Object Data Properties** (green triangle) → **Shape Keys**. Existing saved clips import as `Manual morphs · …` Actions.
+
+Preset transitions, random blink scheduling and lip-sync are not replayed. Sally's raw group **37** has known artifacts and is marked `[!]`. Technical findings: [face-morph-analysis.md](docs/face-morph-analysis.md).
 
 ## Essential controls
 

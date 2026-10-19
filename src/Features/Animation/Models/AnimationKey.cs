@@ -8,4 +8,5 @@ public sealed class AnimationKey
     public Vector3? Position, Scale, Control1, Control2;
     public Quaternion? Rotation;
     public int Flags, Format;
+    public List<AnimationOpaquePayload> OpaquePayloads = [];
 }

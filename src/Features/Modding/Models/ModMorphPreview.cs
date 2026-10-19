@@ -18,6 +18,8 @@ public sealed class ModMorphPreview
     [JsonPropertyName("time")] public float Time { get; set; }
     [JsonPropertyName("loop")] public bool Loop { get; set; } = true;
     [JsonPropertyName("keys")] public FaceMorphKeyframe[] Keys { get; set; } = [];
+    [JsonPropertyName("channelState"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public FaceMorphChannelState[]? ChannelState { get; set; }
 
     public void Validate()
     {
@@ -27,6 +29,9 @@ public sealed class ModMorphPreview
         if (!identity || !hashes || TargetCount <= 0 || TargetCount > 4096 || !float.IsFinite(Time) || Time < 0)
             throw new InvalidDataException("Invalid saved morph identity, source signature or time.");
         ValidateWeights(Weights);
+        bool invalidChannels = ChannelState != null && (ChannelState.Length > 4096
+            || ChannelState.Any(state => state is not { IsValid: true }));
+        if (invalidChannels) throw new InvalidDataException("Invalid saved morph channel controls.");
         if (Keys == null || Keys.Length > 100000) throw new InvalidDataException("Invalid saved morph keys.");
         float previous = -1;
         foreach (var key in Keys)

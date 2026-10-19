@@ -2,14 +2,15 @@ using System.Numerics;
 
 namespace JadeView;
 
-// Editor-only direct target weights. This does not interpret native channel state or timing.
-public sealed class FaceMorphPreview
+// Editor authoring state: direct weights or explicit PC channel controls, without inferred timing.
+public sealed partial class FaceMorphPreview
 {
     public Geometry Geometry { get; }
     public SceneModifier Modifier { get; }
     public FaceMorphData? Data { get; }
     public string? Error { get; }
     public FaceMorphSourceIssue[] SourceIssues { get; }
+    public IReadOnlyList<MorphExpressionPose> Expressions { get; }
     public FaceMorphTimeline Timeline { get; }
     internal bool HasUnmatchedProjectState { get; set; }
     private readonly float[] weights;
@@ -22,7 +23,10 @@ public sealed class FaceMorphPreview
         catch (InvalidDataException error) { Error = error.Message; }
         weights = new float[Data?.Groups.Length ?? 0];
         Timeline = new(weights.Length);
+        ResetChannelState();
         SourceIssues = Data != null ? FaceMorphDiagnostics.SourceIssues(geometry, Data) : [];
+        Expressions = Data != null ? FaceMorphExpressionCatalog.Discover(Data) : [];
+        sourceProfile = PcMorphProfiles.Match(geometry.Key, Data);
     }
 
     public static FaceMorphPreview? Get(SceneObject sceneObject, Geometry geometry)
@@ -48,19 +52,29 @@ public sealed class FaceMorphPreview
     public void SetWeight(int group, float weight)
     {
         if (!float.IsFinite(weight)) throw new ArgumentException("Morph weight must be finite.", nameof(weight));
+        StopBlink();
         Timeline.Playing = false;
+        ChannelsActive = false;
         weights[group] = weight;
     }
-    public void Reset() { Array.Clear(weights); Timeline.Playing = false; }
+    public void Reset() { StopBlink(); Array.Clear(weights); Timeline.Playing = false; ResetChannelState(); }
     public void Seek(float time)
     {
+        StopBlink();
         Timeline.Playing = false;
         ApplySample(Timeline.Seek(time));
     }
-    public void Advance(float delta) => ApplySample(Timeline.Advance(delta));
+    public void Advance(float delta)
+    {
+        if (Timeline.Playing) StopBlink();
+        if (BlinkPlaying) AdvanceBlink(delta);
+        else ApplySample(Timeline.Advance(delta));
+    }
     private void ApplySample(float[]? sample)
     {
-        if (sample != null) sample.CopyTo(weights, 0);
+        if (sample == null) return;
+        ChannelsActive = false;
+        sample.CopyTo(weights, 0);
     }
 
     public Vector3[] Positions()

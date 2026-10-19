@@ -21,7 +21,7 @@ public sealed partial class SceneExporter
             foreach (var issue in FaceMorphDiagnostics.SourceIssues(geometry, morph))
                 if (sceneObject.MorphPreview?.GetWeight(issue.Group) is float weight && weight != 0)
                     warnings.Add($"'{sceneObject.Name}' PC_Morph_{issue.Group:D2}: {issue.Message}");
-            warnings.Add($"'{sceneObject.Name}' exports PC morph targets with manual preview weights and source channel metadata; procedural facial timing is not reconstructed.");
+            warnings.Add($"'{sceneObject.Name}' exports PC morph targets with user-authored preview weights and source channel metadata; original facial scheduling is not reconstructed.");
             return morph;
         }
         catch (InvalidDataException error)
@@ -36,8 +36,7 @@ public sealed partial class SceneExporter
         var targets = new List<Obj>();
         foreach (var group in morph.Groups)
         {
-            var sparse = group.VertexIndices.Select((vertex, index) => (vertex, Delta: group.Deltas[index]))
-                .ToDictionary(entry => entry.vertex, entry => entry.Delta);
+            var sparse = group.AccumulatedDeltas();
             var deltas = new List<float>(sourceVertices.Count * 3);
             foreach (int vertex in sourceVertices)
             {
@@ -53,12 +52,16 @@ public sealed partial class SceneExporter
     private static void WriteMorphMetadata(Obj mesh, FaceMorphData morph, SceneObject sceneObject)
     {
         mesh["weights"] = sceneObject.MorphPreview?.CopyWeights() ?? new float[morph.Groups.Length];
-        mesh["extras"] = D("targetNames", morph.Groups.Select(group => $"PC_Morph_{group.Index:D2}").ToArray(),
-            "pcMorph", D("headerWords", morph.HeaderWords, "groupIndexEqualsTargetIndex", true,
-                "timeline", "unresolved; manual preview weights only",
+        var metadata = D("headerWords", morph.HeaderWords, "groupIndexEqualsTargetIndex", true,
+                "timeline", "user-authored keys only; original facial scheduling is not reconstructed",
                 "sourceIssues", sceneObject.MorphPreview?.SourceIssues.Select(issue => D("group", issue.Group, "message", issue.Message)).ToArray() ?? [],
                 "channels", morph.Channels.Select(channel =>
                     D("weightBits", channel.WeightBits, "progressionBits", channel.ProgressionBits,
-                        "groupReferences", channel.GroupReferences)).ToArray()));
+                        "groupReferences", channel.GroupReferences)).ToArray());
+        if (sceneObject.MorphPreview?.CopyChannelState() is { } states)
+            metadata["previewChannels"] = states.Select((state, index) =>
+                D("channel", index, "weight", state.Weight, "progression", state.Progression)).ToArray();
+        mesh["extras"] = D("targetNames", morph.Groups.Select(group => $"PC_Morph_{group.Index:D2}").ToArray(),
+            "pcMorph", metadata);
     }
 }
