@@ -37,7 +37,7 @@ public sealed partial class SceneExporter
     private Matrix4x4 ActorPlacement(SceneActor actor)
     {
         if (options.Placement == ExportPlacement.AtOrigin) return originOffset;
-        if (options.Placement != 1) return Matrix4x4.Identity;
+        if (options.Placement != ExportPlacement.Original) return Matrix4x4.Identity;
         if (!Matrix4x4.Invert(actor.Root.RenderMatrix, out var inverse))
             throw new InvalidDataException("Singular actor placement transform.");
         return inverse * actor.Root.InitialTransform.ToRenderMatrix();
@@ -53,28 +53,6 @@ public sealed partial class SceneExporter
         actor.Clip = clip;
         actor.Evaluate(0);
         return pose;
-    }
-
-    private List<(int Node, Func<Matrix4x4> Pose)> ActorHierarchy(SceneActor actor, int group,
-        Dictionary<SceneObject, int> nodeMap)
-    {
-        var animated = new List<(int Node, Func<Matrix4x4> Pose)>();
-        foreach (var member in actor.Members)
-        {
-            var parent = member == actor.Root ? null : actor.Members.FirstOrDefault(candidate =>
-                candidate != member && candidate.GaoKey == member.ActorNode?.Parent) ?? actor.Root;
-            AddChild(parent == null ? group : nodeMap[parent], nodeMap[member]);
-            Matrix4x4 Pose()
-            {
-                if (parent == null) return member.RenderMatrix;
-                if (!Matrix4x4.Invert(parent.RenderMatrix, out var inverse))
-                    throw new InvalidDataException("Singular animation parent transform.");
-                return member.RenderMatrix * inverse;
-            }
-            SetTrs(nodes[nodeMap[member]], Pose());
-            animated.Add((nodeMap[member], Pose));
-        }
-        return animated;
     }
 
     private void ActorMesh(SceneActor actor, SceneObject sceneObject, int group,

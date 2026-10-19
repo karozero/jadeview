@@ -7,7 +7,7 @@ public sealed partial class SceneExporter
 {
     private void WriteAnimations(SceneActor actor, List<(int Node, Func<Matrix4x4> Pose)> animated)
     {
-        var clips = options.AllClips ? actor.Clips.ToArray() : actor.Clip != null ? [actor.Clip] : actor.Clips.Take(1).ToArray();
+        var clips = SelectedAnimationClips(actor);
         bool rootMotion = actor.RootMotion;
         foreach (var clip in clips)
         {
@@ -35,23 +35,7 @@ public sealed partial class SceneExporter
     private void WriteAnimation(SceneActor actor, List<(int Node, Func<Matrix4x4> Pose)> animated,
         AnimationClip clip, float[] times)
     {
-        var values = animated.Select(_ => (Translation: new List<float>(), Rotation: new List<float>(), Scale: new List<float>())).ToArray();
-        var previous = new Quaternion[animated.Count];
-        for (int frame = 0; frame < times.Length; frame++)
-        {
-            actor.Time = times[frame];
-            actor.Evaluate(0);
-            for (int nodeIndex = 0; nodeIndex < animated.Count; nodeIndex++)
-            {
-                var (scale, rotation, translation) = Decompose(animated[nodeIndex].Pose());
-                if (frame > 0 && Quaternion.Dot(previous[nodeIndex], rotation) < 0)
-                    rotation = new(-rotation.X, -rotation.Y, -rotation.Z, -rotation.W);
-                previous[nodeIndex] = rotation;
-                Append(values[nodeIndex].Translation, translation);
-                values[nodeIndex].Rotation.AddRange([rotation.X, rotation.Y, rotation.Z, rotation.W]);
-                Append(values[nodeIndex].Scale, scale);
-            }
-        }
+        var values = SampleAnimationTracks(actor, animated, times);
         int input = Floats(times, 1, "SCALAR", true);
         var samplers = new List<Obj>();
         var channels = new List<Obj>();
@@ -64,6 +48,30 @@ public sealed partial class SceneExporter
         var animation = D("name", $"{actor.Root.Name} {clip.Name}", "samplers", samplers, "channels", channels);
         AddSourceAnimationRecords(animation, clip);
         animations.Add(animation);
+    }
+
+    private AnimationClip[] SelectedAnimationClips(SceneActor actor)
+    {
+        if (options.AllClips) return actor.Clips.ToArray();
+        if (actor.Clip != null) return [actor.Clip];
+        return actor.Clips.Take(1).ToArray();
+    }
+
+    private static ExportAnimationTrack[] SampleAnimationTracks(SceneActor actor,
+        List<(int Node, Func<Matrix4x4> Pose)> animated, float[] times)
+    {
+        var tracks = animated.Select(_ => new ExportAnimationTrack()).ToArray();
+        foreach (float time in times)
+        {
+            actor.Time = time;
+            actor.Evaluate(0);
+            for (int nodeIndex = 0; nodeIndex < animated.Count; nodeIndex++)
+            {
+                var (scale, rotation, translation) = Decompose(animated[nodeIndex].Pose());
+                tracks[nodeIndex].Append(scale, rotation, translation);
+            }
+        }
+        return tracks;
     }
 
     private void AddAnimationChannel(string path, List<float> values, int size, string type,

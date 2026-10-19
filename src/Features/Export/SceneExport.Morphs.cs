@@ -44,7 +44,7 @@ public sealed partial class SceneExporter
                 Append(deltas, Geometry.ToRender(delta));
             }
             // Keep empty groups and duplicate UV/atlas corners: source group index equals target index.
-            targets.Add(D("POSITION", Floats(deltas.ToArray(), 3, "VEC3", true, 34962)));
+            targets.Add(D("POSITION", Floats(deltas.ToArray(), 3, "VEC3", true, GlbFormat.VertexBuffer)));
         }
         return targets;
     }

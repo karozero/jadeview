@@ -38,7 +38,17 @@ public sealed partial class SceneExporter
     {
         var bytes = new byte[values.Length * 2];
         Buffer.BlockCopy(values, 0, bytes, 0, bytes.Length);
-        accessors.Add(D("bufferView", View(bytes, GlbFormat.VertexBuffer), "componentType", GlbFormat.UnsignedShort, "count", values.Length / 4, "type", "VEC4"));
+        accessors.Add(D("bufferView", View(bytes, GlbFormat.VertexBuffer), "componentType", GlbFormat.UnsignedShort, "count", values.Length / GlbFormat.InfluencesPerSet, "type", "VEC4"));
+        return accessors.Count - 1;
+    }
+    private int Indices(uint[] indices)
+    {
+        bool useShort = indices.Max() < ushort.MaxValue;
+        Array values = useShort ? indices.Select(index => checked((ushort)index)).ToArray() : indices;
+        var bytes = new byte[Buffer.ByteLength(values)];
+        Buffer.BlockCopy(values, 0, bytes, 0, bytes.Length);
+        accessors.Add(D("bufferView", View(bytes, GlbFormat.IndexBuffer), "componentType", useShort ? GlbFormat.UnsignedShort : GlbFormat.UnsignedInt,
+            "count", indices.Length, "type", "SCALAR"));
         return accessors.Count - 1;
     }
 }

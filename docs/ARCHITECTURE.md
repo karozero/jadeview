@@ -56,3 +56,16 @@ encodes texture images. These partial files still share one export lifetime.
 `AssetBrowser/Models/JadeMaterialFlags.cs` names shared PC material bit flags;
 material parsing and morph parsing keep record sizes beside their readers.
 This cleanup does not extend material support; the RLI overlay task remains deferred.
+
+Animation export samples poses into `Export/Models/ExportAnimationTrack.cs`,
+which owns TRS samples and quaternion hemisphere continuity. Actor hierarchy
+construction and parent-relative poses are in `SceneExport.ActorHierarchy.cs`.
+Morph preview deformation is isolated in `FaceMorphPreview.Deformation.cs`;
+preview state, channels and transient playback remain separate partial files.
+
+Mesh export separates primitive assembly (`SceneExport.Geometry.cs`) from corner
+seams and vertex buffers (`SceneExport.Vertices.cs`, `Models/ExportMeshVertices.cs`).
+Index accessors live with the other binary accessors. Skinning and planar UV
+projection share the same palette-link resolver to avoid divergent fallback rules.
+`Materials/MaterialLayerTint.cs` evaluates reflection/detail tint separately from
+UV projection and output writing; it does not enable deferred RLI overlay baking.

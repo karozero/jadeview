@@ -3,6 +3,7 @@ namespace JadeView;
 // User-authored preview keys; independent of native PC controller channels.
 public sealed class FaceMorphTimeline(int targetCount)
 {
+    private const float MaximumAdvanceDelta = .1f;
     private readonly List<FaceMorphKeyframe> keys = [];
     public IReadOnlyList<FaceMorphKeyframe> Keys => keys;
     public float Time { get; private set; }
@@ -33,7 +34,9 @@ public sealed class FaceMorphTimeline(int targetCount)
     }
     public void Clear()
     {
-        keys.Clear(); Playing = false; Time = 0;
+        keys.Clear();
+        Playing = false;
+        Time = 0;
     }
 
     public float[]? Seek(float time)
@@ -46,11 +49,15 @@ public sealed class FaceMorphTimeline(int targetCount)
     public float[]? Advance(float delta)
     {
         if (!Playing || delta <= 0 || Duration <= 0) return null;
-        Time += Math.Clamp(delta, 0, .1f);
+        Time += Math.Clamp(delta, 0, MaximumAdvanceDelta);
         if (Time >= Duration)
         {
             if (Loop) Time %= Duration;
-            else { Time = Duration; Playing = false; }
+            else
+            {
+                Time = Duration;
+                Playing = false;
+            }
         }
         return Sample(Time);
     }
@@ -62,7 +69,8 @@ public sealed class FaceMorphTimeline(int targetCount)
         if (time <= keys[0].Time) return (float[])keys[0].Weights.Clone();
         int next = keys.FindIndex(key => key.Time > time);
         if (next < 0) return (float[])keys[^1].Weights.Clone();
-        var first = keys[next - 1]; var second = keys[next];
+        var first = keys[next - 1];
+        var second = keys[next];
         float blend = (time - first.Time) / (second.Time - first.Time);
         var weights = new float[targetCount];
         for (int target = 0; target < weights.Length; target++)

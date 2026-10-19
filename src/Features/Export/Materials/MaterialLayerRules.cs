@@ -22,7 +22,7 @@ internal static class MaterialLayerRules
         var detail = layers.Skip(primaryIndex + 1).FirstOrDefault(IsReflectionDetail);
         if (detail == null) return new(primary);
         // Detail alpha is a reflection coefficient over the opaque base.
-        const uint blendAndAlphaFlags = 0xF0000 | JadeMaterialFlags.OverrideAlpha | JadeMaterialFlags.InverseBlend;
+        const uint blendAndAlphaFlags = JadeMaterialFlags.BlendMask | JadeMaterialFlags.OverrideAlpha | JadeMaterialFlags.InverseBlend;
         return new(detail with { Flags = detail.Flags & ~blendAndAlphaFlags }, OmitsReflection: true);
     }
 

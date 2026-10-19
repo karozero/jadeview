@@ -8,7 +8,7 @@ public sealed partial class SceneExporter
         Geometry geometry, Dictionary<SceneObject, int> nodeMap)
     {
         var bindings = new List<ExportSkinBinding>();
-        if ((sceneObject.Flags & 0x200000) == 0 || sceneObject.ActorNode == null)
+        if ((sceneObject.Flags & ExportObjectFlags.SkinPalette) == 0 || sceneObject.ActorNode == null)
             return bindings;
         foreach (var source in geometry.Skin)
         {
@@ -31,12 +31,11 @@ public sealed partial class SceneExporter
     {
         var palette = sceneObject.ActorNode!;
         if (index < 0) return null;
-        if ((sceneObject.Flags & 0x1000000) != 0)
+        if ((sceneObject.Flags & ExportObjectFlags.LinkedPalette) != 0)
         {
             if (index >= palette.Links.Length) return null;
             var link = palette.Links[index];
-            var target = link.Index == -1 ? actor.Root : link.Index >= 0 && link.Index < actor.Bones.Count
-                ? actor.Bones[link.Index] : actor.Members.FirstOrDefault(member => member.GaoKey == link.Key);
+            var target = ResolvePaletteBone(actor, link.Index, link.Key);
             return target != null && nodeMap.TryGetValue(target, out int node) ? node : null;
         }
         if (index >= palette.Matrices.Length) return null;
@@ -78,5 +77,12 @@ public sealed partial class SceneExporter
         int skinIndex = skins.Count;
         skins.Add(D("joints", joints.ToArray(), "inverseBindMatrices", Floats(inverse.ToArray(), 16, "MAT4"), "skeleton", group));
         return skinIndex;
+    }
+    private static SceneObject? ResolvePaletteBone(SceneActor actor, int index, uint key)
+    {
+        if (index == -1) return actor.Root;
+        bool validBoneIndex = index >= 0 && index < actor.Bones.Count;
+        if (validBoneIndex) return actor.Bones[index];
+        return actor.Members.FirstOrDefault(member => member.GaoKey == key);
     }
 }

@@ -12,7 +12,7 @@ public sealed partial class SceneExporter
             uv = PlanarUv(sceneObject, position, layer);
         if (layer.UvMode is 2 or 3)
             warnings.Add("View-dependent environment/diffuse UV uses the stored UV map in the export.");
-        if ((layer.Flags & 0xC0000000) != 0)
+        if ((layer.Flags & JadeMaterialFlags.Scrolling) != 0)
             warnings.Add("Animated texture UV transforms are frozen at time zero.");
         var matrix = layer.UvMatrix(0, out var shift);
         var transformed = new Vector2(matrix.X * uv.X + matrix.Y * uv.Y + shift.X,
@@ -50,12 +50,11 @@ public sealed partial class SceneExporter
         var palette = sceneObject.ActorNode;
         if (palette == null) return false;
         int index = layer.Custom >> 8 & 7;
-        if ((sceneObject.Flags & 0x1000000) == 0)
+        if ((sceneObject.Flags & ExportObjectFlags.LinkedPalette) == 0)
             return index < palette.Matrices.Length && Matrix4x4.Invert(palette.Matrices[index], out projection);
         if (index >= palette.Links.Length || sceneObject.Actor is not { } actor) return false;
         var link = palette.Links[index];
-        var bone = link.Index == -1 ? actor.Root : link.Index >= 0 && link.Index < actor.Bones.Count
-            ? actor.Bones[link.Index] : actor.Members.FirstOrDefault(member => member.GaoKey == link.Key);
+        var bone = ResolvePaletteBone(actor, link.Index, link.Key);
         var meshWorld = sceneObject.PreviewMatrix ?? AnimationMath.Trs(sceneObject.Transform);
         if (bone == null || !Matrix4x4.Invert(meshWorld, out var inverseMesh)) return false;
         var boneWorld = bone.PreviewMatrix ?? AnimationMath.Trs(bone.Transform);

@@ -4,6 +4,8 @@ namespace JadeView;
 // explicit channel state only; it does not invent blink triggers or speech keys.
 public static class FaceMorphChannelEvaluator
 {
+    // Exclusive bound: converting this float or larger to Int32 is invalid.
+    private const float MaximumProgressionExclusive = 2147483648f;
     public static float[] Evaluate(int groupCount, IEnumerable<FaceMorphChannel> channels)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(groupCount);
@@ -18,7 +20,7 @@ public static class FaceMorphChannelEvaluator
         float weight = channel.Weight;
         float progression = channel.Progression;
         bool invalidState = !float.IsFinite(weight) || !float.IsFinite(progression)
-            || progression < 0 || progression >= 2147483648f;
+            || progression < 0 || progression >= MaximumProgressionExclusive;
         if (invalidState)
             throw new ArgumentException("Morph channel requires finite weight and nonnegative, bounded progression.");
         var references = channel.GroupReferences;

@@ -1,5 +1,3 @@
-using System.Numerics;
-
 namespace JadeView;
 
 // Editor authoring state: direct weights or explicit PC channel controls, without inferred timing.
@@ -57,7 +55,13 @@ public sealed partial class FaceMorphPreview
         ChannelsActive = false;
         weights[group] = weight;
     }
-    public void Reset() { StopBlink(); Array.Clear(weights); Timeline.Playing = false; ResetChannelState(); }
+    public void Reset()
+    {
+        StopBlink();
+        Array.Clear(weights);
+        Timeline.Playing = false;
+        ResetChannelState();
+    }
     public void Seek(float time)
     {
         StopBlink();
@@ -77,17 +81,4 @@ public sealed partial class FaceMorphPreview
         sample.CopyTo(weights, 0);
     }
 
-    public Vector3[] Positions()
-    {
-        if (Data == null || !weights.Any(weight => weight != 0)) return Geometry.Positions;
-        var positions = (Vector3[])Geometry.Positions.Clone();
-        foreach (var group in Data.Groups)
-        {
-            float weight = weights[group.Index];
-            if (weight == 0) continue;
-            for (int entry = 0; entry < group.VertexIndices.Length; entry++)
-                positions[group.VertexIndices[entry]] += group.Deltas[entry] * weight;
-        }
-        return positions;
-    }
 }
