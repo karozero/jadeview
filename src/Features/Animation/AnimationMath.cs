@@ -4,6 +4,18 @@ namespace JadeView;
 
 public static class AnimationMath
 {
+    public static Matrix4x4 SkinInverseBind(SkinBinding binding, uint drawFlags)
+    {
+        var inverse = binding.InverseBind;
+        if ((drawFlags & 0x8000) == 0)
+        {
+            inverse.M11 = -inverse.M11;
+            inverse.M21 = -inverse.M21;
+            inverse.M31 = -inverse.M31;
+            inverse.M41 = -inverse.M41;
+        }
+        return inverse;
+    }
     public static Matrix4x4 Trs(TransformData t) => Matrix4x4.CreateScale(t.Scale) * Matrix4x4.CreateFromQuaternion(t.Rotation) * Matrix4x4.CreateTranslation(t.Translation);
     public static Matrix4x4 Matrix(byte[] bytes, int p)
     {

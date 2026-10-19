@@ -71,7 +71,8 @@ public sealed class SceneActor
             var keys = track.Keys.Where(k => k.Position != null || k.Rotation != null || k.Scale != null).ToList();
             if (keys.Count == 0) continue;
             var first = keys.LastOrDefault(k => k.Time <= Time) ?? keys[0];
-            int index = keys.IndexOf(first); var next = index + 1 < keys.Count ? keys[index + 1] : keys[0];
+            int index = keys.IndexOf(first);
+            var next = index + 1 < keys.Count ? keys[index + 1] : Loop ? keys[0] : first;
             float t = first.Duration > 0 ? Math.Clamp((Time - first.Time) / first.Duration, 0, 1) : 0;
             Matrix4x4.Decompose(locals[target], out var scale, out var rotation, out var position);
             if ((first.Flags & 2048) != 0) t=0;
@@ -126,9 +127,7 @@ public sealed class SceneActor
                 if (binding.Bone < 0 || binding.Bone >= obj.ActorNode.Matrices.Length) continue;
                 bone = obj.ActorNode.Matrices[binding.Bone] * (Root.PreviewMatrix ?? AnimationMath.Trs(Root.Transform));
             }
-            var flashed = binding.InverseBind;
-            // GEO_SKN_MulMatrixMatrixSym / Iris l.a: mirrored geometry reflects X.
-            if ((obj.DrawFlags & 0x8000) == 0) { flashed.M11 = -flashed.M11; flashed.M21 = -flashed.M21; flashed.M31 = -flashed.M31; flashed.M41 = -flashed.M41; }
+            var flashed = AnimationMath.SkinInverseBind(binding, obj.DrawFlags);
             var matrix = flashed * bone * inverseMesh;
             foreach (uint packed in binding.PackedWeights)
             {
