@@ -14,7 +14,7 @@ public sealed partial class SceneExporter
         if (!canBake || !CanBakeLayerUvs(sceneObject, geometry, part, layers)) return null;
         var sources = ReadBakeSources(layers);
         if (sources == null) return null;
-        float alphaScale = !reflection && (layers[1].Flags & 0x400) != 0 ? layers[1].OverrideAlpha : 1;
+        float alphaScale = !reflection && (layers[1].Flags & JadeMaterialFlags.OverrideAlpha) != 0 ? layers[1].OverrideAlpha : 1;
         var reflectionNormals = reflection ? ReferenceReflectionNormals(sceneObject, geometry, positions) : null;
         Func<int, Vector4[][]>? tints = reflection
             ? triangle => ReflectionCornerTints(sceneObject, geometry, part, material, layers, triangle) : null;

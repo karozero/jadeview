@@ -5,6 +5,10 @@ namespace JadeView;
 // PC SubTexture layout, decoded independently from Iris common.a.d_0/Common.j.
 public sealed record JadeMaterialLayer(ushort Custom, uint Flags, uint TransformU, uint TransformV, uint Texture)
 {
+    private const int MaterialHeaderSize = 36;
+    private const int LayerRecordSize = 20;
+    private const int LayeredMaterialType = 5;
+    private const int SimpleMaterialType = 3;
     public int UvMode => (int)(Flags >> 20 & 15);
     public int ColorMode => (int)(Flags >> 12 & 15);
     public int Blend => (int)(Flags >> 16 & 15);
@@ -14,7 +18,7 @@ public sealed record JadeMaterialLayer(ushort Custom, uint Flags, uint Transform
     public bool WriteAlpha => (Flags & 0x20) == 0;
     // Iris: (color | 0xff000000) XOR (customAlpha XOR 0xff000000).
     public float OverrideAlpha => (Custom >> 8) / 255f;
-    public bool Disabled => (Flags & 0x800) != 0;
+    public bool Disabled => (Flags & JadeMaterialFlags.Disabled) != 0;
     public Vector4 UvMatrix(float time, out Vector2 offset)
     {
         offset = Vector2.Zero;
@@ -30,8 +34,8 @@ public sealed record JadeMaterialLayer(ushort Custom, uint Flags, uint Transform
             uint origin = BitConverter.SingleToUInt32Bits(12288f);
             return F(origin | (BitConverter.SingleToUInt32Bits(speed * time + 12288f) & 0x3ff)) - 12288f;
         }
-        if ((Flags & 0x40000000) != 0) offset.X = Scroll(offset.X, time);
-        if ((Flags & 0x80000000) != 0) offset.Y = Scroll(offset.Y, time);
+        if ((Flags & JadeMaterialFlags.ScrollU) != 0) offset.X = Scroll(offset.X, time);
+        if ((Flags & JadeMaterialFlags.ScrollV) != 0) offset.Y = Scroll(offset.Y, time);
         int rotation = (int)((TransformV & 1) | 4 * (TransformU & 1) |
             ((TransformU & 0x10000) | (TransformV >> 2 & 0x4000)) >> 13);
         ReadOnlySpan<float> sine = [0, .3826834f, .7071067f, .9238795f, 1, .9238795f, .7071067f, .3826834f,
@@ -42,13 +46,13 @@ public sealed record JadeMaterialLayer(ushort Custom, uint Flags, uint Transform
     public static List<JadeMaterialLayer> Read(byte[]? bytes)
     {
         var result = new List<JadeMaterialLayer>();
-        if (bytes == null || bytes.Length < 36) return result;
+        if (bytes == null || bytes.Length < MaterialHeaderSize) return result;
         int type = Preview.I32(bytes, 0);
-        if (type == 5)
-            for (int p = 36; p + 20 <= bytes.Length; p += 20)
-                result.Add(new((ushort)Preview.U16(bytes, p + 2), Preview.U32(bytes, p + 4),
-                    Preview.U32(bytes, p + 8), Preview.U32(bytes, p + 12), Preview.U32(bytes, p + 16)));
-        else if (type == 3)
+        if (type == LayeredMaterialType)
+            for (int offset = MaterialHeaderSize; offset + LayerRecordSize <= bytes.Length; offset += LayerRecordSize)
+                result.Add(new((ushort)Preview.U16(bytes, offset + 2), Preview.U32(bytes, offset + 4),
+                    Preview.U32(bytes, offset + 8), Preview.U32(bytes, offset + 12), Preview.U32(bytes, offset + 16)));
+        else if (type == SimpleMaterialType)
             result.Add(new(0, 7, 0, 0, Preview.U32(bytes, 28)));
         return result;
     }

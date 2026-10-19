@@ -42,3 +42,17 @@ The project explicitly compiles `src/**/*.cs`. Build and run commands remain the
 Code is grouped by application feature, and each feature owns its model classes in its `Models` directory. Individual data types stay in their own files and retain the `JadeView` namespace. Editor panels and renderer verification use partial classes to retain shared private state and the existing API. No algorithms, serialization formats, UI behavior or supported capabilities were intentionally changed.
 
 Folder boundaries do not yet enforce dependency direction: scene loading still refers to editing matrix types, the renderer still contains viewport input/UI, and the editor coordinates file operations. These remain visible follow-up refactoring points. Partial files improve navigation but do not create independent services.
+
+## Export implementation boundaries
+
+`SceneExport.cs` selects objects and coordinates an export. `SceneExport.Nodes.cs`
+handles scene nodes and placement; `SceneExport.Accessors.cs` writes binary views
+and accessors; `SceneExport.Document.cs` assembles JSON and writes GLB chunks.
+`SceneExport.FileNames.cs` owns output filename rules, and `Materials/SceneExport.Png.cs`
+encodes texture images. These partial files still share one export lifetime.
+
+`Export/Models/GlbFormat.cs` names container and accessor constants.
+`ExportPlacement` preserves the UI's existing integer placement values.
+`AssetBrowser/Models/JadeMaterialFlags.cs` names shared PC material bit flags;
+material parsing and morph parsing keep record sizes beside their readers.
+This cleanup does not extend material support; the RLI overlay task remains deferred.

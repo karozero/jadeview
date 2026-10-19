@@ -12,19 +12,19 @@ public sealed partial class SceneExporter
             material["alphaMode"] = "BLEND";
             return;
         }
-        if ((layer.Flags & 0x10) == 0) return;
+        if ((layer.Flags & JadeMaterialFlags.AlphaTest) == 0) return;
         material["alphaMode"] = "MASK";
         material["alphaCutoff"] = inverseMask ? .5f : (layer.Flags >> 22 & 0xfc) / 255f;
     }
 
     private static bool CanBakeInverseMask(JadeMaterialLayer? layer) => layer != null &&
         layer.Blend is 0 or 7 && (layer.Flags & 0x90) == 0x90 &&
-        ((layer.Flags & 0x400) != 0 || layer.ColorMode is 0 or 6);
+        ((layer.Flags & JadeMaterialFlags.OverrideAlpha) != 0 || layer.ColorMode is 0 or 6);
 
     private static byte[] InverseMaskPng(ResolvedTexture texture, JadeMaterialLayer layer)
     {
         var rgba = Preview.DecodeTga(texture.ToTextureAsset());
-        float factor = (layer.Flags & 0x400) != 0 ? layer.OverrideAlpha : 1;
+        float factor = (layer.Flags & JadeMaterialFlags.OverrideAlpha) != 0 ? layer.OverrideAlpha : 1;
         float threshold = (layer.Flags >> 22 & 0xfc) / 255f;
         // Jade discards alpha >= reference; glTF MASK keeps alpha >= cutoff.
         // Bake the inverse comparison including the constant alpha override.

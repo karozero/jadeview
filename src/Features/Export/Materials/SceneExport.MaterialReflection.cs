@@ -64,7 +64,7 @@ public sealed partial class SceneExporter
         bool usesInstanceAlpha = sceneObject.RliColors.Length > 0 && layer.Blend != 0
             && layer.ColorMode is 0 or 6;
         if (usesInstanceAlpha) tint.W = hasInstancePaint ? (paint >> 24) / 255f : 1;
-        if ((layer.Flags & 0x400) != 0) tint.W = layer.OverrideAlpha;
+        if ((layer.Flags & JadeMaterialFlags.OverrideAlpha) != 0) tint.W = layer.OverrideAlpha;
         return tint;
     }
 }

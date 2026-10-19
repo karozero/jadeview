@@ -30,7 +30,7 @@ public sealed partial class SceneExporter
         {
             if (space >= 2)
                 warnings.Add("Unresolved view/bone planar UV is approximated with world projection.");
-            var sourceMatrix = options.Placement == 1 ? sceneObject.InitialTransform.ToRenderMatrix() : sceneObject.RenderMatrix;
+            var sourceMatrix = options.Placement == ExportPlacement.Original ? sceneObject.InitialTransform.ToRenderMatrix() : sceneObject.RenderMatrix;
             point = TransformData.FromRender(Vector3.Transform(Geometry.ToRender(point), sourceMatrix));
         }
         int axis = layer.Custom >> 4 & 3;

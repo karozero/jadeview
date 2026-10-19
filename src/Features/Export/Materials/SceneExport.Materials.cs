@@ -48,8 +48,8 @@ public sealed partial class SceneExporter
     {
         if (layer == null) return;
         bool customBlend = layer.Blend is not (0 or 1 or 7);
-        bool inverseBlend = layer.Blend == 1 && (layer.Flags & 0x80) != 0;
-        bool combinedAlphaTest = layer.Blend is not (0 or 7) && (layer.Flags & 0x10) != 0;
+        bool inverseBlend = layer.Blend == 1 && (layer.Flags & JadeMaterialFlags.InverseBlend) != 0;
+        bool combinedAlphaTest = layer.Blend is not (0 or 7) && (layer.Flags & JadeMaterialFlags.AlphaTest) != 0;
         bool inverseAlphaTest = (layer.Flags & 0x90) == 0x90 && !inverseMask;
         if (customBlend || inverseBlend || combinedAlphaTest || inverseAlphaTest)
             warnings.Add($"'{sceneObject.Name}' uses blend/alpha flags {layer.Flags:X8} that cannot be represented exactly by one glTF material; transparency is approximate.");
@@ -65,7 +65,7 @@ public sealed partial class SceneExporter
             color[1] = (packed >> 8 & 255) / 255f;
             color[2] = (packed >> 16 & 255) / 255f;
         }
-        if (layer != null && (layer.Flags & 0x400) != 0)
+        if (layer != null && (layer.Flags & JadeMaterialFlags.OverrideAlpha) != 0)
             color[3] = layer.OverrideAlpha;
         return color;
     }

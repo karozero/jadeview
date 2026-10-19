@@ -30,16 +30,16 @@ internal sealed class MaterialAtlasBaker(MaterialAtlasLayout layout, IReadOnlyLi
         cornerUvs[triangle * 3 + 1] = new((originX + padding + layout.Edge) / layout.Size, (originY + padding) / layout.Size);
         cornerUvs[triangle * 3 + 2] = new((originX + padding) / layout.Size, (originY + padding + layout.Edge) / layout.Size);
         for (int row = 0; row < MaterialAtlasLayout.TileSize; row++)
-        for (int column = 0; column < MaterialAtlasLayout.TileSize; column++)
-        {
-            var weights = Barycentric(column, row);
-            var color = Blend(uvs, tints, weights);
-            int offset = ((originY + row) * layout.Size + originX + column) * 4;
-            rgba[offset] = Quantize(color.X);
-            rgba[offset + 1] = Quantize(color.Y);
-            rgba[offset + 2] = Quantize(color.Z);
-            rgba[offset + 3] = 255;
-        }
+            for (int column = 0; column < MaterialAtlasLayout.TileSize; column++)
+            {
+                var weights = Barycentric(column, row);
+                var color = Blend(uvs, tints, weights);
+                int offset = ((originY + row) * layout.Size + originX + column) * 4;
+                rgba[offset] = Quantize(color.X);
+                rgba[offset + 1] = Quantize(color.Y);
+                rgba[offset + 2] = Quantize(color.Z);
+                rgba[offset + 3] = 255;
+            }
     }
 
     private Vector3 Barycentric(int column, int row)

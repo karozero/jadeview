@@ -36,7 +36,7 @@ public sealed partial class SceneExporter
 
     private Matrix4x4 ActorPlacement(SceneActor actor)
     {
-        if (options.Placement == 2) return originOffset;
+        if (options.Placement == ExportPlacement.AtOrigin) return originOffset;
         if (options.Placement != 1) return Matrix4x4.Identity;
         if (!Matrix4x4.Invert(actor.Root.RenderMatrix, out var inverse))
             throw new InvalidDataException("Singular actor placement transform.");

@@ -9,7 +9,7 @@ public sealed partial class SceneExporter
     {
         if (layer?.ColorMode is not (3 or 5)) return;
         bool invertRgb = layer.ColorMode == 5;
-        bool overrideAlpha = (layer.Flags & 0x400) != 0;
+        bool overrideAlpha = (layer.Flags & JadeMaterialFlags.OverrideAlpha) != 0;
         var colors = new List<float>(sourceVertices.Count * 4);
         foreach (int vertex in sourceVertices)
         {
