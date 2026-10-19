@@ -31,12 +31,21 @@ Download the latest packaged build from [GitHub Releases](https://github.com/kar
 
 ## Build
 
-To build from source, install Windows and the **.NET 10 SDK**, then open a terminal in the project directory and run:
+To build from source for **Windows x64**, install the **.NET 10 SDK** on Windows, then open a terminal in the project directory and run:
 
 ```powershell
-dotnet restore
-dotnet build -c Release
+dotnet publish JadeView.csproj -c Release -r win-x64 --self-contained false -o artifacts/publish/win-x64
 ```
+
+Run `JadeView.exe` from `artifacts/publish/win-x64`. This smaller package requires the **.NET 10 Desktop Runtime (x64)** on the target machine and includes native dependencies only for Windows x64.
+
+For a standalone package that includes .NET, publish to a separate directory:
+
+```powershell
+dotnet publish JadeView.csproj -c Release -r win-x64 --self-contained true -o artifacts/publish/win-x64-standalone
+```
+
+The standalone package is larger but does not require a separate .NET installation. Distribute the entire chosen publish directory, not the whole `bin` folder. `dotnet publish` restores dependencies automatically.
 
 To start the source build with your game archive, run:
 

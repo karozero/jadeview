@@ -31,12 +31,21 @@
 
 ## Сборка
 
-Чтобы собрать приложение из исходного кода, установите Windows и **.NET 10 SDK**, откройте терминал в папке проекта и выполните:
+Для сборки из исходного кода под **Windows x64** установите **.NET 10 SDK** на Windows, откройте терминал в папке проекта и выполните:
 
 ```powershell
-dotnet restore
-dotnet build -c Release
+dotnet publish JadeView.csproj -c Release -r win-x64 --self-contained false -o artifacts/publish/win-x64
 ```
+
+Запускайте `JadeView.exe` из `artifacts/publish/win-x64`. Этот компактный пакет требует установленного **.NET 10 Desktop Runtime (x64)** на компьютере пользователя и содержит нативные зависимости только для Windows x64.
+
+Для автономного пакета со встроенным .NET используйте отдельную папку:
+
+```powershell
+dotnet publish JadeView.csproj -c Release -r win-x64 --self-contained true -o artifacts/publish/win-x64-standalone
+```
+
+Автономный пакет больше по размеру, но не требует отдельной установки .NET. Распространяйте всё содержимое выбранной папки публикации, а не всю папку `bin`. Команда `dotnet publish` автоматически восстанавливает зависимости.
 
 Чтобы запустить приложение из исходников с архивом игры, выполните:
 
