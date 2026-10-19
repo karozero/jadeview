@@ -24,10 +24,12 @@ public sealed partial class SceneExporter
     private Vector2 PlanarUv(SceneObject sceneObject, Vector3 point, JadeMaterialLayer layer)
     {
         int space = layer.Custom >> 6 & 3;
-        if (space >= 2)
-            warnings.Add("View/bone planar UV is approximated with world projection.");
-        if (space != 0)
+        if (space == 3 && TryBoneProjection(sceneObject, layer, out var boneProjection))
+            point = Vector3.Transform(point, boneProjection);
+        else if (space != 0)
         {
+            if (space >= 2)
+                warnings.Add("Unresolved view/bone planar UV is approximated with world projection.");
             var sourceMatrix = options.Placement == 1 ? sceneObject.InitialTransform.ToRenderMatrix() : sceneObject.RenderMatrix;
             point = TransformData.FromRender(Vector3.Transform(Geometry.ToRender(point), sourceMatrix));
         }
@@ -40,5 +42,23 @@ public sealed partial class SceneExporter
             _ => new(Vector3.Dot(point, new(.70711f, -.70711f, 0)),
                 Vector3.Dot(point, new(-.57735f, -.57735f, .57735f)))
         };
+    }
+
+    private static bool TryBoneProjection(SceneObject sceneObject, JadeMaterialLayer layer, out Matrix4x4 projection)
+    {
+        projection = Matrix4x4.Identity;
+        var palette = sceneObject.ActorNode;
+        if (palette == null) return false;
+        int index = layer.Custom >> 8 & 7;
+        if ((sceneObject.Flags & 0x1000000) == 0)
+            return index < palette.Matrices.Length && Matrix4x4.Invert(palette.Matrices[index], out projection);
+        if (index >= palette.Links.Length || sceneObject.Actor is not { } actor) return false;
+        var link = palette.Links[index];
+        var bone = link.Index == -1 ? actor.Root : link.Index >= 0 && link.Index < actor.Bones.Count
+            ? actor.Bones[link.Index] : actor.Members.FirstOrDefault(member => member.GaoKey == link.Key);
+        var meshWorld = sceneObject.PreviewMatrix ?? AnimationMath.Trs(sceneObject.Transform);
+        if (bone == null || !Matrix4x4.Invert(meshWorld, out var inverseMesh)) return false;
+        var boneWorld = bone.PreviewMatrix ?? AnimationMath.Trs(bone.Transform);
+        return Matrix4x4.Invert(boneWorld * inverseMesh, out projection);
     }
 }

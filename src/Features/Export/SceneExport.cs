@@ -101,30 +101,6 @@ public sealed partial class SceneExporter
     }
     private void Add(int node,List<int>? children){if(children==null)roots.Add(node);else children.Add(node);}
 
-    private int Material(SceneObject obj,ResolvedMaterial? source,JadeMaterialLayer? layer)
-    {
-        var pbr=D("baseColorFactor",new[]{1f,1f,1f,1f},"metallicFactor",0f,"roughnessFactor",1f);
-        var n=D("name",$"{obj.Name} {source?.Id.ToString()??"default"}","pbrMetallicRoughness",pbr,"doubleSided",true,"extensions",D("KHR_materials_unlit",D()));
-        if(SceneRenderer.IsCollision(obj))pbr["baseColorFactor"]=new[]{.25f,.6f,1f,1f};
-        else if(options.Textures&&layer!=null&&resolver.TryResolveTexture(layer.Texture,out var tex))
-        {
-            string key=tex.ToTextureAsset().Name;
-            if(!imageCache.TryGetValue(key,out int image))
-            {
-                image=images.Count;images.Add(D("name",tex.Id.ToString(),"mimeType","image/png","bufferView",View(Png(tex))));imageCache[key]=image;
-            }
-            int sampler=textures.Count; // one sampler per material to preserve wrapping
-            int texture=textures.Count;textures.Add(D("source",image,"sampler",sampler));
-            pbr["baseColorTexture"]=D("index",texture);
-            samplers.Add(D("wrapS",(layer.Flags&1)!=0?10497:33071,"wrapT",(layer.Flags&2)!=0?10497:33071,"magFilter",(layer.Flags&4)!=0?9729:9728,"minFilter",(layer.Flags&4)!=0?9729:9728));
-        }
-        if(layer!=null)
-        {
-            if(layer.Blend is not(0 or 7)){n["alphaMode"]="BLEND";if((layer.Flags&0x400)!=0)pbr["baseColorFactor"]=new[]{1f,1f,1f,layer.OverrideAlpha};}
-            else if((layer.Flags&0x10)!=0){n["alphaMode"]="MASK";n["alphaCutoff"]=(layer.Flags>>22&0xfc)/255f;}
-        }
-        int index=materials.Count;materials.Add(n);return index;
-    }
     private readonly List<Obj> samplers=[];
     private static byte[] Png(ResolvedTexture tex)
     {

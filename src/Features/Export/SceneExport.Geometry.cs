@@ -39,7 +39,7 @@ public sealed partial class SceneExporter
         var layers = JadeMaterialLayer.Read(material?.SourceBytes).Where(layer => !layer.Disabled).ToList();
         var colorLayer = layers.FirstOrDefault(layer => layer.WriteRgb && layer.Blend is 0 or 7 &&
             layer.Texture is not (0 or uint.MaxValue)) ?? layers.FirstOrDefault(layer =>
-            layer.WriteRgb && layer.Texture is not (0 or uint.MaxValue));
+            layer.WriteRgb && layer.Texture is not (0 or uint.MaxValue)) ?? layers.FirstOrDefault(layer => layer.WriteRgb);
         if (layers.Count > 1)
             warnings.Add("Multi-pass Jade materials export their primary color layer; game-specific effects are not glTF shaders.");
         if (skinned && colorLayer?.UvMode == 6)
