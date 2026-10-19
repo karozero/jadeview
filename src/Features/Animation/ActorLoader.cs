@@ -46,6 +46,7 @@ internal static class ActorLoader
                 var r=Find(root.GaoKey);if(r==null)continue;
                 var children=Group(r.Actions);if(children.Count==0)continue;
                 var actor=new SceneActor{Root=root};actor.Members.Add(root);root.Actor=actor;
+                actor.MouthController=PcMorphControllerDiscovery.Discover(r,Find,record=>origins[record]);
                 root.ActorNode=Node(bytes,root);
                 foreach(var child in children)
                 {

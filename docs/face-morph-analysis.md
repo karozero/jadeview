@@ -7,6 +7,34 @@ changed during the analysis.
 
 ## Implementation checkpoint (2026-10-19)
 
+### What the experimental mouth cycle reproduces
+
+The mouth cycle uses a **32-form sequence recovered from the PC game's code**;
+it is not a random selection of morph targets. The controller selects the next
+form, transitions toward it, then advances after the transition settles. At the
+end of the list it wraps to the beginning. The supported controller family and
+effective source variables determine which recovered sequence and transition
+completion rule apply.
+
+JadeView reproduces that form order, factor/progression calculations and the
+binding to the head's mouth channel. Controller discovery uses brain/script
+resources and module data rather than character names. Current verification
+covers Sally, Pey'j and militaire; unknown controller families are not guessed.
+
+**The launch and initial state are still a manual simulation.** Play starts at
+sequence index zero with current factor zero; strength and speed are chosen in
+the preview. The original game's activation/stop scheduling, interruptions,
+saved controller state and synchronization with spoken lines are not replayed.
+Consequently, this is a recovered game mouth-motion mechanism triggered by the
+user, not a complete original dialogue/lip-sync animation.
+
+Optional GLB export samples a copy of the current simulated cycle at 60 Hz into
+a separate experimental clip. It does not record authoring keys or establish
+original speech timing. Details and evidence:
+[automatic binding](face-morph-pc-automatic-binding.md),
+[controller variants](face-morph-pc-controller-variants.md) and
+[module binding / export](face-morph-pc-module-binding.md).
+
 ### PC runtime breakthrough
 
 The saved crash dumps contain unpacked PC code. Static analysis now establishes

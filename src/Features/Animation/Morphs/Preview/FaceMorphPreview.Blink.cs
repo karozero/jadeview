@@ -8,6 +8,7 @@ public sealed partial class FaceMorphPreview
     public void StartBlink()
     {
         if (!SupportsPcBlink) throw new InvalidOperationException("PC blink targets are not qualified for this model.");
+        StopMouthCycle();
         StopBlink();
         blink = new(CopyWeights(), CopyChannelState());
         ChannelsActive = false;

@@ -1,0 +1,44 @@
+namespace JadeView;
+
+internal static class PcMorphControllerSequences
+{
+    // Source initializer 7100AF12 / 009763A0; update 7100B928 / 005ADBF0.
+    // See docs/face-morph-pc-controller-variants.md and docs/data/pc-controller-7100AF12.json.
+    internal static readonly PcMorphControllerBinding FactorAware = new(0x7100AF12, 0x7100B928,
+        Array.AsReadOnly(new[]
+        {
+            50, 31, 50, 31, 31, 54, 31, 50, 51, 31, 52, 31, 50, 51, 31, 52,
+            50, 50, 31, 31, 51, 52, 31, 52, 31, 50, 51, 54, 31, 31, 52, 31
+        }), PcMorphTransitionCompletion.ProgressionAndFactor);
+
+    // Initializer 35001FF5 / A07680; update 9E002C81 / 4F7D30.
+    private const uint SharedInitializerKey = 0x35001FF5;
+    private const uint SharedUpdateKey = 0x9E002C81;
+    private static readonly PcMorphControllerBinding FriendHead = new(SharedInitializerKey, SharedUpdateKey,
+        Array.AsReadOnly(new[]
+        {
+            6, 4, 4, 4, 1, 4, 5, 5, 5, 3, 5, 1, 1, 4, 4, 3,
+            4, 4, 1, 5, 5, 4, 1, 4, 5, 5, 1, 6, 4, 3, 4, 1
+        }),
+        PcMorphTransitionCompletion.ProgressionThreshold);
+    private static readonly PcMorphControllerBinding OtherHead = new(SharedInitializerKey, SharedUpdateKey,
+        Array.AsReadOnly(new[]
+        {
+            4, 1, 4, 1, 1, 3, 1, 4, 3, 1, 5, 1, 4, 3, 1, 5,
+            4, 4, 1, 1, 3, 5, 1, 5, 1, 4, 3, 3, 1, 1, 5, 1
+        }),
+        PcMorphTransitionCompletion.ProgressionThreshold);
+
+    internal static PcMorphControllerBinding SharedHead(bool friend) => friend ? FriendHead : OtherHead;
+
+    internal static PcMorphControllerFamily Identify(IReadOnlySet<uint> codeKeys)
+    {
+        bool factorAware = Matches(FactorAware, codeKeys);
+        bool sharedHead = Matches(FriendHead, codeKeys);
+        if (factorAware == sharedHead) return PcMorphControllerFamily.Unknown;
+        return factorAware ? PcMorphControllerFamily.FactorAware : PcMorphControllerFamily.SharedHead;
+    }
+
+    private static bool Matches(PcMorphControllerBinding binding, IReadOnlySet<uint> codeKeys) =>
+        codeKeys.Contains(binding.InitializerKey) && codeKeys.Contains(binding.UpdateKey);
+}

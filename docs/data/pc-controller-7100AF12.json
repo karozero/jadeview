@@ -1,0 +1,20 @@
+{
+  "initializerCodeKey": "7100AF12",
+  "initializerAddress": "009763A0",
+  "updateCodeKey": "7100B928",
+  "updateAddress": "005ADBF0",
+  "completion": "ProgressionAndFactor",
+  "mouthSequence": [
+    50, 31, 50, 31, 31, 54, 31, 50,
+    51, 31, 52, 31, 50, 51, 31, 52,
+    50, 50, 31, 31, 51, 52, 31, 52,
+    31, 50, 51, 54, 31, 31, 52, 31
+  ],
+  "initializedTransitionPhases": [2, 2, 2, 2, 2, 2, 2],
+  "headBindingCodeKey": "26003A64",
+  "headBindingAddress": "004F0D00",
+  "headModuleSelector": 0,
+  "headReferenceOffset": "000007F8",
+  "carrierSha256": "295f66ef3a1486fe84d46db745788506671958227bb7ff2c0283f5a89d0c8be0",
+  "limits": "Static recovered constants only. No runtime invocation order, module-table instance, current index or saved-state restoration inferred. This file is research data, not an automatically selected character profile."
+}

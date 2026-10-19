@@ -43,6 +43,7 @@ public sealed partial class EditorShell
         ImGui.Checkbox("Show empty groups", ref showEmptyMorphGroups);
         DrawMorphChannels(actor, preview);
         DrawMorphBlink(actor, preview);
+        DrawMorphMouth(actor, morphPreviewTarget, preview);
         DrawMorphExpressions(actor, preview);
         DrawMorphWeights(actor, preview);
         DrawMorphTimeline(actor, preview);

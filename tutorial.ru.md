@@ -25,6 +25,8 @@
 
 ## Мимика: face morphs
 
+**Экспериментальный цикл рта:** подхватывается автоматически при совместимом восстановленном контроллере и варианте головы (проверено на Sally, Пей’дже и militaire). Выберите голову в **Morph mesh**, откройте **Experimental mouth cycle** и нажмите **Play mouth cycle**. После изменения силы/скорости перезапустите цикл. Stop возвращает предыдущую позу, Reset обнуляет её. Для экспорта движения оставьте цикл включённым, в Export выберите **Animations and skinning → Active experimental mouth cycle** и длительность. В Blender появится отдельный Action/NLA-трек `Experimental mouth cycle · …`. Это симуляция, а не lip-sync реплики; `.bgemod` сохраняет исходную позу.
+
 1. Выберите Sally или другого поддерживаемого актора, раскройте **Facial / vertex morphs**, укажите голову в **Morph mesh**.
 2. Меняйте `PC_Morph_XX` либо **PC morph channels → Weight / Progression**. Progression проходит по упорядоченным ссылкам, а не номерам групп. У Sally каналы **0 + 1** с весом **1** и progression **1** закрывают веки.
 3. **PC Sally expressions → Kit 2/3/4/5** показывает установившиеся позы игровых выражений; наборы 3 и 5 совпадают. **PC Sally blink → Preview blink / Stop blink** показывает один цикл от текущей позы век. Для HD-голов Пей’джа и militaire доступен **PC head blink**. Остановка/завершение возвращает исходную позу, новый клип не записывается. **Reset morph weights** возвращает нейтральную позу.

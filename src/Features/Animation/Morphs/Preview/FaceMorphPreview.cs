@@ -38,9 +38,14 @@ public sealed partial class FaceMorphPreview
         }
         if (source == null) return sceneObject.MorphPreview = null;
         var cached = sceneObject.MorphPreview;
-        if (cached?.Geometry == geometry && cached.Modifier == source) return cached;
+        if (cached?.Geometry == geometry && cached.Modifier == source)
+        {
+            cached.BindController(sceneObject);
+            return cached;
+        }
         var preview = new FaceMorphPreview(geometry, source);
         sceneObject.MorphPreview = preview;
+        preview.BindController(sceneObject);
         sceneObject.RestoreMorphPreview?.Invoke(preview);
         return preview;
     }
@@ -50,6 +55,7 @@ public sealed partial class FaceMorphPreview
     public void SetWeight(int group, float weight)
     {
         if (!float.IsFinite(weight)) throw new ArgumentException("Morph weight must be finite.", nameof(weight));
+        StopMouthCycle();
         StopBlink();
         Timeline.Playing = false;
         ChannelsActive = false;
@@ -57,6 +63,7 @@ public sealed partial class FaceMorphPreview
     }
     public void Reset()
     {
+        StopMouthCycle();
         StopBlink();
         Array.Clear(weights);
         Timeline.Playing = false;
@@ -64,14 +71,16 @@ public sealed partial class FaceMorphPreview
     }
     public void Seek(float time)
     {
+        StopMouthCycle();
         StopBlink();
         Timeline.Playing = false;
         ApplySample(Timeline.Seek(time));
     }
     public void Advance(float delta)
     {
-        if (Timeline.Playing) StopBlink();
-        if (BlinkPlaying) AdvanceBlink(delta);
+        if (Timeline.Playing) { StopMouthCycle(); StopBlink(); }
+        if (MouthCyclePlaying) AdvanceMouthCycle(delta);
+        else if (BlinkPlaying) AdvanceBlink(delta);
         else ApplySample(Timeline.Advance(delta));
     }
     private void ApplySample(float[]? sample)

@@ -6,9 +6,10 @@ public sealed partial class SceneExporter
 
     private void CaptureMorphTimeline(SceneActor actor, SceneObject sceneObject, int meshNode)
     {
-        if (!options.MorphAnimations || sceneObject.MorphPreview?.Timeline is not { Keys.Count: > 0 } timeline) return;
         int meshIndex = (int)nodes[meshNode]["mesh"];
         if (!meshes[meshIndex].ContainsKey("weights")) return;
+        CaptureMouthCycle(actor, sceneObject, meshNode);
+        if (!options.MorphAnimations || sceneObject.MorphPreview?.Timeline is not { Keys.Count: > 0 } timeline) return;
         foreach (var issue in sceneObject.MorphPreview!.SourceIssues)
             if (timeline.Keys.Any(key => key.Weights[issue.Group] != 0))
                 warnings.Add($"'{sceneObject.Name}' manual morph animation uses PC_Morph_{issue.Group:D2}: {issue.Message}");
@@ -26,9 +27,9 @@ public sealed partial class SceneExporter
             int input = Floats(times, 1, "SCALAR", true);
             int output = Floats(timeline.Keys.SelectMany(key => key.Weights).ToArray(), 1, "SCALAR");
             animations.Add(D("name", timeline.Name,
-                "samplers", new[] { D("input", input, "output", output, "interpolation", "LINEAR") },
+                "samplers", new[] { D("input", input, "output", output, "interpolation", timeline.Interpolation) },
                 "channels", new[] { D("sampler", 0, "target", D("node", timeline.Node, "path", "weights")) },
-                "extras", D("provenance", "user-authored morph preview", "originalGameTimeline", false)));
+                "extras", D("provenance", timeline.Provenance, "originalGameTimeline", false)));
         }
     }
 }

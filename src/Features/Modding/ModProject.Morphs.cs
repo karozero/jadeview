@@ -16,8 +16,9 @@ public sealed partial class ModProject
         int worldIndex = document.Worlds.FindIndex(world => world.Actors.Contains(actor));
         if (worldIndex < 0 || preview.Data == null || preview.Data.Groups.Length == 0) return;
         var world = document.Worlds[worldIndex];
-        var weights = preview.CopyWeights();
-        bool empty = !preview.ChannelsActive && preview.Timeline.Keys.Count == 0 && weights.All(weight => weight == 0);
+        var weights = preview.CopyAuthoringWeights();
+        var channels = preview.CopyAuthoringChannels();
+        bool empty = channels == null && preview.Timeline.Keys.Count == 0 && weights.All(weight => weight == 0);
         var record = new ModMorphPreview
         {
             Container = document.ContainerName, WorldKey = world.Key, WorldIndex = worldIndex,
@@ -25,7 +26,7 @@ public sealed partial class ModProject
             GeometrySha256 = MorphProjectSource.GeometryHash(preview.Geometry),
             ModifierSha256 = MorphProjectSource.ModifierHash(preview), TargetCount = weights.Length,
             Weights = weights, Keys = preview.Timeline.CopyKeys(), Time = preview.Timeline.Time, Loop = preview.Timeline.Loop,
-            ChannelState = preview.CopyChannelState()
+            ChannelState = channels
         };
         record.Validate();
         MorphPreviews.RemoveAll(candidate => MatchesOwner(candidate, document.ContainerName, world.Key, worldIndex, actor, member) &&

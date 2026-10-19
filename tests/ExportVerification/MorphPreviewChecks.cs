@@ -5,9 +5,11 @@ internal static class MorphPreviewChecks
 {
     internal static void VerifySally(SceneActor actor, WorldData world, ResourceResolver resolver, string output)
     {
-        var head = actor.Members.First(member => member.Name == "B sal_tete.gao");
+        var head = actor.FindModule(0) ?? throw new InvalidOperationException("Source module selector 0 did not resolve the head");
         var geometry = resolver.Geometries[head.RenderGeometryKey];
         var preview = FaceMorphPreview.Get(head, geometry)!;
+        Check(preview.Data?.Groups.Length == 55 && preview.Data.Channels.Length == 6,
+            "Source-selected head does not have the expected morph layout");
         preview.SetWeight(1, 1); preview.SetWeight(2, 1);
         actor.Evaluate(0);
         string path = Path.Combine(output, "sally-manual-blink.glb");
@@ -38,6 +40,7 @@ internal static class MorphPreviewChecks
         preview = MorphChannelExportChecks.VerifySally(actor, head, world, resolver, output);
         preview = MorphBlinkChecks.VerifySally(actor, head, world, resolver, output);
         SallyExpressionChecks.VerifySally(actor, head, world, resolver, output);
+        MorphMouthPreviewChecks.Verify(actor, head, world, resolver, output);
         MorphTimelineChecks.VerifySally(actor, head, preview, world, resolver, output);
     }
 

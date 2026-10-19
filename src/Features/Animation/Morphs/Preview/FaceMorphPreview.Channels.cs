@@ -25,6 +25,7 @@ public sealed partial class FaceMorphPreview
             BitConverter.SingleToUInt32Bits(state.Weight), BitConverter.SingleToUInt32Bits(state.Progression),
             Data!.Channels[index].GroupReferences));
         var evaluated = FaceMorphChannelEvaluator.Evaluate(weights.Length, channels);
+        StopMouthCycle();
         StopBlink();
         channelStates = (FaceMorphChannelState[])states.Clone();
         evaluated.CopyTo(weights, 0);

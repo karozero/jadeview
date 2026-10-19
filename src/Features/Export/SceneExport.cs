@@ -17,6 +17,7 @@ public sealed partial class SceneExporter
     private Matrix4x4 originOffset = Matrix4x4.Identity;
     private SceneExporter(ResourceResolver resolver, SceneExportOptions options)
     {
+        ValidateMouthCycleOptions(options);
         this.resolver = resolver;
         this.options = options;
     }
@@ -36,6 +37,8 @@ public sealed partial class SceneExporter
         var objects = SelectObjects(world, options, selected);
         exporter.SetOrigin(objects, selected);
         exporter.ExportObjects(objects);
+        if (options.ExperimentalMouthCycle && exporter.experimentalMouthClips == 0)
+            exporter.warnings.Add("No active source-qualified mouth preview was included; no experimental mouth clip was exported.");
         if (exporter.nodes.Count == 0)
             throw new InvalidOperationException("Nothing matches the export options.");
         exporter.Write(path, world.Name);

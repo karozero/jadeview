@@ -69,3 +69,53 @@ Index accessors live with the other binary accessors. Skinning and planar UV
 projection share the same palette-link resolver to avoid divergent fallback rules.
 `Materials/MaterialLayerTint.cs` evaluates reflection/detail tint separately from
 UV projection and output writing; it does not enable deferred RLI overlay baking.
+
+`Animation/Morphs/PcMorphTransitionEvaluator.cs` models one explicitly supplied,
+qualified PC controller-slot transition. Its snapshot and phase live in the
+feature's `Models` directory. It reuses the existing channel evaluator for
+weights, and owns no actor names, speech triggers, UI state or source mutation.
+Preview and export call it through the mouth-cycle evaluator; it owns no recording state.
+
+`Animation/Morphs/PcMorphMouthCycleEvaluator.cs` wraps that transition for the
+qualified automatic slot-4 cycle. Its caller supplies the sequence and controller
+snapshot (`PcMorphMouthCycleState`); it selects at most one form per update and
+does not infer character bindings, initial state or speech timing. It is also
+independent of preview/UI/export orchestration.
+
+`PcMorphTransitionCompletion` selects either progression-threshold completion
+or progression plus factor convergence with endpoint snapping. Selection belongs
+to a qualified controller binding; neither evaluator infers it from actor names.
+
+`ActorModuleMap` and `SceneActor.Modules` resolve module selectors through source
+appearance tables. Shape changes preserve FF selector inheritance. This lookup
+is separate from appearance application and facial controller timing; malformed
+maps do not fall back to guessed component indices.
+
+`FaceMorphPreview.Mouth` owns a transient manual cycle, baseline restoration and
+preview-mode takeover. The source definition comes from the verified PC profile;
+the UI additionally requires the selected mesh to resolve through its module
+selector. Project capture saves the pre-cycle authoring state, while GLB receives
+the evaluated current pose. Optional `SceneExport.MouthCycle` samples a copy into
+a separate experimental GLB clip through `FaceMorphMouthCycleSampler`; it never
+records authoring keys or changes the running controller. Provenance and STEP
+interpolation are carried by `ExportMorphTimeline` alongside ordinary authored
+LINEAR timelines.
+
+`PcMorphControllerDiscovery` follows root brain/script-model resources to a
+supported native controller family. `PcScalarVariableReader` reads bounded OVA
+scalars with model/default overlay semantics. `PcMorphControllerBinding` qualifies
+the resulting sequence against the selected module's morph data. Mouth discovery
+is independent of geometry/name profiles; unknown families remain unsupported.
+
+OVA block validation and offsets live in `PcVariableStorageReader`; scalar lookup
+stays in `PcScalarVariableReader`. `PcVariableFormat` names record sizes and types,
+and storage layouts/scalar values live in the feature's `Models` directory.
+`PcMorphControllerSequences` owns supported code signatures and family selection.
+
+`FaceMorphMouthPlaybackFactory` builds the initial controller snapshot and affected
+groups. `FaceMorphMouthCycleSettings` shares preview defaults and limits with the UI;
+playback takeover and baseline restoration remain in `FaceMorphPreview.Mouth`.
+Export-specific option validation stays in `SceneExport.MouthCycle`.
+
+The verification executable dispatches optional audit commands through
+`VerificationCommands`; its main entry point runs the verification suite.

@@ -32,10 +32,17 @@ public sealed partial class EditorShell
         bool hasAnimations = _exportTarget?.Actor != null || _exportTarget == null && ActiveWorld?.Actors.Count > 0;
         ImGui.BeginDisabled(!hasAnimations);
         ImGui.Checkbox("Animations and skinning", ref _exportOptions.Animations);
+        if (!_exportOptions.Animations) _exportOptions.ExperimentalMouthCycle = false;
         if (_exportOptions.Animations)
         {
             ImGui.Checkbox("All clips (otherwise current / first)", ref _exportOptions.AllClips);
             ImGui.Checkbox("Manual morph animations", ref _exportOptions.MorphAnimations);
+            ImGui.Checkbox("Active experimental mouth cycle", ref _exportOptions.ExperimentalMouthCycle);
+            if (_exportOptions.ExperimentalMouthCycle)
+            {
+                ImGui.SliderFloat("Mouth clip duration (s)", ref _exportOptions.MouthCycleDuration, .25f, 10, "%.2f");
+                ImGui.TextWrapped("Start a supported mouth preview first. Exports a separate simulated clip from its current state, without dialogue synchronization.");
+            }
         }
         ImGui.EndDisabled();
         ImGui.SetNextItemWidth(-1);

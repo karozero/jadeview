@@ -5,6 +5,7 @@ public sealed partial class SceneActor
     public void ApplyShape(uint key)
     {
         if (!Shapes.TryGetValue(key, out var shape)) return;
+        UpdateModuleMap(shape);
         for (int entry = 0; entry < shape[0]; entry++)
         {
             int offset = 1 + entry * 3;

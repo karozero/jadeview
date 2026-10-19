@@ -11,6 +11,16 @@ internal static class SallyExpressionChecks
         var command = SallyExpressionPresets.Decode(4, 52515)!;
         Check(command.Group == 52 && command.Weight == .149993896484375f, "Packed PC float32 residual lost its native rounding");
         Check(SallyExpressionPresets.Decode(0, 0) == null, "Zero command must leave the native slot unchanged");
+        Check(SallyExpressionPresets.Decode(0, .5f) == null, "Native half-to-even zero must leave the slot unchanged");
+        var boundary = SallyExpressionPresets.Decode(0, 999.5f)!;
+        Check(boundary.Group == 1 && boundary.Weight == -5,
+            "Native nearest-integer conversion was replaced by truncation across a group boundary");
+        var evenTie = SallyExpressionPresets.Decode(0, 1000.5f)!;
+        Check(evenTie.Group == 1 && evenTie.Weight == -5, "Native midpoint conversion must round to the even integer");
+        var oddTie = SallyExpressionPresets.Decode(0, 1001.5f)!;
+        var rounded = SallyExpressionPresets.Decode(0, 1002f)!;
+        Check(oddTie.Group == rounded.Group && oddTie.Weight == rounded.Weight,
+            "Native odd midpoint must round upward");
         foreach (float invalid in new[] { -1f, float.NaN, float.PositiveInfinity, 2147483648f })
         {
             try { SallyExpressionPresets.Decode(0, invalid); }

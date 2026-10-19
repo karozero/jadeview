@@ -6,6 +6,7 @@ internal static class SharedHeadBlinkChecks
         ResourceResolver resolver, string output, string prefix)
     {
         var preview = FaceMorphPreview.Get(head, resolver.Geometries[head.RenderGeometryKey])!;
+        AutomaticMouthBindingChecks.Verify(actor, head, preview, world, resolver, output, prefix);
         Check(preview.SupportsPcBlink && !preview.SupportsSallyBlink && preview.BlinkGroups.SequenceEqual(new[] { 10 }),
             "Shared head blink binding is not qualified independently of Sally");
         var unknown = FaceMorphPreview.Get(new SceneObject { Modifiers = head.Modifiers },

@@ -4,10 +4,10 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using JadeView;
 
-internal static class ActorScriptAudit
+internal static partial class ActorScriptAudit
 {
     private sealed record SourceRecord(string Container, uint Key, char Kind, int Offset, byte[] Bytes,
-        uint World, string Name, uint[] References, uint? Brain);
+        uint World, string Name, uint[] References, uint? Brain, uint Shape);
 
     internal static void Write(Archive archive, byte[] sceneBytes, SceneActor actor, string output, string container = "FF0057FD")
     {
@@ -80,7 +80,8 @@ internal static class ActorScriptAudit
             records.Add(new(container, (uint)Field(record, "Key")!, (char)Field(record, "Kind")!, offset,
                 bytes.AsSpan(offset, size).ToArray(), (uint)Field(record, "LoadWorldKey")!,
                 (string)Field(record, "Name")!, references,
-                brainOffset >= 0 ? BitConverter.ToUInt32(bytes, brainOffset) : null));
+                brainOffset >= 0 ? BitConverter.ToUInt32(bytes, brainOffset) : null,
+                (uint)Field(record, "Shape")!));
         }
         return records;
     }

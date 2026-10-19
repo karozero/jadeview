@@ -7,23 +7,15 @@ using JadeView;
 System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
 string output = Path.GetFullPath("artifacts/export-verification");
 Directory.CreateDirectory(output);
-if (args.Length > 2 && args[0] == "--object-audit")
-{
-    ObjectMaterialAudit.Run(args[1], args[2], output, args.Length > 3 ? args[3] : null);
-    return;
-}
-if (args.Length > 2 && args[0] == "--actor-audit")
-{
-    ActorAssetAudit.Run(args[1], args[2], output);
-    return;
-}
-if (args.Length > 1 && args[0] == "--morph-discovery")
-{
-    MorphDiscoveryAudit.Run(args[1], output, args.Length > 2 ? args[2] : null);
-    return;
-}
+if (VerificationCommands.TryRun(args, output)) return;
 MorphReaderChecks.Verify();
 MorphChannelChecks.Verify();
+MorphTransitionChecks.Verify();
+MorphMouthCycleChecks.Verify();
+MorphCompletionChecks.Verify();
+MorphSourceInitializationChecks.Verify(output);
+ActorModuleChecks.Verify();
+PcScalarVariableChecks.Verify();
 MorphBlinkChecks.Verify();
 SallyExpressionChecks.Verify();
 MorphDiscoveryChecks.Verify();
