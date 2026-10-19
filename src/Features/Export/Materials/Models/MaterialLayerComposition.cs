@@ -4,5 +4,6 @@ internal enum MaterialLayerComposition
 {
     Unsupported,
     DestinationAlphaMask,
-    SourceAlphaOverlay
+    SourceAlphaOverlay,
+    ReflectionDetail
 }

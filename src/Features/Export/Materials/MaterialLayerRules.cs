@@ -7,6 +7,7 @@ internal static class MaterialLayerRules
     {
         if (IsMaskedOverlay(layers)) return MaterialLayerComposition.DestinationAlphaMask;
         if (IsAlphaOverlay(layers)) return MaterialLayerComposition.SourceAlphaOverlay;
+        if (IsReflectionComposition(layers)) return MaterialLayerComposition.ReflectionDetail;
         return MaterialLayerComposition.Unsupported;
     }
 
@@ -33,6 +34,16 @@ internal static class MaterialLayerRules
         bool noAlphaTest = (layer.Flags & 0x10) == 0;
         bool hasTexture = layer.Texture is not (0 or uint.MaxValue);
         return layer.WriteRgb && additiveDetail && stableMapping && plainColor && noAlphaTest && hasTexture;
+    }
+
+    private static bool IsReflectionComposition(IReadOnlyList<JadeMaterialLayer> layers)
+    {
+        if (layers.Count != 2) return false;
+        var reflection = layers[0];
+        bool opaqueReflection = reflection.WriteRgb && reflection.Blend == 0 && reflection.UvMode == 2;
+        bool plainReflectionColor = reflection.ColorMode is 0 or 2 or 6;
+        bool staticTransforms = layers.All(layer => (layer.Flags & 0xC0000010) == 0);
+        return opaqueReflection && plainReflectionColor && staticTransforms && IsReflectionDetail(layers[1]);
     }
 
     private static bool StableUvs(IReadOnlyList<JadeMaterialLayer> layers) =>

@@ -41,12 +41,13 @@ two-pass materials; unsupported color modes and view-dependent mappings are
 excluded. As with Sally's three-pass bake, eye projection is frozen at the
 selected pose, not reconstructed as an animated shader.
 
-Military armor materials `16002AE6` / `16002AE7` start with a view-dependent
-environment pass and add stored-UV detail color (`62001BD5` / `62001BD4`). Export
-now selects that detail as the opaque base color instead of placing the reflection
-texture in its UV map. The second pass's alpha controls reflection contribution,
-so it is not exported as surface opacity. This is a detail-color approximation;
-the original camera-dependent reflection is omitted and reported as a warning.
+Reflection/detail materials, including military armor `16002AE6` / `16002AE7`,
+are baked as detail RGB plus reflection RGB multiplied by detail alpha. Constant
+colors, painted colors, instance RLI colors and alpha overrides are included.
+The result is opaque: the reflection coefficient is not surface transparency.
+Reflection UVs use a fixed frontal actor-space reference view, independent of
+scene translation. This restores the metal contribution, but camera-dependent
+reflections remain a static approximation and produce an export warning.
 
 `blender_military_face_check.py <GLB> <reference.json> <report.json> [render.png]`
 checks the imported neutral head against source-evaluated skin vertices, both

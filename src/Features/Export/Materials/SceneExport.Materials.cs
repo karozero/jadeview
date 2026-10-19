@@ -13,8 +13,11 @@ public sealed partial class SceneExporter
         textures.Add(D("source", image, "sampler", samplers.Count));
         samplers.Add(D("wrapS", 33071, "wrapT", 33071, "magFilter", 9729, "minFilter", 9729));
         int material = materials.Count;
+        var extras = D("bakedMaskedLayers", true);
+        if (baked.Composition == MaterialLayerComposition.ReflectionDetail)
+            extras["bakedReflectionDetail"] = true;
         materials.Add(D("name", $"{sceneObject.Name} {source?.Id}", "doubleSided", true,
-            "extensions", D("KHR_materials_unlit", D()), "extras", D("bakedMaskedLayers", true),
+            "extensions", D("KHR_materials_unlit", D()), "extras", extras,
             "pbrMetallicRoughness", D("baseColorFactor", new[] { 1f, 1f, 1f, 1f },
                 "baseColorTexture", D("index", texture), "metallicFactor", 0f, "roughnessFactor", 1f)));
         return material;

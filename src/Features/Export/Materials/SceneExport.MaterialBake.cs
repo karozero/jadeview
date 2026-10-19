@@ -5,18 +5,29 @@ namespace JadeView;
 public sealed partial class SceneExporter
 {
     private BakedMaterialTexture? BakeLayeredMaterial(SceneObject sceneObject, Geometry geometry,
-        Geometry.Part part, Vector3[] positions, List<JadeMaterialLayer> layers)
+        Geometry.Part part, Vector3[] positions, ResolvedMaterial? material, List<JadeMaterialLayer> layers)
     {
         var composition = MaterialLayerRules.Composition(layers);
-        bool canBake = options.Textures && composition != MaterialLayerComposition.Unsupported && sceneObject.RliColors.Length == 0;
+        bool reflection = composition == MaterialLayerComposition.ReflectionDetail;
+        bool supportsInstanceColors = reflection || sceneObject.RliColors.Length == 0;
+        bool canBake = options.Textures && composition != MaterialLayerComposition.Unsupported && supportsInstanceColors;
         if (!canBake || !CanBakeLayerUvs(sceneObject, geometry, part, layers)) return null;
         var sources = ReadBakeSources(layers);
         if (sources == null) return null;
-        float alphaScale = (layers[1].Flags & 0x400) != 0 ? layers[1].OverrideAlpha : 1;
+        float alphaScale = !reflection && (layers[1].Flags & 0x400) != 0 ? layers[1].OverrideAlpha : 1;
+        var reflectionNormals = reflection ? ReferenceReflectionNormals(sceneObject, geometry, positions) : null;
+        Func<int, Vector4[][]>? tints = reflection
+            ? triangle => ReflectionCornerTints(sceneObject, geometry, part, material, layers, triangle) : null;
         var baked = MaterialAtlasBaker.Bake(part.VertexIndices.Length / 3, sources,
-            triangle => LayerCornerUvs(sceneObject, geometry, part, positions, layers, triangle), alphaScale, composition);
+            triangle => LayerCornerUvs(sceneObject, geometry, part, positions, layers, triangle, reflectionNormals),
+            alphaScale, composition, tints);
         if (baked != null)
-            warnings.Add($"'{sceneObject.Name}' masked material layers are baked into a triangle atlas at the selected pose; animated UV projection remains frozen.");
+        {
+            if (reflection)
+                warnings.Add($"'{sceneObject.Name}' reflection and detail layers are baked using a fixed frontal reference view; camera-dependent reflections are not animated.");
+            else
+                warnings.Add($"'{sceneObject.Name}' masked material layers are baked into a triangle atlas at the selected pose; animated UV projection remains frozen.");
+        }
         return baked;
     }
 
@@ -51,12 +62,14 @@ public sealed partial class SceneExporter
     }
 
     private Vector2[][] LayerCornerUvs(SceneObject sceneObject, Geometry geometry, Geometry.Part part,
-        Vector3[] positions, List<JadeMaterialLayer> layers, int triangle)
+        Vector3[] positions, List<JadeMaterialLayer> layers, int triangle, Vector3[]? reflectionNormals = null)
     {
         return layers.Select(layer => Enumerable.Range(triangle * 3, 3).Select(corner =>
         {
             int uvIndex = corner < part.UvIndices.Length ? part.UvIndices[corner] : -1;
             var uv = uvIndex >= 0 && uvIndex < geometry.Uvs.Length ? geometry.Uvs[uvIndex] : Vector2.Zero;
+            if (layer.UvMode == 2 && reflectionNormals != null)
+                return ReferenceReflectionUv(reflectionNormals[part.VertexIndices[corner]], layer, sceneObject.DrawFlags);
             return ExportUv(sceneObject, positions[part.VertexIndices[corner]], uv, layer);
         }).ToArray()).ToArray();
     }

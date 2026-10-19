@@ -43,8 +43,8 @@ public sealed partial class SceneExporter
     {
         var material = ResolvePartMaterial(sceneObject, part);
         var layers = JadeMaterialLayer.Read(material?.SourceBytes).Where(layer => !layer.Disabled).ToList();
-        var baked = BakeLayeredMaterial(sceneObject, geometry, part, uvPositions, layers);
-        var colorLayer = ExportColorLayer(sceneObject, layers);
+        var baked = BakeLayeredMaterial(sceneObject, geometry, part, uvPositions, material, layers);
+        var colorLayer = baked == null ? ExportColorLayer(sceneObject, layers) : null;
         if (layers.Count > 1 && baked == null)
             warnings.Add("Multi-pass Jade materials export their primary color layer; game-specific effects are not glTF shaders.");
         if (skinned && colorLayer?.UvMode == 6)
@@ -88,7 +88,7 @@ public sealed partial class SceneExporter
             attributes["TEXCOORD_0"] = Floats(outputUvs.ToArray(), 2, "VEC2", false, 34962);
         if (skinned)
             WriteInfluences(attributes, sourceVertices, influences);
-        WriteVertexColors(attributes, geometry, sourceVertices, colorLayer);
+        if (baked == null) WriteVertexColors(attributes, geometry, sourceVertices, colorLayer);
         var primitive = D("attributes", attributes, "indices", Indices(indices),
             "material", baked != null ? BakedMaterial(sceneObject, material, baked) : Material(sceneObject, material, colorLayer), "mode", 4);
         if (morph != null) primitive["targets"] = MorphTargets(morph, sourceVertices, morphSpace);

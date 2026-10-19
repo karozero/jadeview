@@ -9,18 +9,19 @@ internal sealed class MaterialAtlasBaker(MaterialAtlasLayout layout, IReadOnlyLi
     private readonly byte[] rgba = new byte[layout.Size * layout.Size * 4];
 
     internal static BakedMaterialTexture? Bake(int triangles, IReadOnlyList<BakeTextureSource> sources,
-        Func<int, Vector2[][]> triangleUvs, float alphaScale, MaterialLayerComposition composition)
+        Func<int, Vector2[][]> triangleUvs, float alphaScale, MaterialLayerComposition composition,
+        Func<int, Vector4[][]>? triangleTints = null)
     {
         var layout = MaterialAtlasLayout.Create(triangles);
         if (layout.Size > MaterialAtlasLayout.MaximumSize) return null;
         var baker = new MaterialAtlasBaker(layout, sources, alphaScale, composition);
         var cornerUvs = new Vector2[triangles * 3];
         for (int triangle = 0; triangle < triangles; triangle++)
-            baker.BakeTriangle(triangle, triangleUvs(triangle), cornerUvs);
-        return new(layout.Size, baker.rgba, cornerUvs);
+            baker.BakeTriangle(triangle, triangleUvs(triangle), triangleTints?.Invoke(triangle), cornerUvs);
+        return new(layout.Size, baker.rgba, cornerUvs, composition);
     }
 
-    private void BakeTriangle(int triangle, Vector2[][] uvs, Vector2[] cornerUvs)
+    private void BakeTriangle(int triangle, Vector2[][] uvs, Vector4[][]? tints, Vector2[] cornerUvs)
     {
         int originX = triangle % layout.Columns * MaterialAtlasLayout.TileSize;
         int originY = triangle / layout.Columns * MaterialAtlasLayout.TileSize;
@@ -32,7 +33,7 @@ internal sealed class MaterialAtlasBaker(MaterialAtlasLayout layout, IReadOnlyLi
         for (int column = 0; column < MaterialAtlasLayout.TileSize; column++)
         {
             var weights = Barycentric(column, row);
-            var color = Blend(uvs, weights);
+            var color = Blend(uvs, tints, weights);
             int offset = ((originY + row) * layout.Size + originX + column) * 4;
             rgba[offset] = Quantize(color.X);
             rgba[offset + 1] = Quantize(color.Y);
@@ -49,11 +50,18 @@ internal sealed class MaterialAtlasBaker(MaterialAtlasLayout layout, IReadOnlyLi
         return new Vector3(first, second, third) / (first + second + third);
     }
 
-    private Vector4 Blend(Vector2[][] uvs, Vector3 weights)
+    private Vector4 Blend(Vector2[][] uvs, Vector4[][]? tints, Vector3 weights)
     {
         var color = sources[0].Sample(Interpolate(uvs[0], weights));
         var secondLayer = sources[1].Sample(Interpolate(uvs[1], weights));
+        if (tints != null)
+        {
+            color *= Interpolate(tints[0], weights);
+            secondLayer *= Interpolate(tints[1], weights);
+        }
         float alpha = secondLayer.W * alphaScale;
+        if (composition == MaterialLayerComposition.ReflectionDetail)
+            return secondLayer + color * alpha;
         if (composition == MaterialLayerComposition.SourceAlphaOverlay)
             return color * (1 - alpha) + secondLayer * alpha;
         var overlay = sources[2].Sample(Interpolate(uvs[2], weights));
@@ -61,6 +69,8 @@ internal sealed class MaterialAtlasBaker(MaterialAtlasLayout layout, IReadOnlyLi
     }
 
     private static Vector2 Interpolate(Vector2[] values, Vector3 weights) =>
+        values[0] * weights.X + values[1] * weights.Y + values[2] * weights.Z;
+    private static Vector4 Interpolate(Vector4[] values, Vector3 weights) =>
         values[0] * weights.X + values[1] * weights.Y + values[2] * weights.Z;
     private static byte Quantize(float value) => (byte)Math.Clamp((int)MathF.Round(value * 255), 0, 255);
 }
