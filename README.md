@@ -1,4 +1,4 @@
-# JadeView
+# JadeView - BGE Modding tool
 
 ![preview image](preview.png)
 
@@ -8,7 +8,22 @@ Author: ARK [Discord profile](https://discord.com/users/355708121676644353). Pub
 
 Questions? Join the [Discord server](https://discord.gg/KYsaVU9rg).
 
-A Windows asset viewer and scene editor for **Beyond Good & Evil (2003, PC)**. Opens `sally_clean.bf` archives in the original BIG `0x22` format; HD and console archives are not supported.
+A Windows modding tool for **Beyond Good & Evil (2003, PC)**: asset viewer, scene editor and BF archive builder. Opens `sally_clean.bf` archives in the original BIG `0x22` format; HD and console archives are not supported.
+
+## Feature status
+
+| Feature | Status |
+| --- | --- |
+| Scene and resource previews | Working |
+| GLB / PNG / WAV / JSON export | Working, with limitations |
+| Animation playback | Recognized actors only |
+| Move / rotate / add / copy / delete objects | Supported static objects only |
+| Object scaling | Editor-added objects only |
+| `.bgemod` projects, Undo/Redo | Working |
+| Build BF, launch game, restore archive | Implemented; see limitations below |
+| Full asset import/replacement, mesh/material editing | Unavailable |
+| Editing source actors and hierarchies | Unsupported |
+| Rotation/scale gizmos, HD/console archives | Unsupported |
 
 ## Run
 
@@ -35,9 +50,12 @@ You can also omit the archive path and select it with **Open BF**.
 
 1. Open the **_sally_clean.bf_** file. Choose a scene and, where available, a world in the **Outliner**. You can also double-click an FF0 container in the archive catalog.
 2. Select an object in the viewport or Outliner. Inspect its resources and transform in **Details**; browse textures, audio, text and diagnostics in the content browser.
-3. Move supported static objects with the move gizmo or position fields; change rotation in **Details**. Scaling and editing skeletal, animated or parented objects are currently disabled.
-4. Use **Save project** to save a `.bgemod` project, **Open project** to reopen it, and **Build BF** to create a separate modified archive. Saving a project does not modify the game archive.
-5. Use **Export** for the active world, or an object's context menu for that object, to export **GLB**. Export options include textures, actors and animations. Texture, audio and text tabs provide **PNG**, **WAV** and **JSON** export respectively.
+3. Move supported static objects with the move gizmo or position fields; change rotation in **Details**. Editor-added objects also support scale editing. Scaling and editing skeletal, animated or parented objects from the source scene are currently disabled.
+4. Use **Add object** in the Outliner to add resolved geometry from the current scene or FIX. Right-click a static object to duplicate or remove it. These scene-structure edits and their transforms are saved in `.bgemod` projects and support Undo/Redo.
+5. Use **Save project** to save a `.bgemod` project and **Open project** to reopen it. **Build BF** writes transforms, added geometry instances, static-object copies and deletions into a separate modified archive. It rebuilds and reloads the FF0 dependency stream before saving; the original archive is preserved.
+
+Deleting collidable map geometry bypasses recognized sector group-hiding controllers in the affected world, so closed-portal visibility rules do not hide the opened space. This may increase rendering work and still requires in-game validation.
+6. Use **Export** for the active world, or an object's context menu for that object, to export **GLB**. Export options include textures, actors and animations. Texture, audio and text tabs provide **PNG**, **WAV** and **JSON** export respectively.
 
 Animation controls support clip selection and playback for recognized actors. **PLAY (BGE)** can install the current scene modifications into the game archive and launch the game; **Restore original BF** restores its backup.
 
@@ -65,4 +83,12 @@ Global editing shortcuts are inactive while editing a field or flying. Hide/isol
 
 For source organization by feature, with a `Models` directory inside each feature, see [Architecture](docs/ARCHITECTURE.md).
 
-Supports scene inspection, resource previews, GLB export and limited transform editing. Full asset import/replacement and mesh/material editing are not available in the UI. Some scenes use fallback parsing, and some material/UV effects are approximated during export; check **Diagnostics** and export warnings.
+Supports scene inspection, resource previews, GLB export, limited transform editing, and scene-object add/copy/delete in `.bgemod` projects and BF builds. Structural builds require a complete typed PC FF0 parse and `jade.spe` beside the base archive. Copies of independent static objects retain their source fields and dependencies; actor/parent hierarchies and self-referencing objects cannot be duplicated into BF. Ambiguous world occurrences or resource payloads are rejected with a diagnostic. Adding geometry creates a static visual instance, without attaching gameplay behavior. Full asset import/replacement and mesh/material editing are not available in the UI. Some scenes use fallback parsing, and some material/UV effects are approximated during export; check **Diagnostics** and export warnings.
+
+Serializer verification using your own game archive (no game launch):
+
+```powershell
+./tests/Verify-SceneStructure.ps1 -ArchivePath "C:/Games/Beyond Good & Evil/sally_clean.bf" -AssemblyPath "./bin/Debug/net10.0-windows/JadeView.dll" -BuildArchive
+```
+
+Use `-AllNoOp` instead of `-BuildArchive` to verify byte-identical rebuilds of every FF0 container. The full BF test uses and removes its own temporary archive.
