@@ -16,7 +16,7 @@ namespace JadeView;
 /// 3. Справа сверху: Outliner (дерево миров и objects SceneObject, поиск, выбор).
 /// 4. Справа снизу: Details (свойства, GaoKey, Transform X/Y/Z с редактированием и Undo/Redo, возможности Capabilities, геометрия и материалы).
 /// 5. Снизу: Content Browser (ресурсы мира, вкладки Объекты / Textures / Audio / Text / BF archive / Diagnostics).
-/// 6. Горячие клавиши (W/E/R, F, Ctrl+Z, Ctrl+Y, Ctrl+S) и подтверждение при выходе.
+/// 6. Горячие клавиши (W, F, H, Delete, Ctrl+C/V, Ctrl+Z/Y, Ctrl+S) и подтверждение при выходе.
 /// </summary>
 public sealed partial class EditorShell : IDisposable
 {
@@ -195,31 +195,8 @@ public sealed partial class EditorShell : IDisposable
             _catalogPreviewTask = null;
         }
 
-        // Обработка глобальных горячих клавиш (когда нет активного ввода в текстовое поле ImGui)
-        if (!ImGui.GetIO().WantTextInput && !ImGui.IsAnyItemActive() && !Renderer.IsFlying && !Raylib.IsMouseButtonDown(MouseButton.Right))
-        {
-            if (Raylib.IsKeyPressed(KeyboardKey.W))
-                Renderer.GizmoMode = TransformGizmoMode.Translate;
-            if (Raylib.IsKeyPressed(KeyboardKey.F) && SelectedObject != null)
-                Renderer.FrameSelected();
-            if (Raylib.IsKeyPressed(KeyboardKey.H) && !Renderer.IsDraggingGizmo)
-            {
-                bool alt = Raylib.IsKeyDown(KeyboardKey.LeftAlt) || Raylib.IsKeyDown(KeyboardKey.RightAlt);
-                bool shift = Raylib.IsKeyDown(KeyboardKey.LeftShift) || Raylib.IsKeyDown(KeyboardKey.RightShift);
-                var command = Renderer.VisibilityChange(alt ? "show" : shift ? "isolate" : "hide");
-                if (command != null)
-                    History.Execute(command);
-            }
+        HandleKeyboardShortcuts();
 
-            // Undo / Redo
-            bool ctrl = Raylib.IsKeyDown(KeyboardKey.LeftControl) || Raylib.IsKeyDown(KeyboardKey.RightControl);
-            if (ctrl && Raylib.IsKeyPressed(KeyboardKey.Z))
-                History.Undo();
-            if (ctrl && Raylib.IsKeyPressed(KeyboardKey.Y))
-                History.Redo();
-            if (ctrl && Raylib.IsKeyPressed(KeyboardKey.S))
-                SaveCurrentProject();
-        }
     }
 
     public void Draw()

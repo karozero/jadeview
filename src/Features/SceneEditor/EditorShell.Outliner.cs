@@ -186,7 +186,7 @@ public sealed partial class EditorShell
         bool canEditStructure = ActiveWorld != null && obj.Actor == null;
         if (ImGui.MenuItem("Duplicate", null, false, canEditStructure && CanDuplicateSceneObject(obj)))
             DuplicateSceneObject(obj);
-        if (ImGui.MenuItem("Delete from scene", null, false, canEditStructure))
+        if (ImGui.MenuItem("Delete from scene", "Delete", false, canEditStructure))
             DeleteSceneObject(obj);
         if (!canEditStructure && obj.Actor != null)
             ImGui.TextDisabled("Actor hierarchies cannot be copied or removed as individual objects yet.");

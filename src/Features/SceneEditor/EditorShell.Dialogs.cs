@@ -82,7 +82,7 @@ public sealed partial class EditorShell
         if (ImGui.BeginPopupModal("About JadeView", ImGuiWindowFlags.AlwaysAutoResize))
         {
             ImGui.TextColored(Green, "JadeView — Beyond Good & Evil scene editor");
-            ImGui.TextWrapped("See EDITOR_PLAN.md for the editor design.\nLayout: Toolbar, Viewport, Outliner, Details, Content Browser.\nModules: SceneContract, SceneLoader, SceneWriter, ResourceResolver, ModProject, SceneRenderer, GameLauncher.\nShortcuts: W (move), F (focus), G (game view), H (hide), Shift+H (isolate), Alt+H (show all), Ctrl+Z/Ctrl+Y (undo/redo), Ctrl+S (save).");
+            ImGui.TextWrapped("See EDITOR_PLAN.md for the editor design.\nLayout: Toolbar, Viewport, Outliner, Details, Content Browser.\nModules: SceneContract, SceneLoader, SceneWriter, ResourceResolver, ModProject, SceneRenderer, GameLauncher.\nShortcuts: W (move), F (focus), G (game view), H (hide), Shift+H (isolate), Alt+H (show all), Delete (delete selection), Ctrl+C/Ctrl+V (copy/paste in the same world), Ctrl+Z/Ctrl+Y (undo/redo), Ctrl+S (save).");
             ImGui.Spacing();
             if (ImGui.Button("OK", new Vector2(120 * _scale, 0)))
             {
