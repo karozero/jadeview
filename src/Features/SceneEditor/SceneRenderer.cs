@@ -37,7 +37,7 @@ public sealed partial class SceneRenderer : IDisposable
 
     // Настройки отображения
     private readonly HashSet<SceneObject> _hiddenObjects = [];
-    public bool IsHidden(SceneObject obj) => _hiddenObjects.Contains(obj) || obj.Actor is { } a && obj!=a.Root && _hiddenObjects.Contains(a.Root);
+    public bool IsHidden(SceneObject obj) => _hiddenObjects.Contains(obj) || obj.Actor is { } a && obj != a.Root && _hiddenObjects.Contains(a.Root);
     public void HideSelected() { if (SelectedObject != null) _hiddenObjects.Add(SelectedObject); }
     public void IsolateSelected()
     {
@@ -47,21 +47,21 @@ public sealed partial class SceneRenderer : IDisposable
         foreach (var obj in world.Objects)
             if (obj != SelectedObject && (SelectedObject.Actor == null || obj.Actor != SelectedObject.Actor)) _hiddenObjects.Add(obj);
         _hiddenObjects.Remove(SelectedObject);
-        if(SelectedObject.Actor is {} actor)foreach(var part in actor.Members)_hiddenObjects.Remove(part);
+        if (SelectedObject.Actor is { } actor) foreach (var part in actor.Members) _hiddenObjects.Remove(part);
     }
     public void UnhideAll() => _hiddenObjects.Clear();
     public static bool IsCollision(SceneObject obj)
     {
         // COL is a name token, not the beginning of Colonne/Colline/Color.
-        var name=obj.Name;
-        for(int start=0;start<name.Length;)
+        var name = obj.Name;
+        for (int start = 0; start < name.Length;)
         {
-            int at=name.IndexOf("COL",start,StringComparison.OrdinalIgnoreCase);
-            if(at<0)return false;
-            int end=at+3;
-            if((at==0 || !char.IsLetterOrDigit(name[at-1])) &&
-               (end==name.Length || !char.IsLetter(name[end])))return true;
-            start=end;
+            int at = name.IndexOf("COL", start, StringComparison.OrdinalIgnoreCase);
+            if (at < 0) return false;
+            int end = at + 3;
+            if ((at == 0 || !char.IsLetterOrDigit(name[at - 1])) &&
+               (end == name.Length || !char.IsLetter(name[end]))) return true;
+            start = end;
         }
         return false;
     }
@@ -72,14 +72,14 @@ public sealed partial class SceneRenderer : IDisposable
         else if (mode == "show") UnhideAll();
         else HideSelected();
         var after = _hiddenObjects.ToArray();
-        _hiddenObjects.Clear();_hiddenObjects.UnionWith(before);
+        _hiddenObjects.Clear(); _hiddenObjects.UnionWith(before);
         return before.ToHashSet().SetEquals(after) ? null : new VisibilityCommand(this, before, after, mode);
     }
     private sealed class VisibilityCommand(SceneRenderer renderer, SceneObject[] before, SceneObject[] after, string mode) : IEditCommand
     {
         public bool AffectsDocument => false;
         public string Description => $"Visibility: {mode}";
-        private void Apply(SceneObject[] state) { renderer._hiddenObjects.Clear();renderer._hiddenObjects.UnionWith(state); }
+        private void Apply(SceneObject[] state) { renderer._hiddenObjects.Clear(); renderer._hiddenObjects.UnionWith(state); }
         public void Execute() => Apply(after);
         public void Undo() => Apply(before);
     }
@@ -89,7 +89,8 @@ public sealed partial class SceneRenderer : IDisposable
     private bool IsCollisionHidden(SceneObject sceneObject) => (GameView || !ShowColliders) && IsCollision(sceneObject);
     public bool ShowGrid = true;
     public bool ShowGameHidden = false;
-    public bool IsGameHidden(SceneObject obj) => !ShowGameHidden && (obj.PreviewHidden || (obj.DrawFlags & 8) == 0 && !IsCollision(obj));
+    public bool IsGameHidden(SceneObject obj) => !ShowGameHidden && (obj.PreviewHidden || obj.IsControlHidden
+        || obj.Actor?.Root.IsControlHidden == true || (obj.DrawFlags & 8) == 0 && !IsCollision(obj));
     [System.Runtime.InteropServices.DllImport("opengl32.dll", EntryPoint = "glDepthFunc")]
     private static extern void SetDepthFunction(uint function);
     public bool ShowGizmo = true;
@@ -116,7 +117,7 @@ public sealed partial class SceneRenderer : IDisposable
 
     // Кэш GPU-ресурсов
     private readonly Dictionary<uint, GpuGeometry> _geometryCache = new();
-    private readonly Dictionary<SceneObject,ParticlePreview> _particles = new();
+    private readonly Dictionary<SceneObject, ParticlePreview> _particles = new();
     private int _proceduralFrame;
     private readonly Dictionary<(uint GeoKey, uint MatKey), GpuMaterialSet> _materialCache = new();
     private readonly Dictionary<string, Texture2D> _textureCache = new(StringComparer.OrdinalIgnoreCase);
@@ -202,16 +203,24 @@ public sealed partial class SceneRenderer : IDisposable
         uniform float alphaRef;
         uniform int alphaOverride;
         uniform float overrideValue;
+        uniform int additiveLocalAlpha;
+        uniform vec4 rliDestColor;
+        uniform float rliFactor;
         out vec4 finalColor;
         void main() {
             // Neutral editor preview. Baked/realtime light channels are not emulated.
             vec4 tint = vec4(1.0);
-            if (colorMode == 3 || colorMode == 5) tint = paint;
+            vec4 lightPaint = paint;
+            if (rliFactor > 0.02) lightPaint.rgb = max(paint.rgb - rliDestColor.rgb * rliFactor, vec3(0.0));
+            if (colorMode == 3 || colorMode == 5) tint = lightPaint;
             if (colorMode == 5) tint.rgb = 1.0 - tint.rgb;
             if (colorMode == 2 || colorMode == 4) tint = constantColor;
-            if (effectColor != 0 && (colorMode == 0 || colorMode == 6)) tint = paint;
+            if (effectColor != 0 && (colorMode == 0 || colorMode == 6)) tint = lightPaint;
             if (useRliAlpha != 0 && (colorMode == 0 || colorMode == 6)) tint.a = instanceAlpha;
             if (alphaOverride != 0) tint.a = overrideValue;
+            // Additive Jade passes use ONE/ONE blending, so framebuffer alpha
+            // cannot fade their RGB contribution by itself.
+            if (additiveLocalAlpha != 0) tint.rgb *= overrideValue;
             finalColor = texture(texture0, uv) * tint * colDiffuse;
             if (alphaTest == 2 && finalColor.a >= alphaRef) discard;
             if (alphaTest == 5 && finalColor.a <= alphaRef) discard;
@@ -294,7 +303,7 @@ public sealed partial class SceneRenderer : IDisposable
         _selectionFillMaterial.Maps[(int)MaterialMapIndex.Albedo].Color = new Color(50, 220, 110, 60);
 
         _jadeShader = Raylib.LoadShaderFromMemory(JadeVertexShader, JadeFragmentShader);
-        foreach (string name in new[] { "uvMode", "uvCustom", "uvMatrix", "uvOffset", "colorMode", "constantColor", "alphaTest", "alphaRef", "alphaOverride", "overrideValue", "useRliAlpha", "effectColor", "jadeModelView", "jadePlanar", "planarDistance", "objectDrawFlags" })
+        foreach (string name in new[] { "uvMode", "uvCustom", "uvMatrix", "uvOffset", "colorMode", "constantColor", "alphaTest", "alphaRef", "alphaOverride", "overrideValue", "additiveLocalAlpha", "useRliAlpha", "effectColor", "jadeModelView", "jadePlanar", "planarDistance", "objectDrawFlags", "rliDestColor", "rliFactor" })
             _jadeUniforms[name] = Raylib.GetShaderLocation(_jadeShader, name);
         _resourcesInitialized = true;
     }
@@ -459,7 +468,9 @@ public sealed partial class SceneRenderer : IDisposable
                     mesh.Normals[k * 3 + 2] = normal.Z;
 
                     var uv = (geom.Uvs.Length > 0 && part.UvIndices.Length > k) ? geom.Uvs[part.UvIndices[k]] : Vector2.Zero;
-                    mesh.TexCoords2[k * 2] = 1;
+                    int sourceVertex = part.VertexIndices[k];
+                    mesh.TexCoords2[k * 2] = geom.IsBillboardVertex(sourceVertex) && sourceVertex < geom.VertexColors.Length
+                        ? (geom.VertexColors[sourceVertex] >> 24) / 255f : 1;
                     mesh.TexCoords2[k * 2 + 1] = 0;
                     mesh.TexCoords[k * 2 + 0] = uv.X;
                     // DecodeTga returns top-down rows; Jade's mesh V uses the opposite origin.
@@ -513,7 +524,7 @@ public sealed partial class SceneRenderer : IDisposable
             if (root?.Type == 4)
                 effective = root.SubMaterialKeys.Count > 0 && id >= 0
                     ? Resolver?.Materials.GetValueOrDefault(root.SubMaterialKeys[Math.Min(id, root.SubMaterialKeys.Count - 1)]) : null;
-            var layers = JadeMaterialLayer.Read(effective?.SourceBytes).Where(l => !l.Disabled).ToList();
+            var layers = JadeMaterialLayer.Read(effective?.SourceBytes);
             if (layers.Count == 0 && effective == null) layers.Add(new(0, 7, 0, 0, 0));
             Vector4 constant = Vector4.One;
             if (effective?.SourceBytes is { Length: >= 16 } raw)
@@ -521,9 +532,10 @@ public sealed partial class SceneRenderer : IDisposable
                 uint color = Preview.U32(raw, 12); // RGBA, not the header's ambient word.
                 constant = new((color & 255) / 255f, (color >> 8 & 255) / 255f, (color >> 16 & 255) / 255f, 0);
             }
-            var passes = new List<(Material Material, JadeMaterialLayer Layer, Vector4 Constant)>();
-            foreach (var layer in layers)
+            var passes = new List<GpuMaterialPass>();
+            for (int layerIndex = 0; layerIndex < layers.Count; layerIndex++)
             {
+                var layer = layers[layerIndex];
                 var material = Raylib.LoadMaterialDefault();
                 material.Shader = _jadeShader;
                 TextureAsset? asset = layer.Texture is not (0 or uint.MaxValue) && Resolver != null && Resolver.TryResolveTexture(layer.Texture, out var resolved)
@@ -533,7 +545,9 @@ public sealed partial class SceneRenderer : IDisposable
                 if (asset == null && effective?.SourceBytes == null && pIdx < textures.Count) asset = textures[pIdx];
                 if (asset != null) Raylib.SetMaterialTexture(ref material, MaterialMapIndex.Albedo, GetOrUploadTexture(asset));
                 material.Maps[(int)MaterialMapIndex.Albedo].Color = Color.White;
-                passes.Add((material, layer, constant));
+                int subMaterialIndex = root?.Type == 4 && root.SubMaterialKeys.Count > 0 && id >= 0
+                    ? Math.Min(id, root.SubMaterialKeys.Count - 1) : 0;
+                passes.Add(new(material, layer, constant, effective?.Id.Key ?? matKey, layerIndex, subMaterialIndex));
             }
             matSet.Passes.Add(passes);
             matSet.PartMaterials.Add(passes.Count > 0 ? passes[0].Material : default);
@@ -680,15 +694,15 @@ public sealed partial class SceneRenderer : IDisposable
 
         if (SelectedObject.Actor is { } actor && SelectedObject == actor.Root)
         {
-            actor.Evaluate(0);Vector3 low=new(float.MaxValue),high=new(float.MinValue);int count=0;
-            foreach(var part in actor.Members)
+            actor.Evaluate(0); Vector3 low = new(float.MaxValue), high = new(float.MinValue); int count = 0;
+            foreach (var part in actor.Members)
             {
-                var shape=GetOrUploadGeometry(part.RenderGeometryKey);if(shape==null || IsGameHidden(part))continue;
-                UpdateSkin(shape,part);var bounds=TransformBoundingBox(shape.LocalBounds,part.RenderMatrix);
-                low=Vector3.Min(low,bounds.Item1);high=Vector3.Max(high,bounds.Item2);count++;
+                var shape = GetOrUploadGeometry(part.RenderGeometryKey); if (shape == null || IsGameHidden(part)) continue;
+                UpdateSkin(shape, part); var bounds = TransformBoundingBox(shape.LocalBounds, part.RenderMatrix);
+                low = Vector3.Min(low, bounds.Item1); high = Vector3.Max(high, bounds.Item2); count++;
             }
-            center=count>0?(low+high)*.5f:TransformData.ToRender(SelectedObject.Transform.Translation);
-            radius=count>0?Math.Max((high-low).Length()*.5f,.5f):3;
+            center = count > 0 ? (low + high) * .5f : TransformData.ToRender(SelectedObject.Transform.Translation);
+            radius = count > 0 ? Math.Max((high - low).Length() * .5f, .5f) : 3;
         }
         else if (GetOrUploadGeometry(SelectedObject.RenderGeometryKey) is { } geo)
         {
@@ -831,20 +845,20 @@ public sealed partial class SceneRenderer : IDisposable
             if (obj.GeometryKey == 0 || IsHidden(obj) || IsGameHidden(obj) || IsCollisionHidden(obj)) continue;
             var geo = GetOrUploadGeometry(obj.RenderGeometryKey);
             if (geo == null) continue;
-            UpdateSkin(geo,obj);
+            UpdateSkin(geo, obj);
             var matrix = obj.RenderMatrix;
-            var (min,max) = TransformBoundingBox(geo.LocalBounds,matrix);
-            if (!Raylib.GetRayCollisionBox(ray,new BoundingBox(min,max)).Hit) continue;
-            bool isCollision=IsCollision(obj);
+            var (min, max) = TransformBoundingBox(geo.LocalBounds, matrix);
+            if (!Raylib.GetRayCollisionBox(ray, new BoundingBox(min, max)).Hit) continue;
+            bool isCollision = IsCollision(obj);
             foreach (var mesh in geo.PartMeshes)
             {
-                var hit=Raylib.GetRayCollisionMesh(ray,mesh,Matrix4x4.Transpose(matrix));
+                var hit = Raylib.GetRayCollisionMesh(ray, mesh, Matrix4x4.Transpose(matrix));
                 if (!hit.Hit || hit.Distance < 0) continue;
-                if (isCollision) { if(hit.Distance<collisionDistance){collisionDistance=hit.Distance;collision=obj;} }
-                else if(hit.Distance<closest){closest=hit.Distance;visual=obj;}
+                if (isCollision) { if (hit.Distance < collisionDistance) { collisionDistance = hit.Distance; collision = obj; } }
+                else if (hit.Distance < closest) { closest = hit.Distance; visual = obj; }
             }
         }
-        var selected=visual??collision;
+        var selected = visual ?? collision;
         return selected?.Actor?.Root ?? selected;
     }
 
@@ -1061,7 +1075,7 @@ public sealed partial class SceneRenderer : IDisposable
     /// </summary>
     private unsafe void UpdateInstanceAlpha(GpuGeometry geo, SceneObject obj)
     {
-        if (geo.Source?.Particles!=null)return;
+        if (geo.Source?.Particles != null) return;
         if (geo.Source == null || geo.AlphaOwner == obj && geo.AlphaRevision == obj.AppearanceRevision || (geo.AlphaOwner == null && obj.RliColors.Length == 0)) return;
         for (int part = 0; part < geo.PartMeshes.Count; part++)
         {
@@ -1072,7 +1086,7 @@ public sealed partial class SceneRenderer : IDisposable
                 int index = indices[i];
                 uint color = index < obj.RliColors.Length ? obj.RliColors[index]
                     : index < geo.Source.VertexColors.Length ? geo.Source.VertexColors[index] : 0u;
-                mesh.TexCoords2[i * 2] = index < obj.RliColors.Length ? (color >> 24) / 255f : 1;
+                mesh.TexCoords2[i * 2] = GeometryVertexColor.InstanceAlpha(obj, geo.Source, index, color);
                 mesh.Colors[i * 4] = (byte)color;
                 mesh.Colors[i * 4 + 1] = (byte)(color >> 8);
                 mesh.Colors[i * 4 + 2] = (byte)(color >> 16);
@@ -1088,24 +1102,24 @@ public sealed partial class SceneRenderer : IDisposable
     private unsafe void UpdateSkin(GpuGeometry geo, SceneObject obj)
     {
         if (geo.Source == null) return;
-        bool procedural=geo.Source.Billboards.Count>0 || geo.Source.Particles!=null;
-        if(procedural && geo.DeformationOwner==obj && geo.ProceduralFrame==_proceduralFrame && geo.ProceduralMatrix==obj.RenderMatrix && geo.ProceduralCameraPosition==Camera.Position && geo.ProceduralCameraTarget==Camera.Target)return;
-        uint[]? particleColors=null;
+        bool procedural = geo.Source.Billboards.Count > 0 || geo.Source.Particles != null;
+        if (procedural && geo.DeformationOwner == obj && geo.ProceduralFrame == _proceduralFrame && geo.ProceduralMatrix == obj.RenderMatrix && geo.ProceduralCameraPosition == Camera.Position && geo.ProceduralCameraTarget == Camera.Target) return;
+        uint[]? particleColors = null;
         if (!procedural && geo.DeformationOwner == obj && obj.Actor != null && geo.DeformationRevision == obj.Actor.PoseRevision) return;
         var posed = obj.Actor?.Skin(obj, geo.Source);
         if (posed == null && geo.DeformationOwner == null && !procedural) return;
         var positions = posed ?? geo.Source.Positions;
-        if(geo.Source.Billboards.Count>0)
+        if (geo.Source.Billboards.Count > 0)
         {
-            var forward=Vector3.Normalize(Camera.Target-Camera.Position);
-            var right=Vector3.Normalize(Vector3.Cross(forward,Camera.Up));var up=Vector3.Normalize(Vector3.Cross(right,forward));
-            positions=SpriteGenerator.FaceCamera(geo.Source,posed,obj.RenderMatrix,right,up,(float)Raylib.GetTime());
+            var forward = Vector3.Normalize(Camera.Target - Camera.Position);
+            var right = Vector3.Normalize(Vector3.Cross(forward, Camera.Up)); var up = Vector3.Normalize(Vector3.Cross(right, forward));
+            positions = SpriteGenerator.FaceCamera(geo.Source, posed, obj.RenderMatrix, right, up, (float)Raylib.GetTime());
         }
-        if(geo.Source.Particles is {} definition)
+        if (geo.Source.Particles is { } definition)
         {
-            if(!_particles.TryGetValue(obj,out var state))_particles[obj]=state=new(definition,obj.GaoKey);
-            var forward=Vector3.Normalize(Camera.Target-Camera.Position);var right=Vector3.Normalize(Vector3.Cross(forward,Camera.Up));var up=Vector3.Normalize(Vector3.Cross(right,forward));
-            (positions,particleColors)=state.Update(geo.Source,positions,obj.PreviewMatrix??AnimationMath.Trs(obj.Transform),right,up,Raylib.GetTime());
+            if (!_particles.TryGetValue(obj, out var state)) _particles[obj] = state = new(definition, obj.GaoKey);
+            var forward = Vector3.Normalize(Camera.Target - Camera.Position); var right = Vector3.Normalize(Vector3.Cross(forward, Camera.Up)); var up = Vector3.Normalize(Vector3.Cross(right, forward));
+            (positions, particleColors) = state.Update(geo.Source, positions, obj.PreviewMatrix ?? AnimationMath.Trs(obj.Transform), right, up, Raylib.GetTime());
         }
         var normals = AnimationMath.Normals(positions, geo.Source.Parts);
         Vector3 min = new(float.MaxValue), max = new(float.MinValue);
@@ -1114,48 +1128,48 @@ public sealed partial class SceneRenderer : IDisposable
             var mesh = geo.PartMeshes[p]; var ids = geo.Source.Parts[p].VertexIndices;
             for (int i = 0; i < mesh.VertexCount; i++)
             {
-                var v=Geometry.ToRender(positions[ids[i]]);var n=Geometry.ToRender(normals[ids[i]]);
-                min=Vector3.Min(min,v);max=Vector3.Max(max,v);
-                mesh.Vertices[i*3]=v.X;mesh.Vertices[i*3+1]=v.Y;mesh.Vertices[i*3+2]=v.Z;
-                mesh.Normals[i*3]=n.X;mesh.Normals[i*3+1]=n.Y;mesh.Normals[i*3+2]=n.Z;
-                if(particleColors!=null){uint c=particleColors[ids[i]];mesh.Colors[i*4]=(byte)c;mesh.Colors[i*4+1]=(byte)(c>>8);mesh.Colors[i*4+2]=(byte)(c>>16);mesh.Colors[i*4+3]=(byte)(c>>24);}
+                var v = Geometry.ToRender(positions[ids[i]]); var n = Geometry.ToRender(normals[ids[i]]);
+                min = Vector3.Min(min, v); max = Vector3.Max(max, v);
+                mesh.Vertices[i * 3] = v.X; mesh.Vertices[i * 3 + 1] = v.Y; mesh.Vertices[i * 3 + 2] = v.Z;
+                mesh.Normals[i * 3] = n.X; mesh.Normals[i * 3 + 1] = n.Y; mesh.Normals[i * 3 + 2] = n.Z;
+                if (particleColors != null) { uint c = particleColors[ids[i]]; mesh.Colors[i * 4] = (byte)c; mesh.Colors[i * 4 + 1] = (byte)(c >> 8); mesh.Colors[i * 4 + 2] = (byte)(c >> 16); mesh.Colors[i * 4 + 3] = (byte)(c >> 24); }
             }
-            Raylib.UpdateMeshBuffer(mesh,0,mesh.Vertices,mesh.VertexCount*12,0);
-            Raylib.UpdateMeshBuffer(mesh,2,mesh.Normals,mesh.VertexCount*12,0);
-            if(particleColors!=null)Raylib.UpdateMeshBuffer(mesh,3,mesh.Colors,mesh.VertexCount*4,0);
+            Raylib.UpdateMeshBuffer(mesh, 0, mesh.Vertices, mesh.VertexCount * 12, 0);
+            Raylib.UpdateMeshBuffer(mesh, 2, mesh.Normals, mesh.VertexCount * 12, 0);
+            if (particleColors != null) Raylib.UpdateMeshBuffer(mesh, 3, mesh.Colors, mesh.VertexCount * 4, 0);
         }
-        geo.LocalBounds=new(min,max);geo.LocalCenter=(min+max)*.5f;geo.BoundingRadius=(max-min).Length()*.5f;
-        geo.DeformationOwner=posed==null && !procedural?null:obj;
-        geo.ProceduralFrame=_proceduralFrame;geo.ProceduralMatrix=obj.RenderMatrix;geo.ProceduralCameraPosition=Camera.Position;geo.ProceduralCameraTarget=Camera.Target;
-        geo.DeformationRevision=obj.Actor?.PoseRevision ?? 0;
+        geo.LocalBounds = new(min, max); geo.LocalCenter = (min + max) * .5f; geo.BoundingRadius = (max - min).Length() * .5f;
+        geo.DeformationOwner = posed == null && !procedural ? null : obj;
+        geo.ProceduralFrame = _proceduralFrame; geo.ProceduralMatrix = obj.RenderMatrix; geo.ProceduralCameraPosition = Camera.Position; geo.ProceduralCameraTarget = Camera.Target;
+        geo.DeformationRevision = obj.Actor?.PoseRevision ?? 0;
     }
 
     private void SetUvSpace(SceneObject obj, JadeMaterialLayer layer)
     {
-        var jadeWorld=obj.PreviewMatrix ?? AnimationMath.Trs(obj.Transform);
-        var basis=new Matrix4x4(1,0,0,0,0,0,-1,0,0,1,0,0,0,0,0,1);
-        var view=Matrix4x4.Transpose(Raylib.GetCameraMatrix(Camera));
-        var modelView=jadeWorld*basis*view;
-        Matrix4x4 planar=Matrix4x4.Identity;
-        int space=(layer.Custom>>6)&3;
-        if(space==1)planar=jadeWorld;
-        if(space==2)planar=modelView;
-        if(space==3 && obj.ActorNode is {} node)
+        var jadeWorld = obj.PreviewMatrix ?? AnimationMath.Trs(obj.Transform);
+        var basis = new Matrix4x4(1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1);
+        var view = Matrix4x4.Transpose(Raylib.GetCameraMatrix(Camera));
+        var modelView = jadeWorld * basis * view;
+        Matrix4x4 planar = Matrix4x4.Identity;
+        int space = (layer.Custom >> 6) & 3;
+        if (space == 1) planar = jadeWorld;
+        if (space == 2) planar = modelView;
+        if (space == 3 && obj.ActorNode is { } node)
         {
-            int index=(layer.Custom>>8)&7;
-            if((obj.Flags&0x1000000)!=0 && index<node.Links.Length)
+            int index = (layer.Custom >> 8) & 7;
+            if ((obj.Flags & 0x1000000) != 0 && index < node.Links.Length)
             {
-                var link=node.Links[index];
-                var bone=link.Index==-1?obj.Actor?.Root:link.Index>=0 && obj.Actor!=null && link.Index<obj.Actor.Bones.Count?obj.Actor.Bones[link.Index]:obj.Actor?.Members.FirstOrDefault(o=>o.GaoKey==link.Key);
-                if(bone!=null && Matrix4x4.Invert(jadeWorld,out var invMesh))
-                    Matrix4x4.Invert((bone.PreviewMatrix??AnimationMath.Trs(bone.Transform))*invMesh,out planar);
+                var link = node.Links[index];
+                var bone = link.Index == -1 ? obj.Actor?.Root : link.Index >= 0 && obj.Actor != null && link.Index < obj.Actor.Bones.Count ? obj.Actor.Bones[link.Index] : obj.Actor?.Members.FirstOrDefault(o => o.GaoKey == link.Key);
+                if (bone != null && Matrix4x4.Invert(jadeWorld, out var invMesh))
+                    Matrix4x4.Invert((bone.PreviewMatrix ?? AnimationMath.Trs(bone.Transform)) * invMesh, out planar);
             }
-            else if(index<node.Matrices.Length)Matrix4x4.Invert(node.Matrices[index],out planar);
+            else if (index < node.Matrices.Length) Matrix4x4.Invert(node.Matrices[index], out planar);
         }
-        Raylib.SetShaderValueMatrix(_jadeShader,_jadeUniforms["jadeModelView"],Matrix4x4.Transpose(modelView));
-        Raylib.SetShaderValueMatrix(_jadeShader,_jadeUniforms["jadePlanar"],planar);
-        JadeUniform("planarDistance",1/MathF.Tan(Camera.FovY*MathF.PI/360));
-        JadeUniform("objectDrawFlags",unchecked((int)obj.DrawFlags));
+        Raylib.SetShaderValueMatrix(_jadeShader, _jadeUniforms["jadeModelView"], Matrix4x4.Transpose(modelView));
+        Raylib.SetShaderValueMatrix(_jadeShader, _jadeUniforms["jadePlanar"], planar);
+        JadeUniform("planarDistance", 1 / MathF.Tan(Camera.FovY * MathF.PI / 360));
+        JadeUniform("objectDrawFlags", unchecked((int)obj.DrawFlags));
     }
 
     public unsafe void Render(int width, int height)
@@ -1165,6 +1179,7 @@ public sealed partial class SceneRenderer : IDisposable
 
         width = Math.Max(16, width);
         height = Math.Max(16, height);
+        ApplyCinematicProjection(width, height);
 
         if (_sceneTarget.Id == 0 || _sceneTarget.Texture.Width != width || _sceneTarget.Texture.Height != height)
         {
@@ -1178,7 +1193,9 @@ public sealed partial class SceneRenderer : IDisposable
         // Flying/scrolling makes Target one unit from Position. That is a look direction,
         // not the distance to the scene: deriving farClip from it made large maps disappear.
         var world = ActiveWorld ?? Document?.ActiveWorld;
-        if (world != null) foreach (var actor in world.Actors) actor.Evaluate(Raylib.GetFrameTime());
+        if (world != null)
+            foreach (var actor in world.Actors.Where(actor => !actor.CinematicClockOwned))
+                actor.Evaluate(Raylib.GetFrameTime());
         _farClip = 2000;
         if (world != null)
         {
@@ -1216,98 +1233,112 @@ public sealed partial class SceneRenderer : IDisposable
             // Keep dependent passes adjacent (destination-alpha masks), but sort individual
             // material parts, not entire GAOs containing both walls and transparent effects.
             var packets = new List<(SceneObject Obj, GpuGeometry Geo, GpuMaterialSet? Materials, int Part, bool Transparent, float Depth)>();
-            var forward = Vector3.Normalize(Camera.Target-Camera.Position);
+            var forward = Vector3.Normalize(Camera.Target - Camera.Position);
             foreach (var obj in world.Objects)
             {
                 if (obj.GeometryKey == 0 || IsHidden(obj) || IsGameHidden(obj) || IsCollisionHidden(obj)) continue;
-                var geo=GetOrUploadGeometry(obj.RenderGeometryKey); if(geo==null)continue;
-                UpdateSkin(geo,obj);
-                var (low,high)=TransformBoundingBox(geo.LocalBounds,obj.RenderMatrix);
-                if(FrustumCullingEnabled && !IsSphereInFrustum((low+high)*.5f,(high-low).Length()*.5f))continue;
-                var materials=IsCollision(obj)?null:GetOrUploadMaterialSet(obj.RenderGeometryKey,obj.MaterialKey);
+                var geo = GetOrUploadGeometry(obj.RenderGeometryKey); if (geo == null) continue;
+                UpdateSkin(geo, obj);
+                var (low, high) = TransformBoundingBox(geo.LocalBounds, obj.RenderMatrix);
+                if (FrustumCullingEnabled && !IsSphereInFrustum((low + high) * .5f, (high - low).Length() * .5f)) continue;
+                var materials = IsCollision(obj) ? null : GetOrUploadMaterialSet(obj.RenderGeometryKey, obj.MaterialKey);
                 StatVisibleObjects++;
-                for(int part=0;part<geo.PartMeshes.Count;part++)
+                for (int part = 0; part < geo.PartMeshes.Count; part++)
                 {
-                    if(!IsCollision(obj) && (materials==null || part>=materials.Passes.Count))continue;
-                    var passes=materials?.Passes[part];
-                    bool transparent=!IsCollision(obj) && !(Wireframe && !GameView) && passes!=null &&
-                        !passes.Any(p=>p.Layer.WriteRgb && p.Layer.Blend is 0 or 7);
-                    var mesh=geo.PartMeshes[part];Vector3 min=new(float.MaxValue),max=new(float.MinValue);
-                    for(int v=0;v<mesh.VertexCount;v++){
-                        var point=new Vector3(mesh.Vertices[v*3],mesh.Vertices[v*3+1],mesh.Vertices[v*3+2]);
-                        min=Vector3.Min(min,point);max=Vector3.Max(max,point);
+                    if (!IsCollision(obj) && (materials == null || part >= materials.Passes.Count)) continue;
+                    var passes = materials?.Passes[part];
+                    bool transparent = !IsCollision(obj) && !(Wireframe && !GameView) && passes != null &&
+                        !passes.Any(pass => EffectiveLayer(obj, pass) is { Disabled: false, WriteRgb: true, Blend: 0 or 7 });
+                    var mesh = geo.PartMeshes[part]; Vector3 min = new(float.MaxValue), max = new(float.MinValue);
+                    for (int v = 0; v < mesh.VertexCount; v++)
+                    {
+                        var point = new Vector3(mesh.Vertices[v * 3], mesh.Vertices[v * 3 + 1], mesh.Vertices[v * 3 + 2]);
+                        min = Vector3.Min(min, point); max = Vector3.Max(max, point);
                     }
-                    var center=Vector3.Transform((min+max)*.5f,obj.RenderMatrix);
-                    packets.Add((obj,geo,materials,part,transparent,Vector3.Dot(center-Camera.Position,forward)));
+                    var center = Vector3.Transform((min + max) * .5f, obj.RenderMatrix);
+                    packets.Add((obj, geo, materials, part, transparent, Vector3.Dot(center - Camera.Position, forward)));
                 }
             }
-            foreach(var packet in packets.OrderBy(p=>p.Transparent).ThenBy(p=>p.Transparent?-p.Depth:0))
+            foreach (var packet in packets.OrderBy(p => p.Transparent).ThenBy(p => p.Transparent ? -p.Depth : 0))
             {
-                var obj=packet.Obj;var geo=packet.Geo;int i=packet.Part;
-                UpdateSkin(geo,obj);UpdateInstanceAlpha(geo,obj);
-                var mesh=geo.PartMeshes[i];var worldMatrix=obj.RenderMatrix;
-                if(IsCollision(obj) || Wireframe && !GameView)
+                var obj = packet.Obj; var geo = packet.Geo; int i = packet.Part;
+                UpdateSkin(geo, obj); UpdateInstanceAlpha(geo, obj);
+                var mesh = geo.PartMeshes[i]; var worldMatrix = obj.RenderMatrix;
+                if (IsCollision(obj) || Wireframe && !GameView)
                 {
                     Raylib.BeginBlendMode(BlendMode.Alpha);
-                    Rlgl.EnableDepthTest();Rlgl.EnableDepthMask();SetDepthFunction(515);
+                    Rlgl.EnableDepthTest(); Rlgl.EnableDepthMask(); SetDepthFunction(515);
                     Rlgl.EnableWireMode();
-                    Raylib.DrawMesh(mesh,IsCollision(obj)?_collisionWireMaterial:_selectionWireMaterial,Matrix4x4.Transpose(worldMatrix));
-                    Rlgl.DisableWireMode();Raylib.EndBlendMode();
+                    Raylib.DrawMesh(mesh, IsCollision(obj) ? _collisionWireMaterial : _selectionWireMaterial, Matrix4x4.Transpose(worldMatrix));
+                    Rlgl.DisableWireMode(); Raylib.EndBlendMode();
                 }
-                else foreach(var pass in packet.Materials!.Passes[i])
+                else foreach (var pass in packet.Materials!.Passes[i])
                 {
-                        var layer = pass.Layer;
-                        SetUvSpace(obj,layer);
-                        JadeUniform("uvMode", layer.UvMode);
-                        JadeUniform("uvCustom", (int)layer.Custom);
-                        JadeUniform("uvMatrix", layer.UvMatrix((float)Raylib.GetTime(), out var uvOffset));
-                        JadeUniform("uvOffset", uvOffset);
-                        JadeUniform("colorMode", layer.ColorMode);
-                        JadeUniform("effectColor", geo.Source?.Particles!=null && i>=geo.Source.ParticlePart || obj.RliColors.Length > 0 && layer.Blend != 0 && layer.Blend != 7 ? 1 : 0);
-                        JadeUniform("useRliAlpha", layer.Blend != 0 && obj.RliColors.Length > 0 ? 1 : 0);
-                        JadeUniform("constantColor", layer.ColorMode == 4 ? new Vector4(1, 1, 1, 0) : pass.Constant);
-                        JadeUniform("alphaTest", (layer.Flags & 0x10) == 0 ? -1 : (layer.Flags & 0x80) == 0 ? 5 : 2);
-                        JadeUniform("alphaRef", (layer.Flags >> 22 & 0xfc) / 255f);
-                        JadeUniform("alphaOverride", (layer.Flags & 0x400) != 0 ? 1 : 0);
-                        JadeUniform("overrideValue", layer.OverrideAlpha);
-                        var texture = pass.Material.Maps[(int)MaterialMapIndex.Albedo].Texture;
-                        Rlgl.TextureParameters(texture.Id, 10242, (layer.Flags & 1) == 0 ? 33071 : 10497);
-                        Rlgl.TextureParameters(texture.Id, 10243, (layer.Flags & 2) == 0 ? 33071 : 10497);
-                        Rlgl.TextureParameters(texture.Id, 10240, (layer.Flags & 4) == 0 ? 9728 : 9729);
-                        Rlgl.TextureParameters(texture.Id, 10241, (layer.Flags & 4) == 0 ? 9728 : 9729);
-                        bool inverse = (layer.Flags & 0x80) != 0;
-                        var factors = layer.Blend switch
-                        {
-                            1 => inverse ? (771,770) : (770,771),
-                            2 => inverse ? (1,770) : (1,771),
-                            3 => inverse ? (773,772) : (772,773),
-                            4 => inverse ? (773,1) : (772,1),
-                            5 => (1,1), 6 or 8 => (0,769), _ => (1,0)
-                        };
-                        Rlgl.SetBlendFactors(factors.Item1, factors.Item2, 32774);
-                        Raylib.BeginBlendMode(BlendMode.Custom);
-                        Rlgl.EnableDepthTest();
-                        SetDepthFunction(layer.DepthEqual ? 514u : 515u);
-                        Rlgl.ColorMask(layer.WriteRgb, layer.WriteRgb, layer.WriteRgb, layer.WriteAlpha);
-                        if (layer.DepthWrite) Rlgl.EnableDepthMask(); else Rlgl.DisableDepthMask();
-                        Raylib.DrawMesh(mesh, pass.Material, Matrix4x4.Transpose(worldMatrix));
-                        Rlgl.EnableDepthMask();
-                        Rlgl.ColorMask(true, true, true, true);
-                        SetDepthFunction(515);
-                        Raylib.EndBlendMode();
+                    var layer = EffectiveLayer(obj, pass);
+                    if (layer.Disabled) continue;
+                    SetUvSpace(obj, layer);
+                    JadeUniform("uvMode", layer.UvMode);
+                    JadeUniform("uvCustom", (int)layer.Custom);
+                    JadeUniform("uvMatrix", layer.UvMatrix((float)Raylib.GetTime(), out var uvOffset));
+                    JadeUniform("uvOffset", uvOffset);
+                    JadeUniform("colorMode", layer.ColorMode);
+                    bool spritePart = geo.Source is { } sourceGeometry && sourceGeometry.Parts[i].VertexIndices.Length > 0
+                        && sourceGeometry.IsBillboardVertex(sourceGeometry.Parts[i].VertexIndices[0]);
+                    bool usesPaint = spritePart || geo.Source?.Particles != null && i >= geo.Source.ParticlePart
+                        || obj.RliColors.Length > 0 && layer.Blend is not (0 or 7);
+                    JadeUniform("effectColor", usesPaint ? 1 : 0);
+                    JadeUniform("useRliAlpha", layer.Blend != 0 && (obj.RliColors.Length > 0 || spritePart) ? 1 : 0);
+                    JadeUniform("rliDestColor", CinematicRliColor);
+                    JadeUniform("rliFactor", CinematicRliFactor);
+                    var constant = CinematicMaterials?.ApplyConstant(obj.GaoKey, pass.SubMaterialIndex, pass.Constant)
+                        ?? pass.Constant;
+                    JadeUniform("constantColor", layer.ColorMode == 4 ? new Vector4(1, 1, 1, 0) : constant);
+                    JadeUniform("alphaTest", (layer.Flags & 0x10) == 0 ? -1 : (layer.Flags & 0x80) == 0 ? 5 : 2);
+                    JadeUniform("alphaRef", (layer.Flags >> 22 & 0xfc) / 255f);
+                    JadeUniform("alphaOverride", (layer.Flags & 0x400) != 0 ? 1 : 0);
+                    JadeUniform("overrideValue", layer.OverrideAlpha);
+                    JadeUniform("additiveLocalAlpha", layer.Blend == 5
+                        && (layer.Flags & JadeMaterialFlags.OverrideAlpha) != 0 ? 1 : 0);
+                    var texture = pass.Material.Maps[(int)MaterialMapIndex.Albedo].Texture;
+                    Rlgl.TextureParameters(texture.Id, 10242, (layer.Flags & 1) == 0 ? 33071 : 10497);
+                    Rlgl.TextureParameters(texture.Id, 10243, (layer.Flags & 2) == 0 ? 33071 : 10497);
+                    Rlgl.TextureParameters(texture.Id, 10240, (layer.Flags & 4) == 0 ? 9728 : 9729);
+                    Rlgl.TextureParameters(texture.Id, 10241, (layer.Flags & 4) == 0 ? 9728 : 9729);
+                    bool inverse = (layer.Flags & 0x80) != 0;
+                    var factors = layer.Blend switch
+                    {
+                        1 => inverse ? (771, 770) : (770, 771),
+                        2 => inverse ? (1, 770) : (1, 771),
+                        3 => inverse ? (773, 772) : (772, 773),
+                        4 => inverse ? (773, 1) : (772, 1),
+                        5 => (1, 1),
+                        6 or 8 => (0, 769),
+                        _ => (1, 0)
+                    };
+                    Rlgl.SetBlendFactors(factors.Item1, factors.Item2, 32774);
+                    Raylib.BeginBlendMode(BlendMode.Custom);
+                    Rlgl.EnableDepthTest();
+                    SetDepthFunction(layer.DepthEqual ? 514u : 515u);
+                    Rlgl.ColorMask(layer.WriteRgb, layer.WriteRgb, layer.WriteRgb, layer.WriteAlpha);
+                    if (layer.DepthWrite) Rlgl.EnableDepthMask(); else Rlgl.DisableDepthMask();
+                    Raylib.DrawMesh(mesh, pass.Material, Matrix4x4.Transpose(worldMatrix));
+                    Rlgl.EnableDepthMask();
+                    Rlgl.ColorMask(true, true, true, true);
+                    SetDepthFunction(515);
+                    Raylib.EndBlendMode();
 
                 }
-                StatDrawnTriangles+=mesh.TriangleCount;
+                StatDrawnTriangles += mesh.TriangleCount;
             }
         }
 
         // Подсветка выбранного объекта: Bounding Box и Selection Wireframe
-        foreach(var selectedPart in SelectedObject?.Actor is { } selectedActor && SelectedObject==selectedActor.Root
-            ? selectedActor.Members : SelectedObject != null ? new List<SceneObject>{SelectedObject} : [])
+        foreach (var selectedPart in SelectedObject?.Actor is { } selectedActor && SelectedObject == selectedActor.Root
+            ? selectedActor.Members : SelectedObject != null ? new List<SceneObject> { SelectedObject } : [])
         {
             if (!GameView && !IsHidden(selectedPart) && !IsGameHidden(selectedPart) && !IsCollisionHidden(selectedPart) && _geometryCache.TryGetValue(selectedPart.GeometryKey, out var selGeo))
             {
-                UpdateSkin(selGeo,selectedPart);
+                UpdateSkin(selGeo, selectedPart);
                 var selMatrix = selectedPart.RenderMatrix;
 
                 // Keep the selection outline independent from the animated pose and bounds.
@@ -1316,13 +1347,13 @@ public sealed partial class SceneRenderer : IDisposable
                     Rlgl.EnableWireMode();
                     foreach (var mesh in selGeo.PartMeshes)
                     {
-                        Raylib.DrawMesh(mesh, IsCollision(selectedPart)?_collisionWireMaterial:_selectionWireMaterial, Matrix4x4.Transpose(selMatrix));
+                        Raylib.DrawMesh(mesh, IsCollision(selectedPart) ? _collisionWireMaterial : _selectionWireMaterial, Matrix4x4.Transpose(selMatrix));
                     }
                     Rlgl.DisableWireMode();
                 }
 
                 // 2. Отрисовка ориентированного Bounding Box
-                DrawOrientedBoundingBox(selGeo.LocalBounds, selMatrix, IsCollision(selectedPart)?new Color(65,155,255,255):new Color(80, 255, 150, 255));
+                DrawOrientedBoundingBox(selGeo.LocalBounds, selMatrix, IsCollision(selectedPart) ? new Color(65, 155, 255, 255) : new Color(80, 255, 150, 255));
             }
         }
 
@@ -1332,8 +1363,13 @@ public sealed partial class SceneRenderer : IDisposable
             if (GizmoMode == TransformGizmoMode.Translate) DrawTransformGizmo(SelectedObject);
         }
 
+        DrawCinematicLightnings();
+
         Rlgl.EnableBackfaceCulling();
         Raylib.EndMode3D();
+        DrawCinematicFlashes();
+        DrawCinematicFade(width, height);
+        DrawCinematicShutter(width, height);
         // Destination alpha is used between Jade material passes, but the editor
         // presents an opaque viewport. Do not let ImGui composite it a second time.
         Rlgl.DrawRenderBatchActive();

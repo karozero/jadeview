@@ -21,7 +21,10 @@ public sealed partial class SceneExporter
             foreach (var issue in FaceMorphDiagnostics.SourceIssues(geometry, morph))
                 if (sceneObject.MorphPreview?.GetWeight(issue.Group) is float weight && weight != 0)
                     warnings.Add($"'{sceneObject.Name}' PC_Morph_{issue.Group:D2}: {issue.Message}");
-            warnings.Add($"'{sceneObject.Name}' exports PC morph targets with user-authored preview weights and source channel metadata; original facial scheduling is not reconstructed.");
+            bool hasCinematicTimeline = options.CinematicMorphTimelines?.TryGetValue(sceneObject, out var cinematicKeys) == true
+                && cinematicKeys.Length > 1;
+            if (!hasCinematicTimeline)
+                warnings.Add($"'{sceneObject.Name}' exports PC morph targets with preview weights and source channel metadata; original facial scheduling is not reconstructed.");
             return morph;
         }
         catch (InvalidDataException error)
@@ -53,7 +56,7 @@ public sealed partial class SceneExporter
     {
         mesh["weights"] = sceneObject.MorphPreview?.CopyWeights() ?? new float[morph.Groups.Length];
         var metadata = D("headerWords", morph.HeaderWords, "groupIndexEqualsTargetIndex", true,
-                "timeline", "user-authored keys only; original facial scheduling is not reconstructed",
+                "timeline", "Authored or sampled animation keys are exported separately; complete game event scheduling is not reconstructed",
                 "sourceIssues", sceneObject.MorphPreview?.SourceIssues.Select(issue => D("group", issue.Group, "message", issue.Message)).ToArray() ?? [],
                 "channels", morph.Channels.Select(channel =>
                     D("weightBits", channel.WeightBits, "progressionBits", channel.ProgressionBits,

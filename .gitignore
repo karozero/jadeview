@@ -20,5 +20,6 @@ JadeView_Backup/
 # Temporary files and logs
 *.tmp
 *.log
+*.dmp
 Thumbs.db
 Desktop.ini

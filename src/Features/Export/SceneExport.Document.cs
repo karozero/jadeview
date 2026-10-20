@@ -13,8 +13,11 @@ public sealed partial class SceneExporter
         {
             document["meshes"] = meshes;
             document["materials"] = materials;
-            document["extensionsUsed"] = new[] { "KHR_materials_unlit" };
         }
+        var extensions = new List<string>();
+        if (meshes.Count > 0) extensions.Add("KHR_materials_unlit");
+        if (animatedCameraLens) extensions.Add(CameraLensExtension);
+        if (extensions.Count > 0) document["extensionsUsed"] = extensions;
         if (images.Count > 0)
         {
             document["images"] = images;
@@ -22,6 +25,7 @@ public sealed partial class SceneExporter
             document["samplers"] = samplers;
         }
         if (skins.Count > 0) document["skins"] = skins;
+        if (cameras.Count > 0) document["cameras"] = cameras;
         if (animations.Count > 0) document["animations"] = animations;
         if (binary.Length > 0)
         {

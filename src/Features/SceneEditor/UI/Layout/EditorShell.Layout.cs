@@ -27,7 +27,8 @@ public sealed partial class EditorShell
         ImGui.EndChild();
         DrawColumnSplitter("ViewportInspectorSplitter", columnWidth, splitterSize, true);
         ImGui.BeginChild("AssetInspectorPanel", new Vector2(widths.Y, 0), ImGuiChildFlags.Borders);
-        DrawAssetInspector();
+        if (_cutsceneMode) DrawCinematicInspector();
+        else DrawAssetInspector();
         ImGui.EndChild();
         DrawColumnSplitter("InspectorOutlinerSplitter", columnWidth, splitterSize, false);
         ImGui.BeginChild("OutlinerPanel", Vector2.Zero, ImGuiChildFlags.Borders);
@@ -42,7 +43,8 @@ public sealed partial class EditorShell
         if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) panelLayout.ResetBrowser();
         ImGui.SetCursorPosY(ImGui.GetCursorPosY() - ImGui.GetStyle().ItemSpacing.Y);
         ImGui.BeginChild("ContentBrowserPanel", new Vector2(available.X, browserHeight), ImGuiChildFlags.Borders);
-        DrawContentBrowser();
+        if (_cutsceneMode) DrawCinematicBrowser();
+        else DrawContentBrowser();
         ImGui.EndChild();
     }
 

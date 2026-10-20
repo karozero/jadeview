@@ -13,6 +13,10 @@ public sealed class AnimationClip
     internal Func<AnimationClip>? Read;
     public bool Loaded;
     public bool SceneMotion;
+    public bool Cinematic;
+    public uint CinematicOwnerKey;
+    public uint CinematicWorldKey;
+    public CinematicBodyTimeline? CinematicBody;
     public void EnsureLoaded()
     {
         if (Loaded) return;

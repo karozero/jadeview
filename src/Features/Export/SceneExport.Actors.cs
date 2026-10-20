@@ -63,6 +63,7 @@ public sealed partial class SceneExporter
             if (options.UnknownObjects) empties++;
             return;
         }
+        if (KeepGeometryCarrier(nodeMap[sceneObject], geometry)) return;
         var bindings = SkinBindings(actor, sceneObject, geometry, nodeMap);
         if (bindings.Count == 0)
         {

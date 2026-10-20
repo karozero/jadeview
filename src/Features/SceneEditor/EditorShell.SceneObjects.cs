@@ -5,6 +5,7 @@ using Raylib_cs;
 using Forms = System.Windows.Forms;
 
 namespace JadeView;
+
 public sealed partial class EditorShell
 {
     private void DrawAddSceneObjectPopup()
@@ -81,6 +82,7 @@ public sealed partial class EditorShell
             InitialTransform = transform.Clone(),
             RliColors = source.RliColors.ToArray(),
             DrawFlags = source.DrawFlags,
+            ControlFlags = source.ControlFlags,
             GeometryKey = source.GeometryKey,
             MaterialKey = source.MaterialKey,
             Flags = source.Flags,

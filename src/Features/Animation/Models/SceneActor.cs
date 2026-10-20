@@ -12,27 +12,60 @@ public sealed partial class SceneActor
     public AnimationClip? Clip;
     public uint DefaultShape;
     public Dictionary<uint, byte[]> Shapes = [];
-    public Dictionary<AnimationClip,uint> ClipShapes = [];
-    public Dictionary<int,List<SceneObject>> SourceMeshes = [];
+    public Dictionary<AnimationClip, uint> ClipShapes = [];
+    public Dictionary<int, List<SceneObject>> SourceMeshes = [];
     public bool Playing;
+    internal bool CinematicClockOwned;
     public bool Loop = true;
     public bool RootMotion;
     public float Time, Speed = 1;
     public string? Diagnostic;
     public int PoseRevision { get; private set; }
     private readonly Dictionary<SceneObject, Matrix4x4> world = [];
+    private Dictionary<SceneObject, Matrix4x4> evaluatedLocals = [];
+    internal bool TryGetEvaluatedLocal(SceneObject member, out Matrix4x4 pose) =>
+        evaluatedLocals.TryGetValue(member, out pose);
     public void SelectClip(AnimationClip? clip)
     {
-        ApplyShape(DefaultShape);
-        if (clip != null && ClipShapes.TryGetValue(clip, out var shape) && shape != DefaultShape) ApplyShape(shape);
-        ApplyAppearanceOverrides();
         if (clip?.SceneMotion == true) RootMotion = true;
         Clip = clip; Time = 0; clip?.EnsureLoaded(); Playing = clip != null && clip.Error == null;
         Evaluate(0);
     }
     public void Evaluate(float delta)
     {
-        foreach (var member in Members) member.MorphPreview?.Advance(delta);
+        AdvancePlayback(delta);
+        ApplyCurrentShape();
+
+        Matrix4x4 rootRotation = Matrix4x4.Identity;
+        Vector3 rootOffset = Vector3.Zero;
+        Matrix4x4? cinematicRootPose = GetCinematicRootPose();
+        var localPoses = CreateLocalPoses();
+        ApplyCinematicBodyPose(localPoses);
+
+        if (Clip is { Error: null } activeClip)
+        {
+            foreach (var track in activeClip.Tracks)
+            {
+                ApplyTrack(track, localPoses, ref rootRotation, ref rootOffset, ref cinematicRootPose);
+            }
+        }
+
+        evaluatedLocals = localPoses;
+        EvaluateWorldPoses(localPoses, cinematicRootPose, rootRotation, rootOffset);
+    }
+
+    private void AdvancePlayback(float delta)
+    {
+        if (CinematicClockOwned)
+        {
+            delta = 0;
+        }
+
+        foreach (var member in Members)
+        {
+            member.MorphPreview?.Advance(delta);
+        }
+
         PoseRevision++;
         if (Clip != null)
         {
@@ -44,87 +77,199 @@ public sealed partial class SceneActor
                 else if (Time >= Clip.Duration) { Time = Clip.Duration; Playing = false; }
             }
         }
-        Matrix4x4 rootRotation=Matrix4x4.Identity;Vector3 rootOffset=Vector3.Zero;
-        var locals = Members.ToDictionary(o => o, o => o.ActorNode?.Local ?? AnimationMath.Trs(o.Transform));
-        if (Clip is { Error: null }) foreach (var track in Clip.Tracks)
-        {
-            SceneObject? target = track.Bone >= 0 ? track.Bone < Bones.Count ? Bones[track.Bone] : null
-                : track.Target is 0 or uint.MaxValue ? Root : Members.FirstOrDefault(o => o.GaoKey == track.Target);
-            if (target == null) continue;
-            var keys = track.Keys.Where(k => k.Position != null || k.Rotation != null || k.Scale != null).ToList();
-            if (keys.Count == 0) continue;
-            var first = keys.LastOrDefault(k => k.Time <= Time) ?? keys[0];
-            int index = keys.IndexOf(first);
-            var next = index + 1 < keys.Count ? keys[index + 1] : Loop ? keys[0] : first;
-            float t = first.Duration > 0 ? Math.Clamp((Time - first.Time) / first.Duration, 0, 1) : 0;
-            Matrix4x4.Decompose(locals[target], out var scale, out var rotation, out var position);
-            if ((first.Flags & 2048) != 0) t=0;
-            if (first.Position is Vector3 p)
-            {
-                var end=next.Position??p;float u=1-t;
-                position=(first.Format&3) switch
-                {
-                    2 => p*u*u + 2*(first.Control1??p)*u*t + end*t*t,
-                    3 => p*u*u*u + 3*(first.Control1??p)*u*u*t + 3*(first.Control2??end)*u*t*t + end*t*t*t,
-                    _ => Vector3.Lerp(p,end,t)
-                };
-            }
-            if (first.Scale is Vector3 s) scale = Vector3.Lerp(s, next.Scale ?? s, t);
-            if (first.Rotation is Quaternion q) rotation = Quaternion.Slerp(q, next.Rotation ?? q, t);
-            if (target == Root)
-            {
-                if(first.Rotation!=null){var initial=keys.First(k=>k.Rotation!=null).Rotation!.Value;Matrix4x4.Invert(Matrix4x4.CreateFromQuaternion(initial),out var inverse);rootRotation=inverse*Matrix4x4.CreateFromQuaternion(rotation);}
-                if(first.Position!=null && RootMotion)rootOffset=position-keys.First(k=>k.Position!=null).Position!.Value;
-            }
-            else locals[target] = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromQuaternion(rotation) * Matrix4x4.CreateTranslation(position);
-        }
-        world.Clear(); var visiting = new HashSet<SceneObject>();
-        Matrix4x4 Pose(SceneObject o)
-        {
-            if (world.TryGetValue(o, out var result)) return result;
-            if (o == Root) return world[o] = rootRotation*Matrix4x4.CreateTranslation(rootOffset)*AnimationMath.Trs(Root.Transform);
-            if (!visiting.Add(o)) return AnimationMath.Trs(Root.Transform);
-            var parent = Members.FirstOrDefault(n => n.GaoKey == o.ActorNode?.Parent && n != o) ?? Root;
-            result = locals[o] * Pose(parent); visiting.Remove(o); return world[o] = result;
-        }
-        foreach (var o in Members) o.PreviewMatrix = Pose(o);
     }
-    public Vector3[]? Skin(SceneObject obj, Geometry geometry)
+
+    private Matrix4x4? GetCinematicRootPose() =>
+        Clip is { Cinematic: true, CinematicBody: { } body } ? body.RootPose(Time) : null;
+
+    private Dictionary<SceneObject, Matrix4x4> CreateLocalPoses() =>
+        Members.ToDictionary(member => member,
+            member => member.ActorNode?.Local ?? AnimationMath.Trs(member.Transform));
+
+    private void ApplyCinematicBodyPose(Dictionary<SceneObject, Matrix4x4> localPoses)
     {
-        var sourcePositions = FaceMorphPreview.Get(obj, geometry)?.Positions() ?? geometry.Positions;
-        if (geometry.Skin.Length == 0 || obj.ActorNode == null || (obj.Flags & 0x200000) == 0)
-            return ReferenceEquals(sourcePositions, geometry.Positions) ? null : sourcePositions;
-        if (!Matrix4x4.Invert(obj.PreviewMatrix ?? AnimationMath.Trs(obj.Transform), out var inverseMesh)) return null;
-        var positions = new Vector3[geometry.Positions.Length]; var touched = new bool[positions.Length];
-        foreach (var binding in geometry.Skin)
+        if (Clip is not { Error: null, CinematicBody: { } bodyTimeline })
         {
-            Matrix4x4 bone;
-            if ((obj.Flags & 0x1000000) != 0)
-            {
-                if (binding.Bone < 0 || binding.Bone >= obj.ActorNode.Links.Length) continue;
-                var link = obj.ActorNode.Links[binding.Bone];
-                var target = link.Index == -1 ? Root : link.Index >= 0 && link.Index < Bones.Count ? Bones[link.Index] : Members.FirstOrDefault(m => m.GaoKey == link.Key);
-                if (target == null) continue;
-                bone = target.PreviewMatrix ?? AnimationMath.Trs(target.Transform);
-            }
-            else
-            {
-                if (binding.Bone < 0 || binding.Bone >= obj.ActorNode.Matrices.Length) continue;
-                bone = obj.ActorNode.Matrices[binding.Bone] * (Root.PreviewMatrix ?? AnimationMath.Trs(Root.Transform));
-            }
-            var flashed = AnimationMath.SkinInverseBind(binding, obj.DrawFlags);
-            var matrix = flashed * bone * inverseMesh;
-            foreach (uint packed in binding.PackedWeights)
-            {
-                int vertex = (int)(packed & 65535);
-                if (vertex >= positions.Length) continue;
-                float weight = BitConverter.UInt32BitsToSingle(packed);
-                positions[vertex] += Vector3.Transform(sourcePositions[vertex], matrix) * weight;
-                touched[vertex] = true;
-            }
+            return;
         }
-        for (int i = 0; i < positions.Length; i++) if (!touched[i]) positions[i] = sourcePositions[i];
-        return positions;
+
+        bodyPoseSampler ??= new(this);
+        var sampledPoses = bodyPoseSampler.Evaluate(bodyTimeline, Time, localPoses);
+        foreach (var (member, pose) in sampledPoses)
+        {
+            localPoses[member] = pose;
+        }
     }
+
+    private void ApplyTrack(AnimationTrack track, Dictionary<SceneObject, Matrix4x4> localPoses,
+        ref Matrix4x4 rootRotation, ref Vector3 rootOffset, ref Matrix4x4? cinematicRootPose)
+    {
+        SceneObject? target = ResolveTrackTarget(track);
+        if (target == null)
+        {
+            return;
+        }
+
+        var keys = GetTrackKeys(track);
+        if (keys.Count == 0)
+        {
+            return;
+        }
+
+        AnimationKey currentKey = keys.LastOrDefault(key => key.Time <= Time) ?? keys[0];
+        if (Clip!.Cinematic && (currentKey.Time > Time || IsEmptyKey(currentKey)))
+        {
+            return;
+        }
+
+        int currentIndex = keys.IndexOf(currentKey);
+        AnimationKey nextKey = currentIndex + 1 < keys.Count
+            ? keys[currentIndex + 1]
+            : Loop ? keys[0] : currentKey;
+        float amount = AnimationInterpolation.Amount(currentKey, Time);
+        Matrix4x4.Decompose(localPoses[target], out var scale, out var rotation, out var position);
+
+        if (currentKey.Position is Vector3 startPosition)
+        {
+            position = AnimationInterpolation.Position(currentKey, startPosition,
+                nextKey.Position ?? startPosition, amount);
+        }
+
+        if (currentKey.Scale is Vector3 startScale)
+        {
+            scale = Vector3.Lerp(startScale, nextKey.Scale ?? startScale, amount);
+        }
+
+        if (currentKey.Rotation is Quaternion startRotation)
+        {
+            rotation = Quaternion.Slerp(startRotation, nextKey.Rotation ?? startRotation, amount);
+        }
+
+        if (target == Root)
+        {
+            ApplyRootTrack(track, currentKey, keys, localPoses, scale, rotation, position,
+                ref rootRotation, ref rootOffset, ref cinematicRootPose);
+            return;
+        }
+
+        localPoses[target] = Matrix4x4.CreateScale(scale)
+            * Matrix4x4.CreateFromQuaternion(rotation)
+            * Matrix4x4.CreateTranslation(position);
+    }
+
+    private List<AnimationKey> GetTrackKeys(AnimationTrack track)
+    {
+        if (Clip!.Cinematic)
+        {
+            return track.Keys;
+        }
+
+        return track.Keys
+            .Where(key => key.Position != null || key.Rotation != null || key.Scale != null)
+            .ToList();
+    }
+
+    private SceneObject? ResolveTrackTarget(AnimationTrack track)
+    {
+        if (track.Bone >= 0)
+        {
+            return track.Bone < Bones.Count ? Bones[track.Bone] : null;
+        }
+
+        return track.Target is 0 or uint.MaxValue
+            ? Root
+            : Members.FirstOrDefault(member => member.GaoKey == track.Target);
+    }
+
+    private static bool IsEmptyKey(AnimationKey key) =>
+        key.Position == null && key.Rotation == null && key.Scale == null;
+
+    private void ApplyRootTrack(AnimationTrack track, AnimationKey currentKey,
+        IReadOnlyList<AnimationKey> keys, Dictionary<SceneObject, Matrix4x4> localPoses,
+        Vector3 scale, Quaternion rotation, Vector3 position,
+        ref Matrix4x4 rootRotation, ref Vector3 rootOffset, ref Matrix4x4? cinematicRootPose)
+    {
+        if (Clip is { Cinematic: true, CinematicBody: not null } && track.Bone < 0)
+        {
+            return;
+        }
+
+        if (Clip!.Cinematic && track.Bone < 0)
+        {
+            cinematicRootPose = Matrix4x4.CreateScale(scale)
+                * Matrix4x4.CreateFromQuaternion(rotation)
+                * Matrix4x4.CreateTranslation(position);
+            localPoses[Root] = cinematicRootPose.Value;
+            return;
+        }
+
+        AnimationKey? firstRotationKey = keys.FirstOrDefault(key => key.Rotation != null);
+        if (currentKey.Rotation != null && firstRotationKey?.Rotation is Quaternion initialRotation
+            && Matrix4x4.Invert(Matrix4x4.CreateFromQuaternion(initialRotation), out var inverseInitial))
+        {
+            rootRotation = inverseInitial * Matrix4x4.CreateFromQuaternion(rotation);
+        }
+
+        AnimationKey? firstPositionKey = keys.FirstOrDefault(key => key.Position != null);
+        if (currentKey.Position != null && RootMotion && firstPositionKey?.Position is Vector3 initialPosition)
+        {
+            rootOffset = position - initialPosition;
+        }
+    }
+
+    private void EvaluateWorldPoses(Dictionary<SceneObject, Matrix4x4> localPoses,
+        Matrix4x4? cinematicRootPose, Matrix4x4 rootRotation, Vector3 rootOffset)
+    {
+        world.Clear();
+        var visiting = new HashSet<SceneObject>();
+        foreach (var member in Members)
+        {
+            member.PreviewMatrix = EvaluateWorldPose(member, localPoses, cinematicRootPose,
+                rootRotation, rootOffset, visiting);
+        }
+    }
+
+    private Matrix4x4 EvaluateWorldPose(SceneObject sceneObject,
+        IReadOnlyDictionary<SceneObject, Matrix4x4> localPoses, Matrix4x4? cinematicRootPose,
+        Matrix4x4 rootRotation, Vector3 rootOffset, HashSet<SceneObject> visiting)
+    {
+        if (world.TryGetValue(sceneObject, out var cachedPose))
+        {
+            return cachedPose;
+        }
+
+        if (sceneObject == Root)
+        {
+            return world[sceneObject] = cinematicRootPose
+                ?? rootRotation * Matrix4x4.CreateTranslation(rootOffset) * AnimationMath.Trs(Root.Transform);
+        }
+
+        if (!visiting.Add(sceneObject))
+        {
+            return AnimationMath.Trs(Root.Transform);
+        }
+
+        var parent = PoseParent(sceneObject);
+        var worldPose = localPoses[sceneObject] * EvaluateWorldPose(parent, localPoses,
+            cinematicRootPose, rootRotation, rootOffset, visiting);
+        visiting.Remove(sceneObject);
+        world[sceneObject] = worldPose;
+        return worldPose;
+    }
+
+    private void ApplyCurrentShape()
+    {
+        uint selectedShape = DefaultShape;
+        uint? actionShape = Clip?.CinematicBody?.ShapeAt(Time);
+        if (actionShape is { } shapeKey && shapeKey is not 0 and not uint.MaxValue)
+            selectedShape = shapeKey;
+        else if (Clip != null && ClipShapes.TryGetValue(Clip, out uint clipShape))
+            selectedShape = clipShape;
+
+        ApplyShape(DefaultShape);
+        if (selectedShape != DefaultShape) ApplyShape(selectedShape);
+        ApplyAppearanceOverrides();
+    }
+
 }
 

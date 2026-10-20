@@ -13,9 +13,9 @@ internal static class MaterialLayerTint
             uint packed = Preview.U32(bytes, 12);
             tint = new Vector4(packed & 255, packed >> 8 & 255, packed >> 16 & 255, 0) / 255;
         }
-        bool hasInstancePaint = vertex < sceneObject.RliColors.Length;
         uint paint = VertexPaint(sceneObject, geometry, vertex);
-        bool usesInstanceColor = sceneObject.RliColors.Length > 0 && layer.Blend is not (0 or 7)
+        bool usesInstanceColor = (geometry.IsBillboardVertex(vertex)
+            || sceneObject.RliColors.Length > 0 && layer.Blend is not (0 or 7))
             && layer.ColorMode is 0 or 6;
         if (layer.ColorMode is 3 or 5 || usesInstanceColor)
         {
@@ -27,9 +27,9 @@ internal static class MaterialLayerTint
                 tint.Z = 1 - tint.Z;
             }
         }
-        bool usesInstanceAlpha = sceneObject.RliColors.Length > 0 && layer.Blend != 0
+        bool usesInstanceAlpha = (sceneObject.RliColors.Length > 0 || geometry.IsBillboardVertex(vertex)) && layer.Blend != 0
             && layer.ColorMode is 0 or 6;
-        if (usesInstanceAlpha) tint.W = hasInstancePaint ? (paint >> 24) / 255f : 1;
+        if (usesInstanceAlpha) tint.W = GeometryVertexColor.InstanceAlpha(sceneObject, geometry, vertex, paint);
         if ((layer.Flags & JadeMaterialFlags.OverrideAlpha) != 0) tint.W = layer.OverrideAlpha;
         return tint;
     }

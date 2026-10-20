@@ -12,7 +12,10 @@ public sealed partial class FaceMorphPreview
         FaceMorphMouthPlaybackFactory.Validate(factor, speed);
         StopMouthCycle();
         StopBlink();
-        var channel = Data!.Channels[definition.Channel];
+        var channelState = channelStates[definition.Channel];
+        var channel = new FaceMorphChannel(BitConverter.SingleToUInt32Bits(channelState.Weight),
+            BitConverter.SingleToUInt32Bits(channelState.Progression),
+            (uint[])channelGroupReferences[definition.Channel].Clone());
         mouth = FaceMorphMouthPlaybackFactory.Create(definition, channel,
             CopyWeights(), CopyChannelState(), factor, speed);
         ChannelsActive = false;

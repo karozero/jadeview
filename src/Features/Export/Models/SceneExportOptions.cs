@@ -7,5 +7,7 @@ public sealed class SceneExportOptions
     public bool MorphAnimations = true;
     public bool ExperimentalMouthCycle;
     public float MouthCycleDuration = 2;
+    public IReadOnlyDictionary<SceneObject, FaceMorphKeyframe[]>? CinematicMorphTimelines;
+    public uint? CinematicClipKey;
 }
 

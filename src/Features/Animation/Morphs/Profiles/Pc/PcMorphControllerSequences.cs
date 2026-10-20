@@ -14,6 +14,14 @@ internal static class PcMorphControllerSequences
     // Initializer 35001FF5 / A07680; update 9E002C81 / 4F7D30.
     private const uint SharedInitializerKey = 0x35001FF5;
     private const uint SharedUpdateKey = 0x9E002C81;
+    internal const uint CinematicMouthInitializerKey = 0x3500B774;
+    internal const uint CinematicMouthUpdateKey = 0x3500B77E;
+    internal const uint CinematicMouthMessageKey = 0x3500B773;
+    internal static readonly IReadOnlyList<int> CinematicType2 = Array.AsReadOnly(new[]
+    {
+        7, 6, 7, 6, 6, 8, 6, 7, 8, 6, 9, 6, 7, 8, 6, 9,
+        7, 7, 6, 6, 8, 9, 6, 7, 6, 9, 6, 6, 8, 7, 8, 6
+    });
     private static readonly PcMorphControllerBinding FriendHead = new(SharedInitializerKey, SharedUpdateKey,
         Array.AsReadOnly(new[]
         {

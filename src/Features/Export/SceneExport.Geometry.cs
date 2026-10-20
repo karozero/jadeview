@@ -5,6 +5,21 @@ namespace JadeView;
 
 public sealed partial class SceneExporter
 {
+    private bool KeepGeometryCarrier(int node, Geometry geometry)
+    {
+        if (geometry.Particles != null)
+        {
+            ((Obj)nodes[node]["extras"])["particleGenerator"] = true;
+            warnings.Add("PAG simulation is a viewport effect; only its carrier is exported.");
+        }
+        bool hasTriangles = geometry.Parts.Where((part, index) =>
+            geometry.Particles == null || index < geometry.ParticlePart)
+            .Any(part => part.VertexIndices.Length > 0);
+        if (hasTriangles) return false;
+        empties++;
+        return true;
+    }
+
     private int Mesh(SceneObject sceneObject, Geometry geometry, Vector3[] positions, SkinBinding[]? bindings,
         Matrix4x4? morphSpace = null)
     {

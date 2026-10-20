@@ -1,6 +1,7 @@
 using Forms = System.Windows.Forms;
 
 namespace JadeView;
+
 public sealed partial class EditorShell
 {
     public void LoadModProject(string projectPath)
@@ -87,6 +88,7 @@ public sealed partial class EditorShell
     private static bool MatchesContainer(Entry entry, string container) => entry.Id.Equals(container, StringComparison.OrdinalIgnoreCase) || entry.Name.Equals(container, StringComparison.OrdinalIgnoreCase);
     private void ActivateProjectArchive(Archive archive, List<ArchiveSceneItem> scenes, ResourceResolver resolver, SceneDocument? document)
     {
+        ClearCinematicPlayback();
         Archive = archive;
         _archiveScenes = scenes;
         Document = document;
@@ -154,7 +156,8 @@ public sealed partial class EditorShell
             {
                 Title = "Save BGE mod project",
                 Filter = "Jade mod project (*.bgemod)|*.bgemod|JSON (*.json)|*.json",
-                FileName = $"{Path.GetFileNameWithoutExtension(Document.ContainerName)}_mod.bgemod"};
+                FileName = $"{Path.GetFileNameWithoutExtension(Document.ContainerName)}_mod.bgemod"
+            };
             if (dialog.ShowDialog() != Forms.DialogResult.OK)
                 return false;
             path = dialog.FileName;

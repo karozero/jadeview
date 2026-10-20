@@ -8,5 +8,7 @@ internal static class PcVariableFormat
     internal const int MinimumPayloadSize = BlockLengthSize * 3;
     internal const uint ScalarLength = 1;
     internal const ushort IntegerType = 33;
+    internal const ushort FloatType = 34;
     internal const ushort ObjectReferenceType = 40;
+    internal const ushort PackedColorType = 46;
 }

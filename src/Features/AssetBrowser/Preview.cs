@@ -151,8 +151,11 @@ sealed class Preview
         return result;
     }
 
-    static AudioAsset DecodeWave(byte[] b)
+    internal static AudioAsset DecodeWave(byte[] b)
     {
+        if (b.Length < 12 || !b.AsSpan(0, 4).SequenceEqual("RIFF"u8)
+            || !b.AsSpan(8, 4).SequenceEqual("WAVE"u8))
+            throw new InvalidDataException("Audio resource is not a RIFF WAVE stream.");
         int format = 0, channels = 0, rate = 0, align = 0, bits = 0, dataOffset = 0, dataSize = 0;
         int[] c1 = [256, 512, 0, 192, 240, 460, 392], c2 = [0, -256, 0, 64, 0, -208, -232];
         for (int pos = 12; pos + 8 <= b.Length;)
@@ -203,11 +206,7 @@ sealed class Preview
         }
         else throw new InvalidDataException($"Codec {format}, {bits} bits is not supported.");
         var pcm = samples.ToArray();
-        using var output = new MemoryStream(); using var w = new BinaryWriter(output);
-        w.Write("RIFF"u8); w.Write(36 + pcm.Length * 2); w.Write("WAVEfmt "u8); w.Write(16);
-        w.Write((ushort)1); w.Write((ushort)channels); w.Write(rate); w.Write(rate * channels * 2); w.Write((ushort)(channels * 2)); w.Write((ushort)16);
-        w.Write("data"u8); w.Write(pcm.Length * 2); foreach (short s in pcm) w.Write(s);
-        return new(output.ToArray(), pcm, channels, rate);
+        return AudioAsset.FromSamples(pcm, channels, rate);
     }
     internal static int I32(byte[] b, int p) => BinaryPrimitives.ReadInt32LittleEndian(b.AsSpan(p, 4));
     internal static uint U32(byte[] b, int p) => BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(p, 4));

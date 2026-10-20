@@ -1,4 +1,5 @@
 namespace JadeView;
+
 internal sealed partial class PcSceneLoader
 {
     internal sealed record Request(uint Key, char Kind, bool Cache = true);
@@ -11,8 +12,10 @@ internal sealed partial class PcSceneLoader
         public uint LoadWorldKey;
         public int NameFieldOffset;
         public int BrainFieldOffset = -1;
+        public ushort InitialCapabilities;
         public uint Parent = uint.MaxValue, Prefab = uint.MaxValue;
         public uint Flags, Geometry, Material, Group, Events = uint.MaxValue, Actions = uint.MaxValue, Shape = uint.MaxValue, Skeleton = uint.MaxValue;
+        public uint SceneEvents = uint.MaxValue;
         public string Name = "";
         public List<Request> References = [];
         // Serialized GAO keys, including weak OVA references which do not enqueue a load.

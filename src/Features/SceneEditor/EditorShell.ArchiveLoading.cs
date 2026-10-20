@@ -5,6 +5,7 @@ using Raylib_cs;
 using Forms = System.Windows.Forms;
 
 namespace JadeView;
+
 public sealed partial class EditorShell
 {
     private static WorldData? InitialWorld(SceneDocument doc) => doc.Worlds.Where(candidateWorld => candidateWorld.Name.Length > 0 && char.IsDigit(candidateWorld.Name[0])).OrderByDescending(candidateWorld => candidateWorld.Objects.Count).FirstOrDefault() ?? doc.ActiveWorld;
@@ -45,6 +46,14 @@ public sealed partial class EditorShell
             {
                 Archive = arch;
                 _archiveScenes = archiveScenes;
+                _cutsceneMode = false;
+                _cinematicPlayback?.Deactivate();
+                ResetCinematicAudio();
+                _cinematicWorld = null;
+                _cinematicPlayback = null;
+                _cinematicPlayers = [];
+                _loadedCinematicEntry = null;
+                ClearCinematicPlayback();
                 Document = doc;
                 Renderer.ClearGpuCache();
                 ActiveWorld = doc != null ? InitialWorld(doc) : null;
@@ -132,6 +141,7 @@ public sealed partial class EditorShell
             token.ThrowIfCancellationRequested();
             return () =>
             {
+                ClearCinematicPlayback();
                 Document = doc;
                 Renderer.ClearGpuCache();
                 ActiveWorld = InitialWorld(doc);

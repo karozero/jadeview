@@ -76,7 +76,7 @@ internal static class MorphPreviewChecks
         Console.WriteLine("PASS: manual morph preview, deformation before skinning, export-state restoration and model isolation");
     }
 
-    private static byte[] Payload(int vertexCount)
+    internal static byte[] Payload(int vertexCount)
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream);

@@ -17,6 +17,12 @@ internal static class AnimationExportSampling
         var times = new SortedSet<float> { 0, clip.Duration };
         for (int sample = 1; sample < (int)sampleCount; sample++)
             times.Add(sample / (float)SamplesPerSecond);
+        if (clip.CinematicBody != null)
+            foreach (float boundary in clip.CinematicBody.PoseBoundaries())
+            {
+                AddBoundary(times, boundary, clip.Duration);
+                if (boundary > 0 && boundary <= clip.Duration) times.Add(MathF.BitDecrement(boundary));
+            }
         foreach (var track in clip.Tracks)
         {
             foreach (var key in track.Keys)
@@ -24,6 +30,9 @@ internal static class AnimationExportSampling
                 if (!float.IsFinite(key.Duration) || key.Duration < 0)
                     throw new InvalidDataException("Invalid source animation key duration.");
                 AddBoundary(times, key.Time, clip.Duration);
+                if (key.TimeCurve != null)
+                    foreach (var point in key.TimeCurve.Points)
+                        AddBoundary(times, key.Time + point.Time, clip.Duration);
                 float end = key.Time + key.Duration;
                 AddBoundary(times, end, clip.Duration);
                 // Mixed STEP/LINEAR source keys cannot be expressed by one glTF sampler.

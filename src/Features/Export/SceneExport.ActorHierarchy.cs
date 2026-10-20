@@ -30,7 +30,14 @@ public sealed partial class SceneExporter
     {
         if (parent == null) return member.RenderMatrix;
         if (!Matrix4x4.Invert(parent.RenderMatrix, out var inverse))
-            throw new InvalidDataException("Singular animation parent transform.");
+        {
+            // Zero scale is an authored animation state. World matrices lose the
+            // child's local pose there; retain the evaluated pose before composition.
+            if (member.Actor is { } actor && actor.PoseParent(member) == parent
+                && actor.TryGetEvaluatedLocal(member, out var local))
+                return AnimationMath.ToRender(local);
+            throw new InvalidDataException($"Singular animation parent transform for '{member.Name}'.");
+        }
         return member.RenderMatrix * inverse;
     }
 }

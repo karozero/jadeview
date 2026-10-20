@@ -14,7 +14,8 @@ public sealed partial class SceneExporter
     private bool Included(SceneObject sceneObject)
     {
         if (SceneRenderer.IsCollision(sceneObject)) return options.Collisions;
-        bool visibleInPreview = !sceneObject.PreviewHidden && (sceneObject.DrawFlags & 8) != 0;
+        bool visibleInPreview = !sceneObject.PreviewHidden && !sceneObject.IsControlHidden
+            && sceneObject.Actor?.Root.IsControlHidden != true && (sceneObject.DrawFlags & 8) != 0;
         return options.GameHidden || visibleInPreview;
     }
     private int Node(SceneObject sceneObject, Matrix4x4 matrix, bool trs = false)
@@ -24,12 +25,20 @@ public sealed partial class SceneExporter
             "groKey", sceneObject.GeometryKey.ToString("X8"),
             "grmKey", sceneObject.MaterialKey.ToString("X8"),
             "collision", SceneRenderer.IsCollision(sceneObject),
-            "sourceId", sceneObject.Id, "flags", sceneObject.Flags,
+            "sourceId", sceneObject.Id, "flags", sceneObject.Flags, "controlFlags", sceneObject.ControlFlags,
             "recordOffset", sceneObject.RecordRange.Offset, "recordSize", sceneObject.RecordRange.Size));
         if (trs) SetTrs(nodeData, matrix);
         else nodeData["matrix"] = Matrix(matrix);
+        if (!sourceCameraObjects.Contains(sceneObject) && animatedCinematicObjects.Contains(sceneObject)
+              && sceneObject.Name.Contains("camera", StringComparison.OrdinalIgnoreCase))
+        {
+            nodeData["camera"] = cameras.Count;
+            cameras.Add(CameraDefinition(sceneObject));
+        }
         nodes.Add(nodeData);
-        return nodes.Count - 1;
+        int nodeIndex = nodes.Count - 1;
+        nodeByObject.TryAdd(sceneObject, nodeIndex);
+        return nodeIndex;
     }
     private static float[] Matrix(Matrix4x4 matrix) => [matrix.M11, matrix.M12, matrix.M13, 0, matrix.M21, matrix.M22, matrix.M23, 0, matrix.M31, matrix.M32, matrix.M33, 0, matrix.M41, matrix.M42, matrix.M43, 1];
     private static (Vector3 Scale, Quaternion Rotation, Vector3 Position) Decompose(Matrix4x4 matrix)
@@ -49,25 +58,16 @@ public sealed partial class SceneExporter
         if (!Included(sceneObject)) return;
         if (!resolver.Geometries.TryGetValue(sceneObject.RenderGeometryKey, out var geometry))
         {
-            if (!options.UnknownObjects) return;
-            int empty = Node(sceneObject, matrix);
+            if (!options.UnknownObjects && !animatedCinematicObjects.Contains(sceneObject)) return;
+            int empty = Node(sceneObject, matrix, animatedCinematicObjects.Contains(sceneObject));
             ((Obj)nodes[empty]["extras"])["unresolvedGeometry"] = true;
             Add(empty, children);
             empties++;
             return;
         }
-        int node = Node(sceneObject, matrix);
+        int node = Node(sceneObject, matrix, animatedCinematicObjects.Contains(sceneObject));
         Add(node, children);
-        if (geometry.Particles != null)
-        {
-            ((Obj)nodes[node]["extras"])["particleGenerator"] = true;
-            warnings.Add("PAG simulation is a viewport effect; only its carrier is exported.");
-            if (geometry.ParticlePart == 0)
-            {
-                empties++;
-                return;
-            }
-        }
+        if (KeepGeometryCarrier(node, geometry)) return;
         if (geometry.Billboards.Count > 0) warnings.Add("SPG vegetation exports as fixed-facing quads; camera billboarding and wind are viewport effects.");
         var posed = sceneObject.Actor?.Skin(sceneObject, geometry) ?? geometry.Positions;
         nodes[node]["mesh"] = Mesh(sceneObject, geometry, posed, null);

@@ -178,6 +178,7 @@ public sealed partial class EditorShell : IDisposable
         }
 
         HandleKeyboardShortcuts();
+        UpdateCinematicPlayback();
 
     }
 

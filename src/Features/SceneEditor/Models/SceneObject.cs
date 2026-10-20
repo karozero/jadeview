@@ -13,6 +13,18 @@ public sealed class SceneObject
     public uint[] RliColors { get; set; } = [];
     // GAO visual draw mask; bit 3 controls visibility, independently of identity flags.
     public uint DrawFlags { get; set; } = 0x01000008;
+    public uint ControlFlags { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal uint InitialCapabilities { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public uint[] GroupMemberKeys { get; set; } = [];
+    [System.Text.Json.Serialization.JsonIgnore]
+    public uint? PreviewControlFlags { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool CinematicExcluded { get; set; }
+    // Apply runtime visibility only while a cinematic overlay is active; asset setups remain inspectable.
+    public bool IsControlHidden => CinematicExcluded
+        || PreviewControlFlags is uint flags && (flags & CinematicObjectState.Invisible) != 0;
     public int AppearanceRevision { get; set; }
     public bool PreviewHidden { get; set; }
     public SceneActor? Actor { get; set; }
@@ -21,7 +33,19 @@ public sealed class SceneObject
     public FaceMorphPreview? MorphPreview { get; set; }
     internal Action<FaceMorphPreview>? RestoreMorphPreview { get; set; }
     public Matrix4x4? PreviewMatrix { get; set; }
-    public Matrix4x4 RenderMatrix => PreviewMatrix is Matrix4x4 m ? AnimationMath.ToRender(m) : Transform.ToRenderMatrix();
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal float? CinematicZoom { get; set; }
+    public Matrix4x4 RenderMatrix
+    {
+        get
+        {
+            var matrix = PreviewMatrix is Matrix4x4 preview ? AnimationMath.ToRender(preview) : Transform.ToRenderMatrix();
+            if (CinematicZoom is not float zoom || !Matrix4x4.Decompose(matrix, out var scale, out var rotation, out var translation))
+                return matrix;
+            return Matrix4x4.CreateScale(scale * zoom) * Matrix4x4.CreateFromQuaternion(rotation)
+                * Matrix4x4.CreateTranslation(translation);
+        }
+    }
     // Procedural preview keeps the original GRO key and archive patch metadata intact.
     public uint PreviewGeometryKey { get; set; }
     // Objects created in the editor are stored in the .bgemod scene overlay.

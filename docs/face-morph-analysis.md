@@ -53,6 +53,10 @@ below describe the investigation before this captured-code evidence.
 
 ### Original animation event investigation
 
+The archive-wide cinematic/dialogue source inventory, including the recovered
+event → message → facial-controller path and its remaining gaps, is tracked in
+[PC dialogue and facial-event chain](face-morph-pc-dialogue-chain.md).
+
 `AnimationReader` now retains opaque payloads instead of silently skipping them:
 word-pair event lists (including their count), transform reference words,
 unsupported packed rotation words and extra transform controls. Each payload

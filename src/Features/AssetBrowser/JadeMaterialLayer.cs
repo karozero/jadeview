@@ -16,8 +16,9 @@ public sealed record JadeMaterialLayer(ushort Custom, uint Flags, uint Transform
     public bool DepthWrite => (Flags & 0x200) == 0;
     public bool WriteRgb => (Flags & 0x40) == 0;
     public bool WriteAlpha => (Flags & 0x20) == 0;
-    // Iris: (color | 0xff000000) XOR (customAlpha XOR 0xff000000).
-    public float OverrideAlpha => (Custom >> 8) / 255f;
+    // Local alpha is a 5-bit value in s_AditionalFlags[15:11], not an 8-bit
+    // alpha byte. Jade treats the maximum value (31) as fully opaque.
+    public float OverrideAlpha => ((Custom >> 11) & 0x1f) / 31f;
     public bool Disabled => (Flags & JadeMaterialFlags.Disabled) != 0;
     public Vector4 UvMatrix(float time, out Vector2 offset)
     {

@@ -53,8 +53,26 @@ public sealed partial class EditorShell
         ImGui.SameLine();
 
         ImGui.BeginDisabled(ActiveWorld == null);
-        if(ImGui.Button("Export")){_exportTarget=null;_openExport=true;}
+        if (ImGui.Button("Export")) { _exportTarget = null; _openExport = true; }
         ImGui.EndDisabled();
+        ImGui.SameLine();
+
+        if (_cutsceneMode)
+        {
+            if (ImGui.Button("Assets")) ExitCinematicMode();
+        }
+        else
+        {
+            ImGui.BeginDisabled(Archive == null);
+            if (ImGui.Button("Cutscenes"))
+            {
+                _cutsceneMode = true;
+                _cinematicWorld = null;
+                _cinematicPlayback = null;
+                _cinematicPlayers = [];
+            }
+            ImGui.EndDisabled();
+        }
         ImGui.SameLine();
 
         // Правая часть Toolbar: Кнопка «Play» и «Restore original BF»

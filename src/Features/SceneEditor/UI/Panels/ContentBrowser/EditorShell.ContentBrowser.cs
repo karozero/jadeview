@@ -11,6 +11,8 @@ public sealed partial class EditorShell
         ImGui.PushStyleColor(ImGuiCol.Text, EditorTheme.Muted);
         ImGui.TextWrapped("Adding assets to the scene from here is not supported yet. Use Outliner > Add object for loaded scene/FIX geometry.");
         ImGui.PopStyleColor();
+        DrawCategoryTitle("Current scene");
+        DrawCurrentSceneName();
         DrawCategoryTitle("Resource categories");
         if (!ImGui.BeginTabBar("ContentBrowserTabs")) return;
         DrawContentCategory(ContentBrowserCategory.AllAssets, "All Assets", DrawCatalogTab);

@@ -15,7 +15,7 @@ public sealed class GpuMaterialSet : IDisposable
 {
     public (uint GeoKey, uint MatKey) Key { get; init; }
     public List<Material> PartMaterials { get; } = [];
-    public List<List<(Material Material, JadeMaterialLayer Layer, Vector4 Constant)>> Passes { get; } = [];
+    public List<List<GpuMaterialPass>> Passes { get; } = [];
 
     public unsafe void Dispose()
     {

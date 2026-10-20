@@ -8,6 +8,31 @@ System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Inst
 string output = Path.GetFullPath("artifacts/export-verification");
 Directory.CreateDirectory(output);
 if (VerificationCommands.TryRun(args, output)) return;
+CinematicPlaybackChecks.Verify(output);
+CinematicCameraChecks.Verify(output);
+CinematicCameraLensChecks.Verify(output);
+CinematicCameraRoutingChecks.Verify(output);
+CinematicSceneScopeChecks.Verify();
+CinematicBodyChecks.Verify();
+CinematicMotionChecks.Verify();
+CinematicTransitionChecks.Verify();
+CinematicBlendChecks.Verify();
+CinematicRootBlendChecks.Verify();
+CinematicDynamicsMotionChecks.Verify();
+CinematicFrequencyChecks.Verify();
+CinematicScaleChecks.Verify();
+CinematicShutterChecks.Verify();
+CinematicFlashChecks.Verify();
+CinematicLightningChecks.Verify();
+CinematicScreenFadeChecks.Verify();
+CinematicFacialSignalChecks.Verify();
+CinematicStateChecks.Verify();
+CinematicGroupStateChecks.Verify();
+CinematicPhaseTransitionChecks.Verify();
+AnimationBezierChecks.Verify();
+CinematicEnvironmentChecks.Verify();
+CinematicMaterialChecks.Verify();
+CinematicAudioChecks.Verify();
 MorphReaderChecks.Verify();
 MorphChannelChecks.Verify();
 MorphTransitionChecks.Verify();
@@ -20,10 +45,14 @@ MorphBlinkChecks.Verify();
 SallyExpressionChecks.Verify();
 MorphDiscoveryChecks.Verify();
 AnimationPayloadChecks.Verify();
+AnimationPackedRotationChecks.Verify();
+AnimationTimeCurveChecks.Verify();
+AnimationFrameTimingChecks.Verify();
 MorphTimelineChecks.Verify();
 MorphProjectChecks.Verify(output);
 MaterialExportChecks.VerifyMaterials(output);
 LayerBakeChecks.Verify(output);
+GeometryCarrierChecks.Verify(output);
 var resolver = new ResourceResolver();
 var geometry = new Geometry
 {
@@ -80,29 +109,62 @@ sceneObject.MaterialKey = 0;
 VerifyLargeMesh(output);
 Console.WriteLine("PASS: material UV transform order, tiling outside [0,1] and 32-bit mesh indices");
 
-var root = new SceneObject { Id = "root", Name = "Actor root", GaoKey = 20,
-    Transform = new() { Translation = new(8, -2, 1) } };
-var firstBone = new SceneObject { Id = "bone-a", Name = "First bone", GaoKey = 21,
-    ActorNode = new() { Parent = root.GaoKey, Local = Matrix4x4.CreateTranslation(3, 0, 0) } };
-var secondBone = new SceneObject { Id = "bone-b", Name = "Second bone", GaoKey = 22,
-    ActorNode = new() { Parent = root.GaoKey, Local = Matrix4x4.CreateTranslation(7, 0, 0) } };
-sceneObject.ActorNode = new() { Parent = root.GaoKey, Links =
-    [new(firstBone.GaoKey, 0, Matrix4x4.Identity), new(secondBone.GaoKey, 1, Matrix4x4.Identity)] };
+var root = new SceneObject
+{
+    Id = "root",
+    Name = "Actor root",
+    GaoKey = 20,
+    Transform = new() { Translation = new(8, -2, 1) }
+};
+var firstBone = new SceneObject
+{
+    Id = "bone-a",
+    Name = "First bone",
+    GaoKey = 21,
+    ActorNode = new() { Parent = root.GaoKey, Local = Matrix4x4.CreateTranslation(3, 0, 0) }
+};
+var secondBone = new SceneObject
+{
+    Id = "bone-b",
+    Name = "Second bone",
+    GaoKey = 22,
+    ActorNode = new() { Parent = root.GaoKey, Local = Matrix4x4.CreateTranslation(7, 0, 0) }
+};
+sceneObject.ActorNode = new()
+{
+    Parent = root.GaoKey,
+    Links =
+    [new(firstBone.GaoKey, 0, Matrix4x4.Identity), new(secondBone.GaoKey, 1, Matrix4x4.Identity)]
+};
 sceneObject.Flags = 0x1200000;
 sceneObject.DrawFlags = 0x8008;
 geometry.Skin = [new(0, Matrix4x4.CreateTranslation(-1, 0, 0), [Weight(0, .5f), Weight(1, 1)]),
     new(1, Matrix4x4.CreateTranslation(-4, 0, 0), [Weight(0, .5f), Weight(2, 1)])];
 var clip = new AnimationClip { Loaded = true, Name = "Off-grid keys", Duration = .09f, Unsupported = 1, SceneMotion = true };
-clip.Tracks.Add(new() { Bone = -1, Target = firstBone.GaoKey, Keys =
+clip.Tracks.Add(new()
+{
+    Bone = -1,
+    Target = firstBone.GaoKey,
+    Keys =
     [new() { Time = 0, Duration = .013f, Position = new(3, 0, 0), Rotation = Quaternion.Identity, Flags = 2048 },
      new() { Time = .013f, Duration = .024f, Position = new(3, 2, 0), Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 1.2f) },
-     new() { Time = .037f, Duration = .053f, Position = new(3, 4, 0), Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 2) }] });
+     new() { Time = .037f, Duration = .053f, Position = new(3, 4, 0), Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 2) }]
+});
 clip.Tracks[0].ChannelFlags = 0x4013;
 clip.Tracks[0].HeaderWord = 0x128;
 clip.Tracks[0].Keys[1].OpaquePayloads.Add(new("word-pair-list", 123,
     [1, 0, 0, 0, 0x35, 0, 0, 0, 0x21, 0, 0, 1]));
-var actor = new SceneActor { Root = root, Members = [root, firstBone, secondBone, sceneObject],
-    Bones = [firstBone, secondBone], Clips = [clip], Clip = clip, Loop = true, Playing = true, Time = .005f };
+var actor = new SceneActor
+{
+    Root = root,
+    Members = [root, firstBone, secondBone, sceneObject],
+    Bones = [firstBone, secondBone],
+    Clips = [clip],
+    Clip = clip,
+    Loop = true,
+    Playing = true,
+    Time = .005f
+};
 foreach (var member in actor.Members) member.Actor = actor;
 actor.Evaluate(0);
 world.Objects.Clear(); world.Objects.AddRange(actor.Members); world.Actors.Add(actor);
@@ -143,8 +205,13 @@ Console.WriteLine("PASS: mirrored geometry and actor placement at origin match e
 Console.WriteLine("PASS: off-grid keys, STEP boundaries, final pose, unsupported warnings and preview-state restoration");
 
 var alternateClip = new AnimationClip { Loaded = true, Name = "Alternate motion", Duration = .09f };
-alternateClip.Tracks.Add(new() { Bone = -1, Target = firstBone.GaoKey, Keys =
-    [new() { Time = 0, Duration = .09f, Position = new(3, -2, 0), Rotation = Quaternion.Identity }] });
+alternateClip.Tracks.Add(new()
+{
+    Bone = -1,
+    Target = firstBone.GaoKey,
+    Keys =
+    [new() { Time = 0, Duration = .09f, Position = new(3, -2, 0), Rotation = Quaternion.Identity }]
+});
 actor.Clips.Add(alternateClip);
 actor.SelectClip(clip);
 actor.Time = 0; actor.Evaluate(0);

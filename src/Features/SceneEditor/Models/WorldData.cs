@@ -9,6 +9,7 @@ public sealed class WorldData
     public SourceRange RecordRange { get; init; }
     public List<SceneObject> Objects { get; } = [];
     public List<SceneActor> Actors { get; } = [];
+    public Dictionary<uint, AnimationClip> CinematicClips { get; } = [];
 
     public override string ToString() => $"{Name} ({Key:X8}) - {Objects.Count} objects";
 }

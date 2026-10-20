@@ -87,6 +87,7 @@ public sealed partial class EditorShell
                                 }
                             }
 
+                            DrawCopyNameContextMenu("CatalogEntryName", catalogEntry.Name);
                             ImGui.TableNextColumn();
                             ImGui.TextDisabled(catalogEntry.Id);
                             ImGui.TableNextColumn();

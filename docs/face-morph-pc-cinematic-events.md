@@ -1,5 +1,9 @@
 # PC facial messages in cinematic resources
 
+For the archive-wide pass over all FF scene/container records and the general
+dialogue-to-controller research map, see
+[PC dialogue and facial-event chain](face-morph-pc-dialogue-chain.md).
+
 The earlier hangar event audit covered clips attached to parsed actors. It did
 not cover every standalone animation/event resource. Do not interpret that
 earlier negative result as absence of facial messages in the scene.

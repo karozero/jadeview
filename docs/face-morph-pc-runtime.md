@@ -414,11 +414,12 @@ Local evidence: `native/facial-handler-evidence.json`,
 queue evidence:
 `ev_d263da8a7a2f06843a207ec7ca5b101973053766eef6be5f6036667bdef9563f`.
 
-The next unresolved boundary is the producer of dialogue/cinematic message 53.
-Direct sender references are numerous; nearby raw `35 00 00 00` bytes did not
-qualify a producer. Two checked windows resolve to unrelated or receiving
-logic, so proximity must not be treated as message provenance. No facial UI,
-recording controls or export behavior changed in this investigation.
+The archive-wide static search has now identified literal cinematic candidates
+for message 53. See [PC dialogue and facial-event chain](face-morph-pc-dialogue-chain.md)
+for coverage, the reusable census, and remaining runtime/script/audio links.
+Direct sender references are numerous; nearby raw `35 00 00 00` bytes alone do
+not qualify a producer. No facial UI, recording controls or export behavior
+changed in that investigation.
 
 
 ## PC message selector registration (2026-10-19 follow-up)

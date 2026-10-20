@@ -47,6 +47,7 @@ public sealed partial class EditorShell
         }
 
         ImGui.EndDisabled();
+        DrawCopyNameContextMenu("ArchiveSceneName", activeScene?.Label, "Copy scene name");
     }
 
     private void DrawArchiveSceneOption(ArchiveSceneItem scene)
@@ -59,6 +60,7 @@ public sealed partial class EditorShell
             ImGui.SetItemDefaultFocus();
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip(label + (scene.Diagnostic != null ? "\n" + scene.Diagnostic : ""));
+        DrawCopyNameContextMenu($"SceneName##{scene.Entry.Id}", scene.Label, "Copy scene name");
     }
 
     private void DrawOutlinerWorldPicker()
@@ -68,8 +70,12 @@ public sealed partial class EditorShell
         DrawScenePickerLabel("Subscene", "A world inside the loaded scene container. It may contain a location, an actor setup or cinematic objects. Selecting it changes the hierarchy and viewport without opening another archive container.");
         ImGui.SetNextItemWidth(-1);
         SetOutlinerPickerHeight();
-        if (!ImGui.BeginCombo("##WorldPicker", ActiveWorld?.Name ?? "Select world"))
+        bool pickerOpen = ImGui.BeginCombo("##WorldPicker", ActiveWorld?.Name ?? "Select world");
+        if (!pickerOpen)
+        {
+            DrawCopyNameContextMenu("ActiveSubsceneName", ActiveWorld?.Name, "Copy scene name");
             return;
+        }
         foreach (var world in Document.Worlds)
         {
             bool selected = world == ActiveWorld;
@@ -83,6 +89,7 @@ public sealed partial class EditorShell
 
             if (selected)
                 ImGui.SetItemDefaultFocus();
+            DrawCopyNameContextMenu($"SubsceneName##{world.Key:X8}", world.Name, "Copy scene name");
         }
 
         ImGui.EndCombo();

@@ -23,6 +23,7 @@ Read the [quick tutorial](tutorial.md) ([Russian](tutorial.ru.md)) for scene edi
 | Feature | Status |
 | --- | --- |
 | Scene and resource previews | Working |
+| Cutscene selection, synchronized preview and GLB export | Implemented for recognized shared tracks; facial and camera projection limits apply |
 | GLB / PNG / WAV / JSON export | Working, with limitations |
 | Animation playback | Recognized actors only |
 | Move / rotate / add / copy / delete objects | Supported static objects only |
@@ -66,6 +67,7 @@ You can also omit the archive path and select it with **Open BF**.
 ## Usage
 
 See the [quick tutorial](tutorial.md) for usage and controls.
+For synchronized cutscene playback and Blender export, see [Cutscene preview](docs/cinematic-preview.md).
 
 ## Current scope
 

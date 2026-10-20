@@ -17,8 +17,11 @@ public sealed class Geometry
     public SkinBinding[] Skin = [];
     public List<Part> Parts = [];
     public List<GeometryBillboard> Billboards = [];
+    // SPG appends an ordered, contiguous range of four-vertex sprites.
+    internal bool IsBillboardVertex(int vertex) => Billboards.Count > 0
+        && vertex >= Billboards[0].Vertex && vertex < Billboards[^1].Vertex + 4;
     public ParticleDefinition? Particles;
-    public int ParticleStart,ParticlePart;
+    public int ParticleStart, ParticlePart;
     public int Triangles => Parts.Sum(p => p.VertexIndices.Length / 3);
     public sealed record Part(int MaterialId, int[] VertexIndices, int[] UvIndices);
     public Vector3 Min => Positions.Aggregate(Vector3.Min);

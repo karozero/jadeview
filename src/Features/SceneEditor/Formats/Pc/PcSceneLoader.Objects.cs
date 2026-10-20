@@ -1,4 +1,5 @@
 namespace JadeView;
+
 internal sealed partial class PcSceneLoader
 {
     private void ReadObject(Record record)
@@ -88,6 +89,7 @@ internal sealed partial class PcSceneLoader
         if ((flags & 0x800000) != 0)
             EnqueueRequest(record.Prefab, 'k');
         uint hasModifiers = ReadUInt32(position);
+        record.InitialCapabilities = (ushort)ReadUInt16(position + 12);
         position += 18;
         if ((flags & 0x20) != 0)
         {
@@ -96,6 +98,7 @@ internal sealed partial class PcSceneLoader
             position += 4;
         }
 
+        if ((flags & 0x2000000) != 0) record.SceneEvents = ReadUInt32(position);
         ReadOptionalReference(ref position, flags, 0x2000000, 'i');
         ReadOptionalReference(ref position, flags, 0x8000000, 'u');
         ReadOptionalReference(ref position, flags, 0x40000, 'w');

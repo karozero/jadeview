@@ -129,6 +129,7 @@ public sealed partial class EditorShell
 
     public void Dispose()
     {
+        ResetCinematicAudio();
         Renderer.Dispose();
         Launcher.Dispose();
         if (_soundLoaded)

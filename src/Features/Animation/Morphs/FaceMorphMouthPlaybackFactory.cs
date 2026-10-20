@@ -14,7 +14,7 @@ internal static class FaceMorphMouthPlaybackFactory
         float[] baseline, FaceMorphChannelState[]? channels, float factor, float speed)
     {
         var transition = new PcMorphTransitionState(channel, factor, 0, 2, speed, 0, PcMorphTransitionPhase.Settled);
-        var state = new PcMorphMouthCycleState(transition, 0, true);
+        var state = new PcMorphMouthCycleState(transition, definition.InitialFormIndex, true);
         int[] sequence = definition.FormSequence.ToArray();
         var sourceGroups = channel.GroupReferences.Where(reference => reference < baseline.Length)
             .Select(reference => (int)reference);

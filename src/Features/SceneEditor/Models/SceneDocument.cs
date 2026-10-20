@@ -8,6 +8,15 @@ public sealed class SceneDocument
     public string BaseBfSha256 { get; set; } = "";
     public string ContainerName { get; set; } = "";
     public List<WorldData> Worlds { get; } = [];
+    public Dictionary<uint, AnimationClip> CinematicClips { get; } = [];
+    public Dictionary<uint, Dictionary<int, CinematicAction>> CinematicActionKits { get; } = [];
+    public Dictionary<uint, uint[]> CinematicSoundBanks { get; } = [];
+    public Dictionary<uint, CinematicShutterController> CinematicShutterControllers { get; } = [];
+    public HashSet<uint> CinematicFadeReceivers { get; } = [];
+    public Dictionary<uint, CinematicEnvironmentController> CinematicEnvironmentControllers { get; } = [];
+    internal Dictionary<uint, CinematicShockwaveController> CinematicShockwaveControllers { get; } = [];
+    internal Dictionary<uint, CinematicFlashController> CinematicFlashControllers { get; } = [];
+    internal Dictionary<uint, CinematicLightningController> CinematicLightningControllers { get; } = [];
     public Dictionary<uint, ResourceItem> Resources { get; } = [];
     public List<string> Diagnostics { get; } = [];
     // Retain keys after deletion: the source stream and undo history still own them.

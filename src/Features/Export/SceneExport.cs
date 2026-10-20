@@ -9,10 +9,12 @@ public sealed partial class SceneExporter
     private readonly ResourceResolver resolver;
     private readonly SceneExportOptions options;
     private readonly MemoryStream binary = new();
-    private readonly List<Obj> views = [], accessors = [], nodes = [], meshes = [], materials = [], images = [], textures = [], skins = [], animations = [];
+    private readonly List<Obj> views = [], accessors = [], nodes = [], meshes = [], materials = [], images = [], textures = [], skins = [], animations = [], cameras = [];
     private readonly List<int> roots = [];
     private readonly Dictionary<string, int> imageCache = [];
     private readonly HashSet<string> warnings = [];
+    private readonly Dictionary<SceneObject, int> nodeByObject = [];
+    private HashSet<SceneObject> animatedCinematicObjects = [];
     private int empties;
     private Matrix4x4 originOffset = Matrix4x4.Identity;
     private SceneExporter(ResourceResolver resolver, SceneExportOptions options)
@@ -35,8 +37,16 @@ public sealed partial class SceneExporter
         using var lifetime = new ExportLifetime(new SceneExporter(resolver, options));
         var exporter = lifetime.Value;
         var objects = SelectObjects(world, options, selected);
+        exporter.ResolveCinematicCameras(world);
+        exporter.animatedCinematicObjects = FindCinematicObjects(world, objects, options);
         exporter.SetOrigin(objects, selected);
         exporter.ExportObjects(objects);
+        exporter.WriteRoutedCameras(world, objects);
+        if (exporter.cameras.Count > 0)
+            exporter.warnings.Add("Cinematic camera motion uses the source camera transform; lens and projection are approximated for Blender export.");
+        if (options.Animations) exporter.WriteCinematicObjectAnimations(world, objects);
+        if (options.Animations) exporter.WriteCameraLensAnimations(world);
+        exporter.AddCinematicSourceMetadata(world);
         if (options.ExperimentalMouthCycle && exporter.experimentalMouthClips == 0)
             exporter.warnings.Add("No active source-qualified mouth preview was included; no experimental mouth clip was exported.");
         if (exporter.nodes.Count == 0)
@@ -44,6 +54,15 @@ public sealed partial class SceneExporter
         exporter.Write(path, world.Name);
         return new(exporter.meshes.Count, exporter.empties, exporter.images.Count,
             exporter.animations.Count, exporter.warnings.ToArray());
+    }
+
+    private static HashSet<SceneObject> FindCinematicObjects(WorldData world,
+        List<SceneObject> objects, SceneExportOptions options)
+    {
+        var targetKeys = SelectedCinematicClips(world, options).SelectMany(clip => clip.Tracks)
+            .Where(track => track.Bone < 0).Select(track => track.Target).ToHashSet();
+        return objects.Where(sceneObject => sceneObject.Actor == null
+            && targetKeys.Contains(sceneObject.GaoKey)).ToHashSet();
     }
 
     private static List<SceneObject> SelectObjects(WorldData world, SceneExportOptions options, SceneObject? selected)

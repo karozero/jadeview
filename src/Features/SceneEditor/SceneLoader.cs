@@ -13,18 +13,19 @@ public static class SceneLoader
 {
     private const uint MagicWow = 0x776F772E; // ".wow" (little-endian: 2E 77 6F 77)
     private const uint MagicGao = 0x6F61672E; // ".gao" (little-endian: 2E 67 61 6F)
-    private const uint TagSmd   = 0x646D732E; // ".smd"
-    private const uint TagSnk   = 0x6B6E732E; // ".snk"
+    private const uint TagSmd = 0x646D732E; // ".smd"
+    private const uint TagSnk = 0x6B6E732E; // ".snk"
     private const uint MagicRli = 0x80 | ((uint)'R' << 8) | ((uint)'L' << 16) | ((uint)'I' << 24);
 
     // Флаги идентичности GAO (OBJconst.h)
-    public const uint IdentityFlagBone             = 0x00000001;
-    public const uint IdentityFlagAnims            = 0x00000002;
-    public const uint IdentityFlagDyna             = 0x00000004;
-    public const uint IdentityFlagBaseObject       = 0x00001000;
-    public const uint IdentityFlagVisu             = 0x00004000;
-    public const uint IdentityFlagOBBox            = 0x00080000;
-    public const uint IdentityFlagHierarchy        = 0x00400000;
+    public const uint IdentityFlagBone = 0x00000001;
+    public const uint IdentityFlagAnims = 0x00000002;
+    public const uint IdentityFlagDyna = 0x00000004;
+    public const uint IdentityFlagBaseObject = 0x00001000;
+    public const uint IdentityFlagVisu = 0x00004000;
+    public const uint IdentityFlagOBBox = 0x00080000;
+    public const uint IdentityFlagHierarchy = 0x00400000;
+    public const uint IdentityFlagGroup = 0x00800000;
 
     public sealed record ChunkInfo(int Offset, int Size, uint Magic, bool IsSpecialTag);
 
@@ -51,8 +52,12 @@ public static class SceneLoader
                 doc.ReservedResourceKeys.UnionWith(replay.Records.Select(record => record.Key));
                 foreach (var worldRecord in replay.Worlds)
                 {
-                    var world = new WorldData { Key = worldRecord.Key, Name = worldRecord.Name,
-                        RecordRange = new SourceRange(worldRecord.Offset - 4, worldRecord.Size + 4) };
+                    var world = new WorldData
+                    {
+                        Key = worldRecord.Key,
+                        Name = worldRecord.Name,
+                        RecordRange = new SourceRange(worldRecord.Offset - 4, worldRecord.Size + 4)
+                    };
                     int index = 0;
                     // Keep the exact record instance captured when this world was loaded.
                     // A key may be evicted and read again in a later world; the final
@@ -61,7 +66,7 @@ public static class SceneLoader
                     {
                         var chunk = new ChunkInfo(record.Offset - 4, record.Size + 4, MagicGao, false);
                         var obj = ParseGao(bytes, chunk, record.Key, index++, doc.Diagnostics);
-                        if (obj != null) { obj.Name = record.Name; obj.Modifiers=record.Modifiers.Select(m=>new SceneModifier(m.Type,bytes.AsSpan(m.Offset,m.Size).ToArray())).ToList(); world.Objects.Add(obj); }
+                        if (obj != null) { obj.Name = record.Name; obj.InitialCapabilities = record.InitialCapabilities; obj.Modifiers = record.Modifiers.Select(m => new SceneModifier(m.Type, bytes.AsSpan(m.Offset, m.Size).ToArray())).ToList(); world.Objects.Add(obj); }
                     }
                     doc.Worlds.Add(world);
                 }
@@ -519,6 +524,9 @@ public static class SceneLoader
             GeometryKey = (geoKey != 0 && geoKey != 0xFFFFFFFF) ? geoKey : 0,
             MaterialKey = (matKey != 0 && matKey != 0xFFFFFFFF) ? matKey : 0,
             Flags = idFlags,
+            ControlFlags = (mask & 0x7b9c0080)
+                | ((mask & 0x20000000) != 0 ? CinematicObjectState.Invisible : 0)
+                | ((mask & 0x40000000) != 0 ? CinematicObjectState.Inactive : 0),
             RliColors = rliColors,
             DrawFlags = drawFlags,
             RecordRange = new SourceRange(gChunk.Offset, gChunk.Size),

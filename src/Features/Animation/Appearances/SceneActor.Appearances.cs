@@ -63,7 +63,8 @@ public sealed partial class SceneActor
     private void ApplyAppearanceOverrides()
     {
         foreach (var (bone, source) in appearanceOverrides)
-            if (Bones[bone] is { } member) ApplySourceModel(member, SourceMeshes[bone][source]);
+            if (Bones[bone] is { PreviewHidden: false } member)
+                ApplySourceModel(member, SourceMeshes[bone][source]);
         ApplyAppearanceCompanions();
     }
 

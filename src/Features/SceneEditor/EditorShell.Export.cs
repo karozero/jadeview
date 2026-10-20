@@ -5,6 +5,7 @@ using Raylib_cs;
 using Forms = System.Windows.Forms;
 
 namespace JadeView;
+
 public sealed partial class EditorShell
 {
     private void DrawExportDialog()
@@ -41,12 +42,7 @@ public sealed partial class EditorShell
         {
             ImGui.Checkbox("All clips (otherwise current / first)", ref _exportOptions.AllClips);
             ImGui.Checkbox("Manual morph animations", ref _exportOptions.MorphAnimations);
-            ImGui.Checkbox("Active experimental mouth cycle", ref _exportOptions.ExperimentalMouthCycle);
-            if (_exportOptions.ExperimentalMouthCycle)
-            {
-                ImGui.SliderFloat("Mouth clip duration (s)", ref _exportOptions.MouthCycleDuration, .25f, 10, "%.2f");
-                ImGui.TextWrapped("Start a supported mouth preview first. Exports a separate simulated clip from its current state, without dialogue synchronization.");
-            }
+            _exportOptions.ExperimentalMouthCycle = false;
         }
         ImGui.EndDisabled();
         DrawCategoryTitle("Placement");
@@ -69,6 +65,11 @@ public sealed partial class EditorShell
                 try
                 {
                     Forms.Cursor.Current = Forms.Cursors.WaitCursor;
+                    _exportOptions.ExperimentalMouthCycle = false;
+                    _exportOptions.CinematicClipKey = _cutsceneMode && !_exportOptions.AllClips
+                        ? _cinematicPlayback?.Key : null;
+                    _exportOptions.CinematicMorphTimelines = _cutsceneMode
+                        ? _cinematicPlayback?.SampleFacialMorphTimelines() : null;
                     var result = SceneExporter.Export(dialog.FileName, ActiveWorld, Resolver, _exportOptions, _exportTarget);
                     _statusMessage = $"Exported {result.Meshes} meshes, {result.Textures} textures, {result.Animations} animations, {result.EmptyObjects} empty GAOs: {dialog.FileName}";
                     if (result.Warnings.Length > 0)

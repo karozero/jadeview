@@ -47,11 +47,13 @@ public sealed partial class SceneExporter
         }
         var animation = D("name", $"{actor.Root.Name} {clip.Name}", "samplers", samplers, "channels", channels);
         AddSourceAnimationRecords(animation, clip);
-        animations.Add(animation);
+        AddExportAnimation(animation, clip);
     }
 
     private AnimationClip[] SelectedAnimationClips(SceneActor actor)
     {
+        if (options.CinematicClipKey is { } key)
+            return actor.Clip is { Cinematic: true } clip && clip.Key == key ? [clip] : [];
         if (options.AllClips) return actor.Clips.ToArray();
         if (actor.Clip != null) return [actor.Clip];
         return actor.Clips.Take(1).ToArray();

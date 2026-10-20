@@ -3,16 +3,20 @@ using System.Numerics;
 using ImGuiNET;
 
 namespace JadeView;
+
 public sealed partial class EditorShell
 {
     private void DrawOutliner()
     {
         DrawPanelTitle("OUTLINER", "Objects placed in the current world, grouped by actor. Search and select objects here; right-click for scene actions. Double-click to frame an object.");
         DrawOutlinerSearch();
-        DrawOutlinerSceneSelection();
-        DrawOutlinerDisplay();
+        if (!_cutsceneMode)
+        {
+            DrawOutlinerSceneSelection();
+            DrawOutlinerDisplay();
+        }
         DrawCategoryTitle("Scene objects", "Objects in the selected world, grouped by actor. Filters below affect this list only.");
-        ImGui.TextWrapped(ActiveWorld != null ? $"{ActiveWorld.Name} ({ActiveWorld.Objects.Count} objects)" : "No world");
+        DrawCurrentSceneName(showObjectCount: true);
         bool canAddObjects = ActiveWorld != null && Resolver.Geometries.Count > 0;
         ImGui.BeginDisabled(!canAddObjects);
         if (ImGui.Button("Add object"))
@@ -130,6 +134,9 @@ public sealed partial class EditorShell
         if (!ImGui.BeginPopupContextItem("ObjectActions##" + obj.Id))
             return;
         SelectedObject = obj;
+        if (ImGui.MenuItem("Copy name"))
+            ImGui.SetClipboardText(obj.Name);
+        ImGui.Separator();
         bool canEditStructure = ActiveWorld != null && obj.Actor == null;
         if (ImGui.MenuItem("Duplicate", null, false, canEditStructure && CanDuplicateSceneObject(obj)))
             DuplicateSceneObject(obj);

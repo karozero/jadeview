@@ -37,7 +37,11 @@ internal sealed class GlbReader : IDisposable
         int offset = view.GetProperty("byteOffset").GetInt32();
         int components = accessor.GetProperty("type").GetString() switch
         {
-            "VEC2" => 2, "VEC3" => 3, "VEC4" => 4, "MAT4" => 16, _ => 1
+            "VEC2" => 2,
+            "VEC3" => 3,
+            "VEC4" => 4,
+            "MAT4" => 16,
+            _ => 1
         };
         int componentType = accessor.GetProperty("componentType").GetInt32();
         int size = componentType == 5123 ? 2 : 4;
@@ -82,7 +86,7 @@ internal sealed class GlbReader : IDisposable
                 foreach (var channel in animation.GetProperty("channels").EnumerateArray())
                 {
                     var target = channel.GetProperty("target");
-                    if (target.GetProperty("node").GetInt32() != nodeIndex) continue;
+                    if (!target.TryGetProperty("node", out var targetNode) || targetNode.GetInt32() != nodeIndex) continue;
                     var sampler = animation.GetProperty("samplers")[channel.GetProperty("sampler").GetInt32()];
                     var times = Accessor(sampler.GetProperty("input").GetInt32()).Select(value => value[0]).ToArray();
                     int frame = Array.FindIndex(times, value => value == time);
