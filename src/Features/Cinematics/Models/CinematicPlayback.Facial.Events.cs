@@ -9,7 +9,8 @@ public sealed partial class CinematicPlayback
     {
         var events = clip.Tracks
             .SelectMany(track => track.Keys.SelectMany(key =>
-                DecodeFacialEvents(actor, track, key, sceneObjects, clip)))
+                CinematicOwnerContext.ForTrack(clip, track)
+                    .SelectMany(context => DecodeFacialEvents(actor, track, key, sceneObjects, clip, context))))
             .Where(item => item.ChannelForm != null
                 ? item.TrackTarget == actor.Root.GaoKey
                 : item.Mouth != null || item.MorphFactor != null)
@@ -20,9 +21,9 @@ public sealed partial class CinematicPlayback
     }
 
     private static IEnumerable<FacialEvent> DecodeFacialEvents(SceneActor actor,
-        AnimationTrack track, AnimationKey key, IReadOnlyCollection<SceneObject> sceneObjects, AnimationClip clip)
+        AnimationTrack track, AnimationKey key, IReadOnlyCollection<SceneObject> sceneObjects,
+        AnimationClip clip, uint trackTarget)
     {
-        uint trackTarget = track.Target == 0 ? clip.CinematicOwnerKey : track.Target;
         var mouthEvent = CinematicFacialEvent.Decode(key);
         if (mouthEvent != null && TargetsFacialActor(trackTarget, mouthEvent.ActorTargetKey, actor))
             yield return new(key.Time, trackTarget, mouthEvent, null, null);

@@ -17,8 +17,9 @@ internal static class CinematicAudioAudit
         var initiallyHidden = world.Objects.Where(sceneObject => sceneObject.IsControlHidden)
             .Select(sceneObject => sceneObject.Name).ToArray();
         var changes = source.Tracks.Where(track => track.Bone < 0)
-            .SelectMany(track => track.Keys.SelectMany(key => key.OpaquePayloads.Select(payload => (
-                key.Time, Call: CinematicLiteralCall.Decode(payload, track.Target, source.CinematicOwnerKey)))))
+            .SelectMany(track => track.Keys.SelectMany(key => key.OpaquePayloads.SelectMany(payload =>
+                CinematicOwnerContext.ForTrack(source, track).Select(context => (
+                    key.Time, Call: CinematicLiteralCall.Decode(payload, track.Target, context))))))
             .Where(item => item.Call?.Selector is 8115 or 8152 or 8153).ToArray();
         var changedKeys = changes.Select(change => change.Call!.Target).ToHashSet();
         var times = changes.Select(change => Math.Min(MathF.BitIncrement(change.Time), source.Duration))

@@ -80,8 +80,8 @@ public sealed partial class CinematicBodyTimeline
     private static IEnumerable<CinematicActionEvent> ReadActorEvents(AnimationClip source, SceneActor actor) =>
         source.Tracks.Where(track => track.Bone < 0)
             .SelectMany(track => track.Keys.SelectMany(key => key.OpaquePayloads
-                .Select(payload => CinematicActionEvent.Decode(key,
-                    track.Target == 0 ? source.CinematicOwnerKey : track.Target, payload))))
+                .SelectMany(payload => CinematicOwnerContext.ForTrack(source, track)
+                    .Select(context => CinematicActionEvent.Decode(key, context, payload)))))
             .Where(action => action != null && IsActorTarget(action.Target, actor))
             .Cast<CinematicActionEvent>();
 

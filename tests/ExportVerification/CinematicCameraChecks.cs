@@ -37,6 +37,14 @@ internal static class CinematicCameraChecks
         var binding = CinematicCameraBinding.Discover(clip, objects, []).Single();
         if (!binding.FromSourceEvent || binding.Source != position || binding.Target != target)
             throw new InvalidDataException("Camera binding relied on object names instead of literal message references.");
+        var sharedOwnerClip = new AnimationClip
+        {
+            CinematicOwnerKeys = [9, 10],
+            Tracks = [new() { Bone = -1, Target = 0, Keys = [Message()] }]
+        };
+        var sharedCameraEvents = CinematicCameraEvent.Read(sharedOwnerClip);
+        if (sharedCameraEvents.Length != 2 || !sharedCameraEvents.Select(item => item.ReceiverKey).Order().SequenceEqual([9u, 10u]))
+            throw new InvalidDataException("A target-zero camera event on a shared clip did not retain both owner receivers.");
         var pose = binding.RenderPose();
         Matrix4x4.Decompose(pose, out _, out var rotation, out _);
         if (Vector3.Distance(Vector3.Transform(-Vector3.UnitZ, rotation), Vector3.UnitX) > .0001f)

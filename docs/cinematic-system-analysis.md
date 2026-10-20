@@ -228,6 +228,16 @@ now reports “no skeletal action resolved” only when it decoded a recognized
 body-action request for that actor. The synthetic checks cover both an actual
 missing body action and an unrelated opaque event.
 
+The audit now groups serialized coverage mechanisms separately: 163 bindings
+have both resolved action segments and direct bone tracks, 110 use resolved
+action kits only, 111 are root-transform-only, 22 have direct bone tracks but
+no action segment, and five contain unresolved body-action requests. These are
+evidence categories, not inferred causes. In `BF003BD1`, for example, Peyj has
+a root transform track but no decoded action request or direct bone track;
+JadeView cannot derive his pose from this clip alone. His T-pose therefore
+needs the actor brain/gameplay handoff path traced, rather than an arbitrary
+idle fallback.
+
 ### Event tracks can be shared by multiple owners
 
 The archive index found 30 of the 1,229 serialized cinematic event clips
@@ -236,6 +246,12 @@ referenced by more than one GAO in the same cinematic world. Every one of these
 references are serialized in `archive-cinematic-body-coverage.json`; they
 distinguish ordinary `Events` references from `SceneEvents` references. All 30
 ambiguous cases in this scan are ordinary `Events` references.
+
+After expanding body-action decoding to every owner context, a fresh scan of all
+91 archive containers still finds no recognized body-action requests in those
+30 shared clips. The change therefore provides correct target-zero routing for
+the format without claiming it fixes the known T-pose cases, which need a
+different gameplay/brain path.
 
 This is not evidence that the clip should be copied into separate files. The
 later Jaded source shows that event data is attached to a game object, while
@@ -247,30 +263,33 @@ game object and starts that object's event tracks. IrisEngine's BGE
 therefore share serialized track content while still running in separate
 owner contexts and with separate playback state.
 
-JadeView currently stores one cinematic clip per event key and assigns its
-`CinematicOwnerKey` from the first matching record. That loses the other owner
-contexts in the model. The impact is conditional: an event payload with an
-explicit target does not depend on this fallback, but a payload that inherits
-target zero can be attributed to the wrong GAO or omitted for the other owners.
-I extended the audit to record inherited-target calls, not just track targets.
+The initial playback implementation stored one cinematic clip per event key
+and assigned its `CinematicOwnerKey` from the first matching record. That lost
+the other owner contexts. An event payload with an explicit target is
+independent of this fallback, but a payload that inherits target zero can be
+attributed to the wrong GAO or omitted for the other owners. The audit records
+inherited-target calls, not just track targets.
 Among the 30 shared clips, one has a decoded inherited-target call: clip
 `5E0065C6` in `00_03_dehors_maison_Intro_cine`, referenced by seven owner
 objects. Its command is `OBJ_CapaSet` (`0x1FC5`), confirmed by the IrisEngine
-function table; its arguments are add-mask `0` and remove-mask `3`. Jaded's
-implementation applies these masks to the current owner's capability field.
-That confirms the target context is meaningful, though the exact BGE meaning of
-those two capability bits is not established here. The remaining 29 shared
-clips have no payload matching the current word-pair call decoder, so their
+function table; its arguments are add-mask `0` and remove-mask `3`. IrisEngine
+and Jaded both apply `(capabilities & ~remove) | add`, so this command clears
+bits 0 and 1 on each of the seven owners. The exact BGE meaning of those bits
+is not established here. The remaining 29 shared clips
+have no payload matching the current word-pair call decoder, so their
 zero-target track header alone is not evidence of an owner-context bug.
 
-The next implementation should preserve the serialized clip once, but retain
-all owner references and evaluate target-zero commands in each owner's context.
-Playback state, reset/seek behavior, and stateful effect handlers must remain
-per owner where the engine does so; simply duplicating the entire timeline
-would incorrectly duplicate global camera, audio, and lighting events. First
-add a narrow owner-context evaluator for capability calls, with a regression
-fixture for `5E0065C6`; expand the context model only after another decoder
-family demonstrates the same need.
+JadeView now retains all serialized event owners on the shared clip instead of
+only the first. Target-zero body actions, camera messages, facial events, and
+decoded literal calls resolve against each owner's context; material and
+screen-fade timelines use the same context resolution. The capability preview
+applies `OBJ_CapaSet` using each target's initial mask and the verified
+add/remove argument order. Seeking backward resets to those initial masks;
+clearing the cinematic preview discards the temporary values. The serialized
+source clip remains one record, while owner-addressed commands are evaluated
+in their respective contexts. This previews decoded events; it does not execute
+each owner's script brain or prove what the two capability bits do in retail
+BGE.
 
 ## System-level next steps
 

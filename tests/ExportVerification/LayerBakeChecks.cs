@@ -31,7 +31,8 @@ internal static class LayerBakeChecks
         using var stream = new MemoryStream(glb.Image(0));
         using var bitmap = new Bitmap(stream);
         var pixel = bitmap.GetPixel(5, 5);
-        Check(pixel.R == 128 && pixel.G == 0 && pixel.B == 127 && pixel.A == 255,
+        // The 5-bit constant 16/31 is slightly above one half.
+        Check(pixel.R == 132 && pixel.G == 0 && pixel.B == 123 && pixel.A == 255,
             $"Layer blend or independent UV sampling failed: {pixel}");
         var primitive = glb.Root.GetProperty("meshes")[0].GetProperty("primitives")[0];
         var positions = glb.Accessor(primitive.GetProperty("attributes").GetProperty("POSITION").GetInt32());
@@ -60,7 +61,7 @@ internal static class LayerBakeChecks
         using var stream = new MemoryStream(glb.Image(0));
         using var bitmap = new Bitmap(stream);
         var pixel = bitmap.GetPixel(5, 5);
-        Check(pixel.R == 255 && pixel.G == 128 && pixel.B == 128 && pixel.A == 255,
+        Check(pixel.R == 255 && pixel.G == 132 && pixel.B == 132 && pixel.A == 255,
             $"Source alpha overlay or its constant alpha override was not applied: {pixel}");
         Console.WriteLine("PASS: two-pass source alpha overlay, independent UVs and alpha override");
     }
@@ -84,7 +85,7 @@ internal static class LayerBakeChecks
         Check(material.GetProperty("extras").GetProperty("bakedReflectionDetail").GetBoolean(),
             "Reflection/detail layers were not composited");
         var pixel = bitmap.GetPixel(5, 5);
-        Check(pixel.R == 64 && pixel.G == 64 && pixel.B == 0 && pixel.A == 255,
+        Check(pixel.R == 66 && pixel.G == 66 && pixel.B == 0 && pixel.A == 255,
             $"Reflection contribution was lost or its alpha was applied incorrectly: {pixel}");
         Check(material.GetProperty("pbrMetallicRoughness").GetProperty("baseColorFactor")[3].GetSingle() == 1,
             "Reflection alpha override leaked into base opacity");

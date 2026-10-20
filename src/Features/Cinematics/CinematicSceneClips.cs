@@ -12,6 +12,8 @@ internal static class CinematicSceneClips
         foreach (var clip in clips)
         {
             if (clip.CinematicOwnerKey > 2 && clip.CinematicOwnerKey != uint.MaxValue) keys.Add(clip.CinematicOwnerKey);
+            foreach (uint ownerKey in clip.CinematicOwnerKeys)
+                if (ownerKey is > 2 and < uint.MaxValue) keys.Add(ownerKey);
             foreach (var track in clip.Tracks)
             {
                 if (track.Target != 0 && track.Target != uint.MaxValue) keys.Add(track.Target);

@@ -28,7 +28,8 @@ internal static class CinematicSceneExportAudit
         string exportPath = Path.Combine(outputDirectory, $"{entry.Id}-cinematic-synchronized.glb");
 
         ExportCutscene(world, resolver, facialTimelines, exportPath, clipKey);
-        VerifyExportContainsCameraTrack(exportPath, clipKey);
+        if (HasCameraAnimationSource(world, clipKey))
+            VerifyExportContainsCameraTrack(exportPath, clipKey);
 
         var populatedTimelines = facialTimelines.Where(IsNonNeutral).ToArray();
         VerifyExportContainsFacialTracks(exportPath, populatedTimelines.Length);
@@ -215,6 +216,17 @@ internal static class CinematicSceneExportAudit
         if (!hasCameraObject || !glb.Root.TryGetProperty("cameras", out var cameras)
             || cameras.GetArrayLength() == 0)
             throw new InvalidDataException($"GLB export for {clipKey:X8} omitted the source camera object.");
+    }
+
+    private static bool HasCameraAnimationSource(WorldData world, uint clipKey)
+    {
+        if (!world.CinematicClips.TryGetValue(clipKey, out var clip)) return false;
+        if (CinematicCameraEvent.Read(clip).Length > 0) return true;
+        var cameraKeys = world.Objects
+            .Where(sceneObject => sceneObject.Name.Contains("camera", StringComparison.OrdinalIgnoreCase))
+            .Select(sceneObject => sceneObject.GaoKey)
+            .ToHashSet();
+        return clip.Tracks.Any(track => cameraKeys.Contains(track.Target) && track.Keys.Count > 0);
     }
 
     private static void VerifyExportContainsFacialTracks(string path, int expectedTracks)

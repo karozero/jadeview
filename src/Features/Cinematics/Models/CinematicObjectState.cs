@@ -5,20 +5,28 @@ internal sealed class CinematicObjectState
     internal const uint Invisible = 0x00200000;
     internal const uint Inactive = 0x00400000;
     private const int ObjectDestroy = 8113, ObjectFlagsSet = 8115;
+    private const int ObjectCapabilitiesSet = 8133;
     private const int ObjectInvisibleSet = 8152, ObjectInactiveSet = 8153;
     private const int GroupInvisibleSet = 15300, GroupInactiveSet = 15301;
     private readonly SceneObject[] objects;
     private readonly (StateChange Change, SceneObject[] Targets)[] events;
+    private readonly (CapabilityChange Change, SceneObject Target)[] capabilityEvents;
     private readonly HashSet<SceneActor> participants;
 
     internal CinematicObjectState(AnimationClip source, WorldData world, IEnumerable<SceneActor> actors)
     {
         objects = world.Objects.ToArray();
         participants = actors.ToHashSet();
-        events = CinematicLiteralCall.ReadTimeline(source)
+        var calls = CinematicLiteralCall.ReadTimeline(source);
+        events = calls
             .Select(item => Decode(item.Time, item.Call))
             .OfType<StateChange>().OrderBy(change => change.Time)
             .Select(change => (change, Targets(change).ToArray())).ToArray();
+        capabilityEvents = calls
+            .Where(item => item.Call is { Selector: ObjectCapabilitiesSet, Arguments.Length: 2 })
+            .SelectMany(item => objects.Where(sceneObject => sceneObject.GaoKey == item.Call.Target)
+                .Select(target => (Change: new CapabilityChange(item.Time, item.Call.Arguments[0], item.Call.Arguments[1]), Target: target)))
+            .OrderBy(item => item.Change.Time).ToArray();
     }
 
     internal void Evaluate(float time)
@@ -26,6 +34,7 @@ internal sealed class CinematicObjectState
         foreach (var sceneObject in objects)
         {
             sceneObject.PreviewControlFlags = sceneObject.ControlFlags;
+            sceneObject.PreviewCapabilities = sceneObject.InitialCapabilities;
             sceneObject.CinematicExcluded = sceneObject.Actor is { } actor
                 && sceneObject == actor.Root && !participants.Contains(actor);
         }
@@ -35,6 +44,8 @@ internal sealed class CinematicObjectState
                 target.PreviewControlFlags = (target.PreviewControlFlags!.Value & ~change.ClearMask) | change.SetMask;
                 if ((change.ClearMask & (Invisible | Inactive)) != 0) target.CinematicExcluded = false;
             }
+        foreach (var (change, target) in capabilityEvents.TakeWhile(item => item.Change.Time <= time))
+            target.PreviewCapabilities = (target.PreviewCapabilities!.Value & ~change.RemoveMask) | change.AddMask;
     }
 
     private IEnumerable<SceneObject> Targets(StateChange change)
@@ -58,6 +69,7 @@ internal sealed class CinematicObjectState
         foreach (var sceneObject in objects)
         {
             sceneObject.PreviewControlFlags = null;
+            sceneObject.PreviewCapabilities = null;
             sceneObject.CinematicExcluded = false;
         }
     }
@@ -79,4 +91,5 @@ internal sealed class CinematicObjectState
     }
 
     private sealed record StateChange(float Time, uint Target, uint SetMask, uint ClearMask, bool Group = false);
+    private sealed record CapabilityChange(float Time, uint AddMask, uint RemoveMask);
 }

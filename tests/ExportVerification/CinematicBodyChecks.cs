@@ -106,6 +106,29 @@ internal static class CinematicBodyChecks
             throw new InvalidDataException("An unrelated opaque event was misreported as a missing body action.");
         Console.WriteLine("PASS: only decoded body-action requests report missing skeletal playback");
 
+        var secondRoot = new SceneObject { GaoKey = 4, Name = "Second shared-event actor" };
+        var secondBone = new SceneObject { GaoKey = 5, ActorNode = new() { Parent = secondRoot.GaoKey } };
+        var secondActor = new SceneActor { Root = secondRoot, Members = [secondRoot, secondBone], Bones = [secondBone] };
+        secondRoot.Actor = secondBone.Actor = secondActor;
+        var sharedOwnerClip = new AnimationClip
+        {
+            CinematicOwnerKey = root.GaoKey,
+            CinematicOwnerKeys = [root.GaoKey, secondRoot.GaoKey],
+            Duration = 1,
+            Tracks = [new() { Bone = -1, Target = 0, Keys = [SetAction(0, 200)] }]
+        };
+        var sharedKits = new Dictionary<uint, Dictionary<int, CinematicAction>>
+        {
+            [root.GaoKey] = new() { [200] = Action(0) },
+            [secondRoot.GaoKey] = new() { [200] = Action(2) }
+        };
+        var firstOwnerTimeline = CinematicBodyTimeline.Create(sharedOwnerClip, actor, sharedKits);
+        var secondOwnerTimeline = CinematicBodyTimeline.Create(sharedOwnerClip, secondActor, sharedKits);
+        if (firstOwnerTimeline.ActionCount != 1 || secondOwnerTimeline.ActionCount != 1
+            || firstOwnerTimeline.Diagnostics.Count != 0 || secondOwnerTimeline.Diagnostics.Count != 0)
+            throw new InvalidDataException("A target-zero body action on a shared clip did not resolve for each event owner.");
+        Console.WriteLine("PASS: shared event owner contexts resolve body actions for each actor");
+
         var hiddenRoot = new SceneObject { Name = "Appearance actor", GaoKey = 11 };
         var hiddenBone = new SceneObject { Name = "Hidden morph component", GaoKey = 12 };
         var morphSource = new SceneObject { Name = "Morph source", GeometryKey = 13 };

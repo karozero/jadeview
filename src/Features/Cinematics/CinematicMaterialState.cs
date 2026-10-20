@@ -29,8 +29,8 @@ internal sealed class CinematicMaterialState
             .Where(sceneObject => (sceneObject.ControlFlags & CinematicObjectState.Inactive) == 0)
             .Select(sceneObject => sceneObject.GaoKey).ToHashSet();
         environmentControllers = controllers.Where(controller => activeControllerKeys.Contains(controller.OwnerKey)).ToArray();
-        changes = clip.Tracks.Where(track => track.Bone < 0).SelectMany(track => track.Keys.SelectMany(key =>
-            key.OpaquePayloads.Select(payload => Decode(key.Time, payload, track.Target, clip, world, materials))))
+        changes = CinematicLiteralCall.ReadTimeline(clip)
+            .Select(item => Decode(item.Time, item.Call, world, materials))
             .OfType<Change>().OrderBy(change => change.Time).ToArray();
         foreach (uint key in changes.Select(change => change.Material).Distinct())
         {
@@ -101,10 +101,9 @@ internal sealed class CinematicMaterialState
     private static ushort PackLocalAlpha(ushort custom, byte alpha) =>
         (ushort)((custom & 0x7ff) | ((alpha >> 3) << 11));
 
-    private static Change? Decode(float time, AnimationOpaquePayload payload, uint trackTarget, AnimationClip clip,
+    private static Change? Decode(float time, CinematicLiteralCall? call,
         WorldData world, IReadOnlyDictionary<uint, ResolvedMaterial> materials)
     {
-        var call = CinematicLiteralCall.Decode(payload, trackTarget, clip.CinematicOwnerKey);
         bool supported = call?.Selector is EnableLevel or SetAlpha or SetThreshold;
         if (!supported || call!.Arguments.Length != 3 || !float.IsFinite(time)) return null;
         uint materialSelector = call.Arguments[0];

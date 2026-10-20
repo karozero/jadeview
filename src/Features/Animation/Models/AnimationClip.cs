@@ -15,6 +15,7 @@ public sealed class AnimationClip
     public bool SceneMotion;
     public bool Cinematic;
     public uint CinematicOwnerKey;
+    internal uint[] CinematicOwnerKeys = [];
     public uint CinematicWorldKey;
     public CinematicBodyTimeline? CinematicBody;
     public void EnsureLoaded()

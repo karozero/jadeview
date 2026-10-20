@@ -9,16 +9,17 @@ internal static class CinematicMotionAudit
         var entry = archive.Entries.Single(entry => entry.Id.Equals(container, StringComparison.OrdinalIgnoreCase));
         var document = SceneLoader.Load(archive.Read(entry), entry.Name, archivePath);
         var clip = document.CinematicClips[clipKey];
-        var events = clip.Tracks.SelectMany(track => track.Keys.SelectMany(key => key.OpaquePayloads.Select(payload => new
-        {
-            key.Time,
-            track.Bone,
-            Target = track.Target.ToString("X8"),
-            Action = CinematicActionEvent.Decode(key, track.Target == 0 ? clip.CinematicOwnerKey : track.Target, payload),
-            Facial = CinematicFacialEvent.Decode(key),
-            Call = CinematicLiteralCall.Decode(payload, track.Target, clip.CinematicOwnerKey),
-            Bytes = Convert.ToHexString(payload.Data)
-        }))).ToArray();
+        var events = clip.Tracks.SelectMany(track => track.Keys.SelectMany(key => key.OpaquePayloads
+            .SelectMany(payload => CinematicOwnerContext.ForTrack(clip, track).Select(context => new
+            {
+                key.Time,
+                track.Bone,
+                Target = context.ToString("X8"),
+                Action = CinematicActionEvent.Decode(key, context, payload),
+                Facial = CinematicFacialEvent.Decode(key),
+                Call = CinematicLiteralCall.Decode(payload, track.Target, context),
+                Bytes = Convert.ToHexString(payload.Data)
+            })))).ToArray();
         var actions = document.CinematicActionKits.Select(pair => new
         {
             Owner = pair.Key.ToString("X8"),

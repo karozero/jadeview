@@ -17,6 +17,8 @@ public sealed class SceneObject
     [System.Text.Json.Serialization.JsonIgnore]
     internal uint InitialCapabilities { get; set; }
     [System.Text.Json.Serialization.JsonIgnore]
+    internal uint? PreviewCapabilities { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
     public uint[] GroupMemberKeys { get; set; } = [];
     [System.Text.Json.Serialization.JsonIgnore]
     public uint? PreviewControlFlags { get; set; }

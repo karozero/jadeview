@@ -136,6 +136,10 @@ internal static class ArchiveCinematicBodyCoverageAudit
             WithUnresolvedActionRequests = skeletalActors.Count(item => item.HasUnresolvedActionRequests),
             TotalBodyActionSegments = coverage.Sum(item => item.ActionSegments),
             RequestedSlotsAbsentFromBaseKit = coverage.Sum(item => item.RequestedSlotsAbsentFromBaseKit.Length),
+            CoverageByMechanism = skeletalActors.GroupBy(ClassifyCoverage)
+                .OrderByDescending(group => group.Count())
+                .Select(group => new { Mechanism = group.Key, ActorClipBindings = group.Count() })
+                .ToArray(),
             Diagnostics = coverage.SelectMany(item => item.Diagnostics)
                 .GroupBy(message => message, StringComparer.Ordinal)
                 .OrderByDescending(group => group.Count())
@@ -150,6 +154,16 @@ internal static class ArchiveCinematicBodyCoverageAudit
         Directory.CreateDirectory(output);
         File.WriteAllText(Path.Combine(output, "archive-cinematic-body-coverage.json"),
             JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private static string ClassifyCoverage(ActorCoverage item)
+    {
+        if (item.HasUnresolvedActionRequests) return "unresolved-body-action-request";
+        if (item.ActionSegments > 0 && item.BoneTracks > 0) return "resolved-actions-and-direct-bone-tracks";
+        if (item.ActionSegments > 0) return "resolved-action-kit";
+        if (item.BoneTracks > 0) return "direct-bone-tracks-only";
+        if (item.HasRootTrack) return "root-transform-only";
+        return "no-decoded-motion";
     }
 
     private static CinematicActionEvent[] ReadActionRequests(AnimationClip clip, SceneActor actor) =>
@@ -218,8 +232,8 @@ internal static class ArchiveCinematicBodyCoverageAudit
             .Distinct(StringComparer.Ordinal).ToArray();
         var actions = clip.Tracks.Where(track => track.Bone < 0)
             .SelectMany(track => track.Keys.SelectMany(key => key.OpaquePayloads
-                .Select(payload => CinematicActionEvent.Decode(key,
-                    track.Target == 0 ? clip.CinematicOwnerKey : track.Target, payload))))
+                .SelectMany(payload => CinematicOwnerContext.ForTrack(clip, track)
+                    .Select(context => CinematicActionEvent.Decode(key, context, payload)))))
             .Where(action => action != null && action.Selector is 0x3391 or 0x3398 or 0x3399)
             .Cast<CinematicActionEvent>()
             .Select(action => $"target={action.Target:X8} selector=0x{action.Selector:X4} "

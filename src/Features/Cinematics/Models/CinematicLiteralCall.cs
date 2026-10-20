@@ -2,14 +2,19 @@ namespace JadeView;
 
 internal sealed record CinematicLiteralCall(uint Target, int Selector, uint[] Arguments)
 {
-    internal static (float Time, CinematicLiteralCall Call)[] ReadTimeline(AnimationClip clip) => clip.Tracks
-        .Where(track => track.Bone < 0)
-        .SelectMany(track => track.Keys.SelectMany(key => key.OpaquePayloads.Select(payload =>
-            (key.Time, Call: Decode(payload, track.Target, clip.CinematicOwnerKey)))))
-        .Where(item => item.Call != null)
-        .Select(item => (item.Time, item.Call!))
-        .OrderBy(item => item.Time)
-        .ToArray();
+    internal static (float Time, CinematicLiteralCall Call)[] ReadTimeline(AnimationClip clip)
+    {
+        return clip.Tracks.Where(track => track.Bone < 0)
+            .SelectMany(track => track.Keys.SelectMany(key => key.OpaquePayloads.SelectMany(payload =>
+                CinematicOwnerContext.ForTrack(clip, track)
+                    .Select(context => (key.Time, Call: Decode(payload, track.Target, context))))))
+            .Where(item => item.Call != null)
+            .Select(item => (item.Time, Call: item.Call!))
+            .DistinctBy(item => (item.Time, item.Call.Target, item.Call.Selector,
+                Arguments: string.Join(",", item.Call.Arguments)))
+            .OrderBy(item => item.Time)
+            .ToArray();
+    }
 
     internal static CinematicLiteralCall? Decode(AnimationOpaquePayload payload, uint trackTarget, uint ownerKey)
     {

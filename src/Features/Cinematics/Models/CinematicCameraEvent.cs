@@ -8,9 +8,10 @@ internal sealed record CinematicCameraEvent(float Time, uint ReceiverKey, uint P
 {
     internal static CinematicCameraEvent[] Read(AnimationClip clip) => clip.Tracks
         .Where(track => track.Bone < 0)
-        .SelectMany(track => track.Keys.SelectMany(key => key.OpaquePayloads.Select(payload =>
-            Decode(key.Time, track.Target == 0 ? clip.CinematicOwnerKey : track.Target, payload))))
-        .OfType<CinematicCameraEvent>().OrderBy(item => item.Time).ToArray();
+        .SelectMany(track => track.Keys.SelectMany(key => key.OpaquePayloads.SelectMany(payload =>
+            CinematicOwnerContext.ForTrack(clip, track)
+                .Select(context => Decode(key.Time, context, payload)))))
+        .OfType<CinematicCameraEvent>().Distinct().OrderBy(item => item.Time).ToArray();
 
     private static CinematicCameraEvent? Decode(float time, uint trackTarget, AnimationOpaquePayload payload)
     {

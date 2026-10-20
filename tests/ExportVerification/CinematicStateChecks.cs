@@ -61,10 +61,32 @@ internal static class CinematicStateChecks
             "Leaving cutscenes must clear preview-only state");
         Require(effect.ControlFlags == 0x00600000, "Source control flags were modified");
         Require(!effect.IsControlHidden, "Asset mode must remain inspectable after the cinematic overlay is removed");
+
+        var firstOwner = new SceneObject { GaoKey = 44, InitialCapabilities = 0x03 };
+        var secondOwner = new SceneObject { GaoKey = 45, InitialCapabilities = 0x08 };
+        var sharedWorld = new WorldData();
+        sharedWorld.Objects.AddRange([firstOwner, secondOwner]);
+        var sharedClip = new AnimationClip
+        {
+            CinematicOwnerKey = 44,
+            CinematicOwnerKeys = [44, 45],
+            Tracks = [new() { Bone = -1, Target = 0, Keys = [CinematicTestEvents.Call(1, 0, 8133, 4, 2)] }]
+        };
+        var sharedState = new CinematicObjectState(sharedClip, sharedWorld, []);
+        sharedState.Evaluate(1);
+        Require(firstOwner.PreviewCapabilities == 0x05 && secondOwner.PreviewCapabilities == 0x0c,
+            "A target-zero capability command must apply to every serialized owner with independent initial state.");
+        sharedState.Evaluate(.5f);
+        Require(firstOwner.PreviewCapabilities == 0x03 && secondOwner.PreviewCapabilities == 0x08,
+            "Seeking before a shared capability command must restore each owner's initial capability mask.");
+        sharedState.Clear();
+        Require(firstOwner.PreviewCapabilities == null && secondOwner.PreviewCapabilities == null
+            && firstOwner.InitialCapabilities == 0x03 && secondOwner.InitialCapabilities == 0x08,
+            "Clearing shared-owner playback must discard previews without changing serialized capabilities.");
         var form = CinematicChannelFormEvent.Decode(CinematicTestEvents.Call(1, 99, 8263, 0, 2, 1, 11));
         Require(form?.TargetKey == 99 && form.Channel == 2 && form.Group == 11,
             "Facial channel events must preserve their explicit recipient on shared tracks");
-        Console.WriteLine("PASS: conditional object flags, selected-clip actor isolation, backward seek and preview cleanup");
+        Console.WriteLine("PASS: conditional state, shared-owner capabilities, backward seek and preview cleanup");
     }
 
     private static void Require(bool condition, string message)

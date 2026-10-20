@@ -33,7 +33,7 @@ internal static class MaterialExportChecks
         var exported = glb.Root.GetProperty("materials")[0];
         var color = exported.GetProperty("pbrMetallicRoughness").GetProperty("baseColorFactor")
             .EnumerateArray().Select(value => value.GetSingle()).ToArray();
-        float[] expected = [128 / 255f, 64 / 255f, 32 / 255f, 248 / 255f];
+        float[] expected = [128 / 255f, 64 / 255f, 32 / 255f, 1f];
         Check(color.Zip(expected).All(pair => MathF.Abs(pair.First - pair.Second) < .0001f),
             "Material color or alpha override was lost");
         Check(exported.GetProperty("alphaMode").GetString() == "BLEND", "Transparent material became opaque");

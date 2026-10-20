@@ -16,8 +16,8 @@ internal sealed class CinematicScreenFadeTimeline
             foreach (var key in track.Keys)
                 foreach (var payload in key.OpaquePayloads)
                 {
-                    uint context = track.Target == 0 ? source.CinematicOwnerKey : track.Target;
-                    if (ReadFade(key.Time, context, payload, receivers) is { } fade) fades.Add(fade);
+                    foreach (uint context in CinematicOwnerContext.ForTrack(source, track))
+                        if (ReadFade(key.Time, context, payload, receivers) is { } fade) fades.Add(fade);
                 }
         fades = fades.OrderBy(fade => fade.Time).ToList();
     }

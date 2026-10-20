@@ -10,9 +10,11 @@ internal static class CinematicScriptTransformTracks
     internal static IEnumerable<AnimationTrack> Read(AnimationClip source)
     {
         var commands = source.Tracks.Where(track => track.Bone < 0)
-            .SelectMany(track => track.Keys.SelectMany(key => key.OpaquePayloads.Select(payload =>
-                Decode(key.Time, payload, track.Target == 0 ? source.CinematicOwnerKey : track.Target))))
-            .OfType<ScaleCommand>().GroupBy(command => command.Target);
+            .SelectMany(track => track.Keys.SelectMany(key => key.OpaquePayloads.SelectMany(payload =>
+                CinematicOwnerContext.ForTrack(source, track)
+                    .Select(context => Decode(key.Time, payload, context)))))
+            .OfType<ScaleCommand>().Distinct()
+            .GroupBy(command => command.Target);
         foreach (var group in commands)
         {
             var commandsByTime = group.OrderBy(command => command.Time).ToArray();
