@@ -9,7 +9,12 @@ public sealed class SceneDocument
     public string ContainerName { get; set; } = "";
     public List<WorldData> Worlds { get; } = [];
     public Dictionary<uint, AnimationClip> CinematicClips { get; } = [];
+    internal Dictionary<CinematicScriptOwnerId, CinematicScriptOwner> CinematicScriptOwners { get; } = [];
+    internal Dictionary<CinematicScriptOwnerId, CinematicScriptEventTrack[]> CinematicScriptEventTracks { get; } = [];
+    internal List<CinematicScriptMessageTrack> CinematicMessageTracks { get; } = [];
+    internal Dictionary<(uint WorldKey, uint OwnerKey), CinematicEmbeddedEventTrackList[]> CinematicEmbeddedEventTracks { get; } = [];
     public Dictionary<uint, Dictionary<int, CinematicAction>> CinematicActionKits { get; } = [];
+    internal Dictionary<(uint WorldKey, uint OwnerKey), Dictionary<int, CinematicAction>> CinematicActionKitsByOwner { get; } = [];
     public Dictionary<uint, uint[]> CinematicSoundBanks { get; } = [];
     public Dictionary<uint, CinematicShutterController> CinematicShutterControllers { get; } = [];
     public HashSet<uint> CinematicFadeReceivers { get; } = [];

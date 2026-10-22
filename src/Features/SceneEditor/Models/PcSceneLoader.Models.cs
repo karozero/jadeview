@@ -15,6 +15,8 @@ internal sealed partial class PcSceneLoader
         public ushort InitialCapabilities;
         public uint Parent = uint.MaxValue, Prefab = uint.MaxValue;
         public uint Flags, Geometry, Material, Group, Events = uint.MaxValue, Actions = uint.MaxValue, Shape = uint.MaxValue, Skeleton = uint.MaxValue;
+        public uint SoundBank = uint.MaxValue;
+        public uint SerializedStateFlags;
         public uint SceneEvents = uint.MaxValue;
         public string Name = "";
         public List<Request> References = [];

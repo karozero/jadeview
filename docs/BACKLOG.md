@@ -8,12 +8,23 @@
     all 196 worlds/91 containers; all model references resolve, 15 owners lack
     callback labels, and one OVA override has an incompatible layout. The
     generated compact report is ignored under `artifacts/`.
+  - The report now joins 31,805 recognized callback/source flag accesses and
+    248 owner-linked `Events`/`SceneEvents` flag commands across 1,404 keys.
+    `ARRBitTest/Set/Clear` and bounded `ARRBitSetRange/ARRBitClearRange` are
+    included only when the source buffer resolves to `Flag_speciaux_sauve`;
+    unrelated bitsets and unresolved aliases are excluded. Range expansion
+    uses Iris's inclusive endpoints and 4488-byte saved-buffer bound.
+    BF00218E's timed write to flag 2166 links to two replay-suppression readers.
+    Runtime order remains incomplete. Full
+    potential edge counts are kept with up to 64 sample links per flag.
   - `Cine_Events` also coordinates gameplay interactions: the fuse-room world
     has 32 such owners and all 32 reference `SceneEvents`. This suggests the
     general sequence feature should not be gated on cinematic world names.
   - `Detect_o_4SpecialFlags` appears on 642 owners and evaluates global-state
-    conditions with output flag/capability changes; it is a high-value generic
-    condition evaluator candidate.
+    conditions with output flag/capability changes. Its source-backed static
+    OVA analyzer is implemented and verified on a gameplay owner and a
+    cinematic owner; evaluating current save flags, timers, and runtime
+    callback dispatch remains part of the world-state preview work.
   - Initial evidence shows `CINE_BIGINTRO_EVENTS.gao` can set `0x0A5A`, while
     Monstroplante's gameplay brain reads `0x0A5A` and `0x0A5C` to gate startup
     and choose a phase. Treat this as a configured cross-feature link; runtime
@@ -60,6 +71,24 @@
 
 - [ ] Reconstruct gameplay-to-cinematic actor animation state and discover
   scripted prop motion generically.
+  - The archive-wide body-coverage audit now scans 91 containers, 38 cinematic
+    worlds and 1,232 clips. It found 439 skeletal actor/clip bindings; 296 have
+    resolved body-action segments and 143 do not. Among the missing cases, 114
+    have only root-transform motion, 26 have direct bone tracks, and 5 contain
+    unresolved action requests. These are coverage classes, not necessarily
+    playback bugs: the serialized BF does not include live AI track state.
+  - The script-graph audit now builds cinematic participants through
+    `CinematicWorldAssembler` and includes serialized transform-track targets
+    in the linked owner scope. On `FF00791B / BF003BD1` this recovers Peyj's
+    `_basic_peyj` brain (`companion_co_init`, model `35001FF8`) and base
+    `Events=35009544`. That event record is 2.367 s with no decoded calls;
+    source-reachable companion callbacks expose many possible action requests,
+    but their dynamic mode/branch inputs do not identify Peyj's active action
+    at cinematic entry. The T-pose therefore remains unresolved without runtime
+    state rather than being replaced with a guessed idle.
+  - The live cinematic script-owner list now also follows the selected clip's
+    serialized transform-track targets, so brain-bearing props reached by a
+    transform track can be inspected beside actor and command-linked owners.
   - `01_00_entrepot_sas_entree_cine` / `BF003BD1`: `_PJ_Peyj_le_petit_cochon.gao`
     (`9E001C75`) has scene tracks/events but no resolved body-action timeline,
     so playback leaves him in a T-pose. The clip is in archive container

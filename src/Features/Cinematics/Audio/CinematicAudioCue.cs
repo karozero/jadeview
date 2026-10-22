@@ -1,7 +1,30 @@
 namespace JadeView;
 
 public sealed record CinematicAudioCue(float Start, float End, uint OwnerKey, int ModifierId,
-    uint SoundKey, float Volume, bool Loop);
+    uint SoundKey, float Volume, bool Loop, string? Label = null,
+    string? ChoiceGroup = null, int ChoiceIndex = 0, int ChoiceCount = 1);
+
+internal sealed record CinematicAudioTimelineResult(CinematicAudioCue[] Cues, string[] Diagnostics);
+
+internal static class CinematicAudioCueSelection
+{
+    internal static CinematicAudioCue[] Select(CinematicAudioCue[] cues, IReadOnlySet<int> selectedIndices) =>
+        cues.Where((_, index) => selectedIndices.Contains(index)).ToArray();
+
+    internal static void SetSelected(CinematicAudioCue[] cues, ISet<int> selectedIndices, int index, bool selected)
+    {
+        var choiceGroup = cues[index].ChoiceGroup;
+        if (selected && choiceGroup != null)
+        {
+            for (int otherIndex = 0; otherIndex < cues.Length; otherIndex++)
+                if (cues[otherIndex].ChoiceGroup == choiceGroup)
+                    selectedIndices.Remove(otherIndex);
+        }
+
+        if (selected) selectedIndices.Add(index);
+        else selectedIndices.Remove(index);
+    }
+}
 
 internal sealed record CinematicSoundModifier(int Id, uint SoundKey, float Volume, float Delay, bool Loop)
 {

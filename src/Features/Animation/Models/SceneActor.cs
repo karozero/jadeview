@@ -20,6 +20,7 @@ public sealed partial class SceneActor
     public bool RootMotion;
     public float Time, Speed = 1;
     public string? Diagnostic;
+    internal bool IsCinematicWorldResident;
     public int PoseRevision { get; private set; }
     private readonly Dictionary<SceneObject, Matrix4x4> world = [];
     private Dictionary<SceneObject, Matrix4x4> evaluatedLocals = [];

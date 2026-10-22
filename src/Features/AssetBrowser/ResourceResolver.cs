@@ -19,6 +19,7 @@ public sealed class ResourceResolver
     private readonly Dictionary<uint, Geometry> _geometries = new();
     private readonly Dictionary<uint, ResolvedMaterial> _materials = new();
     private readonly Dictionary<uint, ResolvedTexture> _textures = new();
+    private readonly Dictionary<uint, ResolvedProceduralTexture> _proceduralTextures = new();
     private readonly Dictionary<uint, ResourceItem> _resourceItems = new();
     private readonly Dictionary<uint, string> _provenance = new();
     private readonly HashSet<uint> _verifiedTextureKeys = [];
@@ -32,6 +33,7 @@ public sealed class ResourceResolver
     public IReadOnlyDictionary<uint, Geometry> Geometries => _geometries;
     public IReadOnlyDictionary<uint, ResolvedMaterial> Materials => _materials;
     public IReadOnlyDictionary<uint, ResolvedTexture> Textures => _textures;
+    public IReadOnlyDictionary<uint, ResolvedProceduralTexture> ProceduralTextures => _proceduralTextures;
     public IEnumerable<ResolvedTexture> TextureVariants => _textureVariants.Values;
     public IReadOnlyDictionary<uint, ResourceItem> ResourceItems => _resourceItems;
     public IReadOnlyList<ArchiveFallbackHit> ArchiveFallbackHits => _archiveFallbackHits;
@@ -58,7 +60,7 @@ public sealed class ResourceResolver
         byte[] ff0Bytes = archive.Read(fixFf0);
         byte[]? ff8Bytes = fixFf8 != null ? archive.Read(fixFf8) : null;
 
-        RegisterContainer(ff0Bytes, ff8Bytes, "FIX", archive.PathName);
+        RegisterContainer(ff0Bytes, ff8Bytes, "FIX", archive.PathName, archive.Entries);
         return true;
     }
 
@@ -73,7 +75,7 @@ public sealed class ResourceResolver
         byte[] ff0Bytes = archive.Read(sceneEntry);
         byte[]? ff8Bytes = texEntry != null ? archive.Read(texEntry) : null;
 
-        RegisterContainer(ff0Bytes, ff8Bytes, sceneEntry.Id, archive.PathName);
+        RegisterContainer(ff0Bytes, ff8Bytes, sceneEntry.Id, archive.PathName, archive.Entries);
         LoadArchiveResourceFallback(archive, sceneEntry, ff0Bytes);
         return true;
     }
@@ -220,17 +222,19 @@ public sealed class ResourceResolver
     /// <summary>
     /// Регистрирует и индексирует ресурсы (геометрию, материалы, текстуры) из bytesов контейнера.
     /// </summary>
-    public void RegisterContainer(byte[] ff0Bytes, byte[]? ff8Bytes, string scope, string? archivePath = null)
+    public void RegisterContainer(byte[] ff0Bytes, byte[]? ff8Bytes, string scope, string? archivePath = null,
+        IEnumerable<Entry>? archiveEntries = null)
     {
         var assets = Models.Read(ff0Bytes, archivePath);
+        PcTextureLoader.Result? pcTextureReplay = null;
         // Prefer executable-derived registry rules; old captures are a compatibility path.
         if (ff8Bytes != null && ff8Bytes.Length > 0)
         {
             List<TextureAsset>? observed;
             try
             {
-                var replay = PcTextureLoader.Read(ff0Bytes, ff8Bytes);
-                observed = replay.Textures;
+                pcTextureReplay = PcTextureLoader.Read(ff0Bytes, ff8Bytes);
+                observed = pcTextureReplay.Textures;
                 _textureLoaderStatus[scope] = $"Autonomous PC replay: {observed.Count} textures; complete FF8 consumed.";
             }
             catch (Exception ex) when (ex is InvalidDataException or ArgumentOutOfRangeException or OverflowException)
@@ -244,12 +248,34 @@ public sealed class ResourceResolver
                 RegisterTextures(observed, scope);
             }
             else RegisterTexturesFromBytes(ff8Bytes, scope);
+
+            if (pcTextureReplay != null)
+                RegisterProceduralTextures(pcTextureReplay.ProceduralTextures, scope, archiveEntries);
         }
 
         // 2. Индексация моделей и материалов из FF0
         if (ff0Bytes != null && ff0Bytes.Length > 0)
         {
             RegisterSceneAssets(assets, scope);
+        }
+    }
+
+    private void RegisterProceduralTextures(IEnumerable<PcTextureLoader.ProceduralTexture> descriptors,
+        string scope, IEnumerable<Entry>? archiveEntries)
+    {
+        var descriptorArray = descriptors.ToArray();
+        var mediaKeys = descriptorArray.Where(descriptor => descriptor.MediaKey.HasValue)
+            .Select(descriptor => descriptor.MediaKey!.Value).ToHashSet();
+        var entriesByKey = archiveEntries?.Where(entry => mediaKeys.Contains(entry.Key))
+            .GroupBy(entry => entry.Key).ToDictionary(group => group.Key, group => group.First());
+        foreach (var descriptor in descriptorArray)
+        {
+            string? mediaName = null;
+            if (descriptor.MediaKey is { } mediaKey && entriesByKey?.TryGetValue(mediaKey, out var entry) == true)
+                mediaName = entry.Name;
+            _proceduralTextures[descriptor.Key] = new(descriptor.Key, scope, descriptor.Offset,
+                descriptor.Size, descriptor.Subtype, descriptor.Width, descriptor.Height,
+                descriptor.MediaKey, mediaName);
         }
     }
 

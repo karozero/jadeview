@@ -1,4 +1,5 @@
 using System.Text;
+using JadeView;
 
 internal static class CinematicOwnerDefaults
 {
@@ -59,10 +60,7 @@ internal static class CinematicOwnerDefaults
             }
 
             var defaultVariable = merged[index];
-            if (defaultVariable.Type != instanceVariable.Type
-                || defaultVariable.PackedLength != instanceVariable.PackedLength)
-                throw new InvalidDataException($"Unequal-layout override for variable '{instanceVariable.Name}'.");
-            merged[index] = instanceVariable with { Source = "instance" };
+            merged[index] = OverlayVariable(defaultVariable, instanceVariable);
         }
 
         return new(brainKey.ToString("X8"), modelKey.ToString("X8"),
@@ -70,6 +68,56 @@ internal static class CinematicOwnerDefaults
             merged.Select(variable => new VariableSnapshot(variable.Name, variable.Type,
                 variable.PackedLength, Convert.ToHexString(variable.RawBytes), variable.Source)).ToArray(), unmatched.ToArray(),
             "Initial serialized OVA blocks only; values are not executed, reference-resolved, or tied to the trigger that starts this owner.");
+
+        ArchiveFacialScriptCensus.SourceRecord Find(uint key, char kind)
+        {
+            var record = closure.SingleOrDefault(candidate => candidate.Key == key && candidate.Kind == kind);
+            return record ?? throw new InvalidDataException($"Missing {kind} resource {key:X8} in owner brain closure.");
+        }
+    }
+
+    internal static Variable OverlayVariable(Variable modelVariable, Variable instanceVariable)
+    {
+        if (!Strides.TryGetValue(modelVariable.Type, out int modelStride))
+            throw new InvalidDataException($"Unsupported OVA model variable type {modelVariable.Type}.");
+
+        int modelDimensions = checked((int)(modelVariable.PackedLength >> 30));
+        int modelElementCount = checked((int)(modelVariable.PackedLength & 0x3FFFFFFF));
+        int instanceElementCount = checked((int)(instanceVariable.PackedLength & 0x3FFFFFFF));
+        int copiedElementCount = Math.Min(modelElementCount, instanceElementCount);
+        int modelValueOffset = checked(modelDimensions * sizeof(uint));
+        int copyByteCount = checked(copiedElementCount * modelStride);
+        if (modelValueOffset > modelVariable.RawBytes.Length
+            || copyByteCount > modelVariable.RawBytes.Length - modelValueOffset
+            || modelValueOffset > instanceVariable.RawBytes.Length
+            || copyByteCount > instanceVariable.RawBytes.Length - modelValueOffset)
+            throw new InvalidDataException($"OVA prefix for variable '{modelVariable.Name}' exceeds its serialized storage.");
+
+        byte[] effectiveBytes = (byte[])modelVariable.RawBytes.Clone();
+        instanceVariable.RawBytes.AsSpan(modelValueOffset, copyByteCount)
+            .CopyTo(effectiveBytes.AsSpan(modelValueOffset, copyByteCount));
+        string source = modelVariable.PackedLength == instanceVariable.PackedLength
+            ? "instance" : "instance prefix";
+        return modelVariable with { RawBytes = effectiveBytes, Source = source };
+    }
+
+    internal static CinematicScriptCallbackSlot[]? ReadCallbackSlots(uint brainKey,
+        IReadOnlyList<ArchiveFacialScriptCensus.SourceRecord> closure,
+        IReadOnlyDictionary<uint, string> functionNames)
+    {
+        var brain = Find(brainKey, 'q');
+        var model = Find(ReadUInt32(brain, 0), 's');
+        CinematicScriptCallbackSlot[]? firstValidSlots = null;
+        foreach (var variableRecord in closure.Where(record => record.Kind == 't'
+                     && model.References.Contains(record.Key)))
+        {
+            var slots = PcScriptCallbackSlotReader.Read(
+                variableRecord.Source.AsSpan(variableRecord.Offset, variableRecord.Size), functionNames);
+            if (slots == null) continue;
+            firstValidSlots ??= slots;
+            if (slots.Any(slot => slot.FunctionKey != 0)) return slots;
+        }
+        return firstValidSlots;
 
         ArchiveFacialScriptCensus.SourceRecord Find(uint key, char kind)
         {

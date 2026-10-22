@@ -13,6 +13,13 @@ internal sealed class CinematicObjectState
     private readonly (CapabilityChange Change, SceneObject Target)[] capabilityEvents;
     private readonly HashSet<SceneActor> participants;
 
+    internal IEnumerable<float> VisibilityChangeTimes => events
+        .Where(item => ((item.Change.SetMask | item.Change.ClearMask) & Invisible) != 0)
+        .Select(item => item.Change.Time).Distinct();
+    internal IEnumerable<SceneObject> VisibilityTargets => events
+        .Where(item => ((item.Change.SetMask | item.Change.ClearMask) & Invisible) != 0)
+        .SelectMany(item => item.Targets).Distinct();
+
     internal CinematicObjectState(AnimationClip source, WorldData world, IEnumerable<SceneActor> actors)
     {
         objects = world.Objects.ToArray();
@@ -36,7 +43,8 @@ internal sealed class CinematicObjectState
             sceneObject.PreviewControlFlags = sceneObject.ControlFlags;
             sceneObject.PreviewCapabilities = sceneObject.InitialCapabilities;
             sceneObject.CinematicExcluded = sceneObject.Actor is { } actor
-                && sceneObject == actor.Root && !participants.Contains(actor);
+                && sceneObject == actor.Root && !actor.IsCinematicWorldResident
+                && !participants.Contains(actor);
         }
         foreach (var (change, targets) in events.TakeWhile(item => item.Change.Time <= time))
             foreach (var target in targets)

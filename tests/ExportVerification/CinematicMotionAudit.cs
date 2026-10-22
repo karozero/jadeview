@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using JadeView;
 
 internal static class CinematicMotionAudit
@@ -18,6 +19,7 @@ internal static class CinematicMotionAudit
                 Action = CinematicActionEvent.Decode(key, context, payload),
                 Facial = CinematicFacialEvent.Decode(key),
                 Call = CinematicLiteralCall.Decode(payload, track.Target, context),
+                PayloadKind = payload.Kind,
                 Bytes = Convert.ToHexString(payload.Data)
             })))).ToArray();
         var actions = document.CinematicActionKits.Select(pair => new
@@ -123,7 +125,12 @@ internal static class CinematicMotionAudit
             ActorAppearances = actorAppearances,
             SceneObjects = sceneObjects,
             Roots = clip.Tracks.Where(track => track.Bone < 0 && track.Keys.Any(key => key.Position != null || key.Rotation != null)).ToArray()
-        }, new JsonSerializerOptions { WriteIndented = true, IncludeFields = true }));
+        }, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            IncludeFields = true,
+            NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
+        }));
         Console.WriteLine($"MOTION AUDIT: {container}/{clipKey:X8}");
     }
 }

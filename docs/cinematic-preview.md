@@ -11,9 +11,24 @@ Actor transforms, camera motion and facial weights for the same source clip are
 exported as a single glTF animation. Blender therefore imports them into the
 same animation track, so selecting the cutscene enables all participants together.
 Manual morph previews remain separate actions.
+
+### Inspecting script links
+
+In the **Cinematic Timeline** panel, scroll to **Script owners and event links**
+and select an owner to inspect its serialized variables, source-reachable Iris
+callbacks, event calls and static trigger findings. In **Iris source evidence**,
+resolved object-reference rows are clickable when the referenced GAO also has a
+script owner in the loaded archive; selecting one opens that owner's callbacks
+and event data. Function references show their source path and, when available,
+the resolved function key and dispatch site. These links establish configured
+or source-reachable relationships, not that the game scheduled or executed the
+callback. The full script VM and current save state are not simulated.
 Enable **Include game-hidden objects** when exporting actors that appear later
-than the current playhead. Visibility commands are retained as source metadata;
-their hide/show timing is not yet baked into Blender animation.
+than the current playhead. Supported visibility events for scene props are
+sampled into the GLB animation by collapsing/restoring their scale at source
+event boundaries. Actor-component visibility, script-spawned objects, and
+material/lighting callbacks are not baked yet; the original event records remain
+available as source metadata.
 
 Cinematic actor root tracks use absolute scene coordinates. Gameplay root motion
 continues to use offsets from the initial pose. The Camera section selects an
@@ -110,10 +125,22 @@ The `SFX_Flash` brain is now discovered by its native behavior function and its
 typed OVA instance/default data. `OBJ_CapaSet` events drive its `0x100`
 capability on the clip clock, including deterministic fade-in/out when scrubbing.
 Its runtime `GFX_Add(18)` is Jade Engine's `GFX_Sun` ray effect, not a serialized
-mesh or PAG generator. JadeView previews its authored color, ray count, sizes and
-snap position as a stable screen-space ray burst. Ray jitter, native lighting
-compositing and transient GFX objects are approximated; these procedural rays are
-not included in GLB export, and this support does not execute arbitrary scripts.
+mesh or PAG generator. JadeView previews authored color, paired big/small rays,
+ray size, length ratio, snap position and camera-relative fade extrusion using
+deterministic sampling. The source fields named `des_f_big_alpha` and
+`des_f_small_alpha` are angular jitter amplitudes, not opacity; ray brightness
+comes from the effect color and its grayscale RGB texture (`490198CF`, whose
+alpha channel is opaque). This distinction matters because treating those
+fields as opacity produces an overly regular, harsh star. Rays now render on the
+camera-relative 3D plane with depth testing, so scene geometry can occlude them.
+The preview still approximates the native visibility response and transient GFX
+lifetime; procedural rays are not included in GLB export, and this support does
+not execute arbitrary scripts. The renderer reference is
+`external/jaded/src/libraries/GraphicDK/Sources/GFX/GFXflare.c`.
+Extreme source ray dimensions are bounded to 22% of the viewport's short side
+in the preview. This avoids a malformed or unusually scaled controller
+covering the whole frame; it is a display safeguard, not a claim of native-size
+parity.
 
 Body poses also follow source events: `ACT_KitMerge` / `ACT_KitMergeOver` bind
 action slots, `ACT_ActionSet`, `ACT_ActionFrameSet` and `ACT_ActionFrequencySet`
@@ -250,9 +277,10 @@ commands; its geometry scale is unchanged.
 
 Global message-50 alpha fades are supported when the receiver's native script
 role is confirmed. Their five timing phases and colors come from the source;
-the intro's four camera flashes now cover the entire viewport. Alternate fade
-materials, higher-priority script arbitration and GLB screen-effect export are
-not supported yet. This does not change the size of the separate JADE mesh.
+the intro's four camera flashes are previewed with a bounded flare radius.
+Alternate fade materials, higher-priority script arbitration and GLB
+screen-effect export are not supported yet. This does not change the size of
+the separate JADE mesh.
 
 ### Source camera lens
 

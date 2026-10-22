@@ -68,6 +68,23 @@ internal static class VerificationCommands
             case ["--archive-cinematic-script-index", var archive, var sourceRoot, ..]:
                 ArchiveCinematicScriptIndex.Write(archive, sourceRoot, output);
                 break;
+            case ["--archive-nested-event-track-audit", var archive, ..]:
+                ArchiveNestedEventTrackAudit.Write(archive, output);
+                break;
+            case ["--event-track-payload-audit", var archive, var container, var ownerKey, var eventKey, var trackIndex]:
+                EventTrackPayloadAudit.Write(archive, container, Convert.ToUInt32(ownerKey, 16),
+                    Convert.ToUInt32(eventKey, 16), int.Parse(trackIndex,
+                        System.Globalization.CultureInfo.InvariantCulture), output);
+                break;
+            case ["--cinematic-script-graph-audit", var archive, var container, var clipKey, ..]:
+                CinematicScriptGraphAudit.Write(archive, container, Convert.ToUInt32(clipKey, 16), output);
+                break;
+            case ["--action-kit-resource-audit", var archive, var container, var ownerKey, ..]:
+                ActionKitResourceAudit.Write(archive, container, Convert.ToUInt32(ownerKey, 16), output);
+                break;
+            case ["--world-script-graph-audit", var archive, var container, var worldKey, ..]:
+                WorldScriptGraphAudit.Write(archive, container, worldKey, output);
+                break;
             case ["--archive-gameplay-script-index", var archive, var sourceRoot, ..]:
                 ArchiveCinematicScriptIndex.WriteAllWorlds(archive, sourceRoot, output);
                 break;

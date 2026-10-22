@@ -2,11 +2,12 @@ namespace JadeView;
 
 internal sealed record CinematicLiteralCall(uint Target, int Selector, uint[] Arguments)
 {
-    internal static (float Time, CinematicLiteralCall Call)[] ReadTimeline(AnimationClip clip)
+    internal static (float Time, CinematicLiteralCall Call)[] ReadTimeline(AnimationClip clip,
+        uint fallbackOwnerKey = 0)
     {
         return clip.Tracks.Where(track => track.Bone < 0)
             .SelectMany(track => track.Keys.SelectMany(key => key.OpaquePayloads.SelectMany(payload =>
-                CinematicOwnerContext.ForTrack(clip, track)
+                CinematicOwnerContext.ForTrack(clip, track, fallbackOwnerKey)
                     .Select(context => (key.Time, Call: Decode(payload, track.Target, context))))))
             .Where(item => item.Call != null)
             .Select(item => (item.Time, Call: item.Call!))
@@ -24,7 +25,9 @@ internal sealed record CinematicLiteralCall(uint Target, int Selector, uint[] Ar
         bool hasEnd = CinematicWordPairList.IsEnd(rows[^1]);
         var function = rows[^2];
         if (!hasContext || !hasEnd || function.Value != 0 || function.Tag >> 24 != 3) return null;
-        if (rows[2..^2].Any(row => !CinematicWordPairList.IsLiteral(row, 0x21))) return null;
+        if (rows[2..^2].Any(row => !CinematicWordPairList.IsLiteral(row, 0x21)
+                && !CinematicWordPairList.IsLiteral(row, 0x22)
+                && !CinematicWordPairList.IsLiteral(row, 0x28))) return null;
         uint inheritedTarget = trackTarget == 0 ? ownerKey : trackTarget;
         uint target = rows[0].Value == 0 ? inheritedTarget : rows[0].Value;
         if (target is 0 or uint.MaxValue) return null;

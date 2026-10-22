@@ -31,17 +31,18 @@ internal sealed class CinematicFlashTimeline
         var active = new List<CinematicFlashState>();
         foreach (var track in tracks)
         {
-            if (!TryGetOpacity(track, time, out float opacity))
+            if (!TryGetOpacity(track, time, out float opacity, out float cameraPullDistance))
             {
                 continue;
             }
 
-            active.Add(CreateFlashState(track, opacity));
+            active.Add(CreateFlashState(track, opacity, cameraPullDistance));
         }
         return active.ToArray();
     }
 
-    private static bool TryGetOpacity(FlashTrack track, float time, out float opacity)
+    private static bool TryGetOpacity(FlashTrack track, float time, out float opacity,
+        out float cameraPullDistance)
     {
         bool enabled = (track.Controller.InitialCapabilities & FlashCapability) != 0;
         float? start = enabled ? 0 : null;
@@ -66,6 +67,7 @@ internal sealed class CinematicFlashTimeline
         if (start == null)
         {
             opacity = 0;
+            cameraPullDistance = 0;
             return false;
         }
 
@@ -76,6 +78,9 @@ internal sealed class CinematicFlashTimeline
         }
 
         opacity = Math.Clamp(opacity, 0, 1);
+        // SFX_Flash moves the GFX_Sun plane by the configured extrusion while
+        // enabled, then returns it to one world unit from its source while fading.
+        cameraPullDistance = enabled ? track.Controller.ExtrudeDistance : 1;
         return opacity > 0;
     }
 
@@ -109,7 +114,8 @@ internal sealed class CinematicFlashTimeline
         return 1 - (time - stop) / controller.DisappearDelay;
     }
 
-    private static CinematicFlashState CreateFlashState(FlashTrack track, float opacity)
+    private static CinematicFlashState CreateFlashState(FlashTrack track, float opacity,
+        float cameraPullDistance)
     {
         var controller = track.Controller;
         var sourcePosition = track.SnapActor.RenderMatrix.Translation;
@@ -120,16 +126,15 @@ internal sealed class CinematicFlashTimeline
         float zoom = track.SnapActor.CinematicZoom ?? 1;
         var position = sourcePosition + offset * zoom;
 
-        return new(position, controller.Color, controller.RayCount, opacity,
+        return new(position, controller.OwnerKey, cameraPullDistance, controller.LengthRatio,
+            controller.Color, controller.RayCount, opacity,
             controller.BigAlpha,
-            Midpoint(controller.BigLengthMin, controller.BigLengthMax),
-            Midpoint(controller.BigWidthMin, controller.BigWidthMax),
+            controller.BigLengthMin, controller.BigLengthMax,
+            controller.BigWidthMin, controller.BigWidthMax,
             controller.SmallAlpha,
-            Midpoint(controller.SmallLengthMin, controller.SmallLengthMax),
-            Midpoint(controller.SmallWidthMin, controller.SmallWidthMax));
+            controller.SmallLengthMin, controller.SmallLengthMax,
+            controller.SmallWidthMin, controller.SmallWidthMax);
     }
-
-    private static float Midpoint(float first, float second) => Math.Max(0, (first + second) * .5f);
     private sealed record FlashTrack(CinematicFlashController Controller,
         SceneObject SnapActor, CapabilityChange[] Changes);
     private sealed record CapabilityChange(float Time, uint SetMask, uint RemoveMask);

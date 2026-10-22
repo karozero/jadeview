@@ -4,6 +4,7 @@ public sealed partial class CinematicPlayback
 {
     private readonly Dictionary<SceneActor, AnimationClip> actorClips;
     private readonly ObjectTrack[] objectTracks;
+    private readonly uint[] scriptTrackTargets;
     private readonly FacialPlayback[] facialPlaybacks;
     private readonly ResourceResolver resolver;
     private readonly CinematicObjectState objectState;
@@ -16,9 +17,17 @@ public sealed partial class CinematicPlayback
 
     private CinematicPlayback(AnimationClip sourceClip,
         Dictionary<SceneActor, AnimationClip> actorClips, ObjectTrack[] objectTracks,
-        FacialPlayback[] facialPlaybacks, ResourceResolver resolver, WorldData world, SceneDocument document)
+        FacialPlayback[] facialPlaybacks, ResourceResolver resolver, WorldData world, SceneDocument document,
+        IReadOnlyList<Entry>? archiveEntries)
     {
         SourceClip = sourceClip;
+        ScriptCalls = CinematicLiteralCall.ReadTimeline(sourceClip);
+        ScriptMessages = CinematicTimelineMessage.ReadTimeline(sourceClip);
+        scriptTrackTargets = sourceClip.Tracks.Concat(CinematicScriptTransformTracks.Read(sourceClip))
+            .Select(track => track.Target)
+            .Where(key => key is > 0 and < uint.MaxValue)
+            .Distinct()
+            .ToArray();
         this.actorClips = actorClips;
         this.objectTracks = objectTracks;
         this.facialPlaybacks = facialPlaybacks;
@@ -31,7 +40,8 @@ public sealed partial class CinematicPlayback
         shutter = new(sourceClip, world, document);
         screenFade = new(sourceClip, world, document);
         MaterialState = new(sourceClip, world, resolver.Materials, document.CinematicEnvironmentControllers.Values);
-        AudioCues = CinematicAudioTimeline.Build(sourceClip, world, document);
+        AudioCues = CinematicAudioTimeline.Build(sourceClip, world, document, archiveEntries, out var audioDiagnostics);
+        AudioDiagnostics = audioDiagnostics;
         Duration = sourceClip.Duration;
         var fallbackCameras = objectTracks.Select(track => track.Object)
             .Concat(actorClips.Keys.Select(actor => actor.Root))
@@ -41,7 +51,11 @@ public sealed partial class CinematicPlayback
     }
 
     internal AnimationClip SourceClip { get; }
+    internal (float Time, CinematicLiteralCall Call)[] ScriptCalls { get; }
+    internal (float Time, CinematicTimelineMessage Message)[] ScriptMessages { get; }
+    internal IReadOnlyList<uint> ScriptTrackTargets => scriptTrackTargets;
     public uint Key => SourceClip.Key;
+    internal uint WorldKey => SourceClip.CinematicWorldKey;
     internal float Time { get; private set; }
     internal float Duration { get; }
     internal bool Playing { get; private set; }
@@ -59,29 +73,32 @@ public sealed partial class CinematicPlayback
     internal int CameraIndex { get; set; }
     internal CinematicCameraBinding? Camera => Cameras.ElementAtOrDefault(CameraIndex);
     public CinematicAudioCue[] AudioCues { get; }
+    internal string[] AudioDiagnostics { get; }
     internal CinematicShutterState? Shutter => shutter.Evaluate(Time);
     internal CinematicFlashState[] Flashes => flashes.Evaluate(Time);
     internal CinematicLightningState[] Lightnings => lightnings.Evaluate(Time);
     internal int ShutterCount => shutter.TriggerCount;
     internal System.Numerics.Vector4? ScreenFade => screenFade.Evaluate(Time);
 
-    public static CinematicPlayback[] Discover(SceneDocument document, WorldData world, ResourceResolver resolver) =>
+    public static CinematicPlayback[] Discover(SceneDocument document, WorldData world, ResourceResolver resolver,
+        IReadOnlyList<Entry>? archiveEntries = null) =>
         CinematicSceneClips.ForWorld(document, world)
-            .Select(sourceClip => CreatePlayer(sourceClip, document, world, resolver))
+            .Select(sourceClip => CreatePlayer(sourceClip, document, world, resolver, archiveEntries))
             .Where(player => player != null)
             .Cast<CinematicPlayback>()
             .OrderBy(player => player.Key)
             .ToArray();
 
     private static CinematicPlayback? CreatePlayer(AnimationClip sourceClip, SceneDocument document,
-        WorldData world, ResourceResolver resolver)
+        WorldData world, ResourceResolver resolver, IReadOnlyList<Entry>? archiveEntries)
     {
         var actorClips = new Dictionary<SceneActor, AnimationClip>();
         var sourceTracks = sourceClip.Tracks.Concat(CinematicScriptTransformTracks.Read(sourceClip)).ToArray();
         foreach (var actor in world.Actors)
         {
             var actorTracks = sourceTracks.Where(track => IsActorTrack(track, actor)).ToList();
-            var body = CinematicBodyTimeline.Create(sourceClip, actor, document.CinematicActionKits);
+            var body = CinematicBodyTimeline.Create(sourceClip, actor, world.Key,
+                document.CinematicActionKitsByOwner);
             if (actorTracks.Count == 0 && body.ActionCount == 0) continue;
             actorClips[actor] = new AnimationClip
             {
@@ -109,7 +126,7 @@ public sealed partial class CinematicPlayback
             .Where(playback => playback != null)
             .Cast<FacialPlayback>()
             .ToArray();
-        return new(sourceClip, actorClips, objectTracks, facialPlaybacks, resolver, world, document);
+        return new(sourceClip, actorClips, objectTracks, facialPlaybacks, resolver, world, document, archiveEntries);
     }
 
     private static bool IsActorTrack(AnimationTrack track, SceneActor actor)

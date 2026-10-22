@@ -8,28 +8,39 @@ internal static class CinematicActionLibraryReader
     internal static void Load(IEnumerable<PcSceneLoader.Record> records,
         IReadOnlyDictionary<PcSceneLoader.Record, byte[]> origins, SceneDocument document)
     {
-        var resources = records.GroupBy(record => record.Key).ToDictionary(group => group.Key, group => group.Last());
-        var clips = new Dictionary<uint, AnimationClip>();
-        foreach (var owner in resources.Values.Where(record => record.Kind == 'l'))
+        PcSceneLoader.Record[] recordArray = records.ToArray();
+        var resources = new PcSceneResourceIndex(recordArray);
+        var recordsByKey = recordArray.GroupBy(record => record.Key)
+            .ToDictionary(group => group.Key, group => group.ToArray());
+        var clips = new Dictionary<PcSceneLoader.Record, AnimationClip>();
+        foreach (var owner in recordArray.Where(record => record.Skeleton is not 0 and not uint.MaxValue)
+                     .GroupBy(record => (record.LoadWorldKey, record.Key))
+                     .Select(group => group.Last()))
         {
-            if (!resources.TryGetValue(owner.Skeleton, out var table) || table.Kind != 'b') continue;
+            var table = resources.Resolve(owner.Skeleton, owner.LoadWorldKey);
+            if (table?.Kind != 'b' || !origins.TryGetValue(table, out byte[]? tableBytes)) continue;
             var actions = new Dictionary<int, CinematicAction>();
-            byte[] bytes = origins[table];
             int slot = 0;
             for (int offset = table.Offset; offset <= table.Offset + table.Size - 4; offset += 4, slot++)
             {
-                uint key = Preview.U32(bytes, offset);
+                uint key = Preview.U32(tableBytes, offset);
                 if (key == 1) { offset += 4; continue; }
-                if (!resources.TryGetValue(key, out var action) || action.Kind != 'a') continue;
-                actions[slot] = ReadAction(action, resources, origins, clips);
+                if (ResolveIdenticalResource(key, 'a', owner.LoadWorldKey, resources, recordsByKey,
+                        origins) is not { } action)
+                    continue;
+                actions[slot] = ReadAction(action, owner.LoadWorldKey, resources, recordsByKey,
+                    origins, clips);
             }
+            document.CinematicActionKitsByOwner[(owner.LoadWorldKey, owner.Key)] = actions;
             document.CinematicActionKits[owner.Key] = actions;
         }
     }
 
     private static CinematicAction ReadAction(PcSceneLoader.Record action,
-        IReadOnlyDictionary<uint, PcSceneLoader.Record> resources,
-        IReadOnlyDictionary<PcSceneLoader.Record, byte[]> origins, Dictionary<uint, AnimationClip> clips)
+        uint preferredWorldKey, PcSceneResourceIndex resources,
+        IReadOnlyDictionary<uint, PcSceneLoader.Record[]> recordsByKey,
+        IReadOnlyDictionary<PcSceneLoader.Record, byte[]> origins,
+        Dictionary<PcSceneLoader.Record, AnimationClip> clips)
     {
         byte[] bytes = origins[action];
         if (action.Size < ActionHeaderSize) return new(byte.MaxValue, []);
@@ -47,16 +58,18 @@ internal static class CinematicActionLibraryReader
         {
             int offset = action.Offset + ActionHeaderSize + index * SerializedItemSize;
             uint clipKey = Preview.U32(bytes, offset);
-            if (!resources.TryGetValue(clipKey, out var source) || source.Kind != 'i') continue;
-            if (!clips.TryGetValue(clipKey, out var clip))
+            if (ResolveIdenticalResource(clipKey, 'i', preferredWorldKey, resources,
+                    recordsByKey, origins) is not { } source
+                || !origins.TryGetValue(source, out byte[]? clipBytes)) continue;
+            if (!clips.TryGetValue(source, out var clip))
             {
                 clip = new AnimationClip
                 {
                     Key = clipKey,
                     Name = $"{clipKey:X8}",
-                    Read = () => AnimationReader.Read(origins[source], source.Offset, source.Size)
+                    Read = () => AnimationReader.Read(clipBytes, source.Offset, source.Size)
                 };
-                clips.Add(clipKey, clip);
+                clips.Add(source, clip);
             }
             items.Add(new(clip, Preview.U32(bytes, offset + 8), bytes[offset + 14], bytes[offset + 12])
             {
@@ -68,5 +81,37 @@ internal static class CinematicActionLibraryReader
             });
         }
         return new(bytes[action.Offset + 1], items.ToArray());
+    }
+
+    private static PcSceneLoader.Record? ResolveIdenticalResource(uint key, char expectedKind,
+        uint preferredWorldKey, PcSceneResourceIndex resources,
+        IReadOnlyDictionary<uint, PcSceneLoader.Record[]>? recordsByKey,
+        IReadOnlyDictionary<PcSceneLoader.Record, byte[]> origins)
+    {
+        var preferred = resources.Resolve(key, preferredWorldKey);
+        if (preferred?.Kind == expectedKind && origins.ContainsKey(preferred))
+            return preferred;
+        if (recordsByKey == null || !recordsByKey.TryGetValue(key, out var candidates))
+            return null;
+
+        PcSceneLoader.Record[] matching = candidates.Where(candidate => candidate.Kind == expectedKind
+            && origins.ContainsKey(candidate)).ToArray();
+        if (matching.Length == 0 || matching.Skip(1).Any(candidate =>
+                !HaveIdenticalPayload(matching[0], candidate, origins)))
+            return null;
+        return matching.OrderBy(candidate => candidate.LoadWorldKey).First();
+    }
+
+    private static bool HaveIdenticalPayload(PcSceneLoader.Record left,
+        PcSceneLoader.Record right, IReadOnlyDictionary<PcSceneLoader.Record, byte[]> origins)
+    {
+        byte[] leftBytes = origins[left];
+        byte[] rightBytes = origins[right];
+        if (left.Size != right.Size || left.Offset < 0 || right.Offset < 0
+            || left.Offset > leftBytes.Length - left.Size
+            || right.Offset > rightBytes.Length - right.Size)
+            return false;
+        return leftBytes.AsSpan(left.Offset, left.Size)
+            .SequenceEqual(rightBytes.AsSpan(right.Offset, right.Size));
     }
 }

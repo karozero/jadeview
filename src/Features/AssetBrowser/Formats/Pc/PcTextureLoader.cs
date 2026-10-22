@@ -11,9 +11,12 @@ namespace JadeView;
 internal static class PcTextureLoader
 {
     public sealed record ReadEvent(string Phase, int Offset, int Size, uint Key, int Type);
+    public sealed record ProceduralTexture(uint Key, int Offset, int Size, int Subtype,
+        int Width, int Height, uint? MediaKey);
     public sealed record ModifierEvent(int Offset, int Type, int Consumed);
     public sealed record Result(List<TextureAsset> Textures, List<ReadEvent> Reads,
-        List<ModifierEvent> Modifiers, int InitialKeys, int PaletteCount, int EndOffset);
+        List<ProceduralTexture> ProceduralTextures, List<ModifierEvent> Modifiers,
+        int InitialKeys, int PaletteCount, int EndOffset);
     private sealed record Header(uint Key, int Offset, int Size, int Type, uint Raw, uint Palette, uint TrueColor);
     private sealed record Request(int Offset, uint[] Keys);
     private static ReadOnlySpan<byte> Signature => [0x34, 0x12, 0xd0, 0xca, 0xff, 0, 0xff, 0, 0xde, 0xc0, 0xde, 0xc0];
@@ -142,7 +145,12 @@ internal static class PcTextureLoader
             position += 4 + size;
         }
         if (position != ff8.Length) throw new InvalidDataException($"PC replay left {ff8.Length - position} unconsumed bytes.");
-        return new(textures, reads, modifiers, initial, palettes.Count, position);
+        var proceduralTextures = reads
+            .Where(read => read.Phase == "header" && read.Type == 5)
+            .Select(read => PcProceduralTextureReader.Read(ff8, read))
+            .OfType<ProceduralTexture>()
+            .ToList();
+        return new(textures, reads, proceduralTextures, modifiers, initial, palettes.Count, position);
     }
 
     private static List<Request> CollectRequests(byte[] bytes, List<ModifierEvent> modifiers)

@@ -17,16 +17,28 @@ public sealed partial class CinematicBodyTimeline
 
     internal static CinematicBodyTimeline Create(AnimationClip source, SceneActor actor,
         IReadOnlyDictionary<uint, Dictionary<int, CinematicAction>> libraries)
+        => Create(source, actor, ownerKey => libraries.TryGetValue(ownerKey, out var actions)
+            ? new(actions, null, "")
+            : new(null, null, $"Missing body action kit {ownerKey:X8}."));
+
+    internal static CinematicBodyTimeline Create(AnimationClip source, SceneActor actor,
+        uint preferredWorldKey,
+        IReadOnlyDictionary<(uint WorldKey, uint OwnerKey), Dictionary<int, CinematicAction>> libraries)
+        => Create(source, actor, ownerKey => CinematicActionKitScopeResolver.Resolve(ownerKey,
+            preferredWorldKey, libraries));
+
+    private static CinematicBodyTimeline Create(AnimationClip source, SceneActor actor,
+        Func<uint, CinematicActionKitResolution> resolveKit)
     {
         var timeline = new CinematicBodyTimeline();
-        var kit = libraries.TryGetValue(actor.Root.GaoKey, out var initial)
-            ? new Dictionary<int, CinematicAction>(initial) : [];
+        var initialKit = resolveKit(actor.Root.GaoKey).Actions;
+        var kit = initialKit != null ? new Dictionary<int, CinematicAction>(initialKit) : [];
         var events = ReadActorEvents(source, actor).OrderBy(action => action.Time);
         foreach (var action in events)
         {
             if (action.Selector is 0x3398 or 0x3399)
             {
-                timeline.MergeKit(kit, action, libraries);
+                timeline.MergeKit(kit, action, resolveKit);
                 continue;
             }
             if (action.Release)
@@ -70,11 +82,27 @@ public sealed partial class CinematicBodyTimeline
         var actionRequests = ReadActorEvents(source, actor)
             .Where(action => action.Selector == 0x3391 && !action.FrequencyOnly && !action.Release)
             .ToArray();
-        if (actionRequests.Length == 0) return;
+        if (actionRequests.Length == 0)
+        {
+            DiagnoseMissingSkeletalSource(source, actor);
+            return;
+        }
 
         diagnostics.Add($"No cinematic skeletal action resolved for {actor.Root.Name}; "
             + $"{actionRequests.Length} recognized body-action request(s) target this rig. "
             + "The pose may depend on gameplay brain/action state not evaluated by the preview.");
+    }
+
+    private void DiagnoseMissingSkeletalSource(AnimationClip source, SceneActor actor)
+    {
+        bool hasRootMotion = source.Tracks.Any(track => track.Bone < 0
+            && track.Target == actor.Root.GaoKey && track.Keys.Count > 0);
+        bool hasBonePose = source.Tracks.Any(track => track.Bone >= 0
+            && track.Target == actor.Root.GaoKey && track.Keys.Count > 0);
+        if (!hasRootMotion || hasBonePose) return;
+
+        diagnostics.Add($"Root motion is present for {actor.Root.Name}, but the cinematic has no skeletal pose track or body-action request for this rig. "
+            + "The preview holds its bind pose; gameplay brain/action state is not reconstructed.");
     }
 
     private static IEnumerable<CinematicActionEvent> ReadActorEvents(AnimationClip source, SceneActor actor) =>
@@ -89,13 +117,15 @@ public sealed partial class CinematicBodyTimeline
         target == actor.Root.GaoKey || actor.Members.Any(member => member.GaoKey == target);
 
     private void MergeKit(Dictionary<int, CinematicAction> destination, CinematicActionEvent action,
-        IReadOnlyDictionary<uint, Dictionary<int, CinematicAction>> libraries)
+        Func<uint, CinematicActionKitResolution> resolveKit)
     {
-        if (!libraries.TryGetValue(action.KitOwner, out var source))
+        var kitResolution = resolveKit(action.KitOwner);
+        if (!kitResolution.IsResolved)
         {
-            diagnostics.Add($"Missing body action kit {action.KitOwner:X8} at {action.Time:F3}s.");
+            diagnostics.Add($"Missing body action kit {action.KitOwner:X8} at {action.Time:F3}s: {kitResolution.Failure}");
             return;
         }
+        var source = kitResolution.Actions!;
         if (action.Action < 0 || action.LastAction < action.Action || action.LastAction > 65535) return;
         for (int slot = action.Action; slot <= action.LastAction; slot++)
         {

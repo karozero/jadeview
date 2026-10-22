@@ -8,6 +8,12 @@ public sealed partial class EditorShell
     private WorldData? _cinematicWorld;
     private CinematicPlayback[] _cinematicPlayers = [];
     private CinematicPlayback? _cinematicPlayback;
+    private CinematicScriptOwnerId? _selectedCinematicScriptOwnerId;
+    private string _cinematicEveSearch = string.Empty;
+    private SceneDocument? _cinematicFlagFlowDocument;
+    private int _cinematicFlagFlowOwnerCount = -1;
+    private int _cinematicFlagFlowTrackCount = -1;
+    private Dictionary<CinematicScriptOwnerId, CinematicScriptFlagLink[]> _cinematicFlagFlowLinks = [];
 
     private void ExitCinematicMode()
     {
@@ -32,6 +38,11 @@ public sealed partial class EditorShell
         ResetCinematicAudio();
         _cinematicPlayback = null;
         _cinematicPlayers = [];
+        _selectedCinematicScriptOwnerId = null;
+        _cinematicFlagFlowDocument = null;
+        _cinematicFlagFlowOwnerCount = -1;
+        _cinematicFlagFlowTrackCount = -1;
+        _cinematicFlagFlowLinks.Clear();
         _cinematicWorld = null;
         _loadedCinematicEntry = null;
         _cutsceneMode = false;

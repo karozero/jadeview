@@ -26,6 +26,7 @@ internal static class CinematicFlashReader
                     ReadFloat(defaultBytes, instanceBytes, "des_f_delai_apparition"),
                     ReadFloat(defaultBytes, instanceBytes, "des_f_delai_disparition"),
                     ReadFloat(defaultBytes, instanceBytes, "des_f_extrude_dist"),
+                    ReadFloat(defaultBytes, instanceBytes, "des_f_param1"),
                     unchecked((uint)ReadInteger(defaultBytes, instanceBytes, "des_c_color", PcVariableFormat.PackedColorType)),
                     ReadInteger(defaultBytes, instanceBytes, "des_i_nb_rayons", PcVariableFormat.IntegerType),
                     ReadFloat(defaultBytes, instanceBytes, "des_f_big_alpha"),
@@ -58,7 +59,7 @@ internal static class CinematicFlashReader
     private static bool IsValid(CinematicFlashController controller)
     {
         bool hasValidDelays = float.IsFinite(controller.AppearDelay + controller.DisappearDelay
-            + controller.ExtrudeDistance)
+            + controller.ExtrudeDistance + controller.LengthRatio)
             && controller.AppearDelay >= 0 && controller.DisappearDelay >= 0 && controller.ExtrudeDistance >= 0;
         bool hasValidRayCount = controller.RayCount is > 0 and <= 128;
         bool hasFiniteRayDimensions = float.IsFinite(controller.BigAlpha + controller.BigLengthMin

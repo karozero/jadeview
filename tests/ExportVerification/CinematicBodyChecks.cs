@@ -47,11 +47,13 @@ internal static class CinematicBodyChecks
         };
         var document = new SceneDocument();
         document.CinematicClips.Add(source.Key, source);
-        document.CinematicActionKits.Add(44, new()
+        var bodyActions = new Dictionary<int, CinematicAction>
         {
             [200] = Action(0),
             [201] = Action(10, 101)
-        });
+        };
+        document.CinematicActionKits.Add(44, bodyActions);
+        document.CinematicActionKitsByOwner[(0, 44)] = bodyActions;
         var world = new WorldData();
         world.Objects.AddRange([root, bone, camera]);
         world.Actors.Add(actor);
@@ -105,6 +107,39 @@ internal static class CinematicBodyChecks
                 message.Contains("No cinematic skeletal action resolved", StringComparison.Ordinal)))
             throw new InvalidDataException("An unrelated opaque event was misreported as a missing body action.");
         Console.WriteLine("PASS: only decoded body-action requests report missing skeletal playback");
+
+        var rootMotionOnlySource = new AnimationClip
+        {
+            Loaded = true,
+            Cinematic = true,
+            Duration = 1,
+            Tracks = [new() { Bone = -1, Target = root.GaoKey,
+                Keys = [new() { Duration = 1, Position = Vector3.One }] }]
+        };
+        var rootMotionOnly = CinematicBodyTimeline.Create(rootMotionOnlySource, actor,
+            new Dictionary<uint, Dictionary<int, CinematicAction>>());
+        if (!rootMotionOnly.Diagnostics.Any(message =>
+                message.Contains("preview holds its bind pose", StringComparison.Ordinal)))
+            throw new InvalidDataException("Root-only cinematic motion did not explain why a rig remains in bind pose.");
+
+        var skeletalTrackSource = new AnimationClip
+        {
+            Loaded = true,
+            Cinematic = true,
+            Duration = 1,
+            Tracks =
+            [
+                new() { Bone = -1, Target = root.GaoKey,
+                    Keys = [new() { Duration = 1, Position = Vector3.One }] },
+                new() { Bone = 0, Target = root.GaoKey, Keys = [new() { Duration = 1, Position = Vector3.One }] }
+            ]
+        };
+        var skeletalTrack = CinematicBodyTimeline.Create(skeletalTrackSource, actor,
+            new Dictionary<uint, Dictionary<int, CinematicAction>>());
+        if (skeletalTrack.Diagnostics.Any(message => message.Contains(
+                "preview holds its bind pose", StringComparison.Ordinal)))
+            throw new InvalidDataException("A rig with serialized skeletal pose data was reported as bind-pose-only.");
+        Console.WriteLine("PASS: root-only actor motion distinguishes runtime rig pose from cinematic skeletal data");
 
         var secondRoot = new SceneObject { GaoKey = 4, Name = "Second shared-event actor" };
         var secondBone = new SceneObject { GaoKey = 5, ActorNode = new() { Parent = secondRoot.GaoKey } };

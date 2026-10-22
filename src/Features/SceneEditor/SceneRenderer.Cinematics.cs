@@ -79,38 +79,96 @@ public sealed partial class SceneRenderer
     private void DrawCinematicFlashes()
     {
         if (CinematicFlashes.Length == 0) return;
+        var materialTexture = ResolveCinematicFlashTexture();
+        Rlgl.EnableDepthTest();
+        SetDepthFunction(515);
+        Rlgl.DisableDepthMask();
         Raylib.BeginBlendMode(BlendMode.Additive);
         foreach (var flash in CinematicFlashes)
         {
             var viewDirection = Vector3.Normalize(Camera.Target - Camera.Position);
-            if (Vector3.Dot(flash.Position - Camera.Position, viewDirection) <= 0) continue;
-            var center = Raylib.GetWorldToScreen(flash.Position, Camera);
+            var cameraToFlash = flash.Position - Camera.Position;
+            float cameraDistance = cameraToFlash.Length();
+            if (cameraDistance <= 0 || Vector3.Dot(cameraToFlash, viewDirection) <= 0) continue;
+            var adjustedPosition = flash.Position - cameraToFlash / cameraDistance
+                * Math.Min(flash.CameraPullDistance, Math.Max(0, cameraDistance - .01f));
+            var center = Raylib.GetWorldToScreen(adjustedPosition, Camera);
             if (!float.IsFinite(center.X + center.Y)) continue;
             var cameraRight = Vector3.Normalize(Vector3.Cross(viewDirection, Camera.Up));
-            var cameraUp = Vector3.Normalize(Camera.Up);
+            var cameraUp = Vector3.Normalize(Vector3.Cross(cameraRight, viewDirection));
             float pixelsPerWorldUnit = Vector2.Distance(center,
-                Raylib.GetWorldToScreen(flash.Position + cameraRight, Camera));
+                Raylib.GetWorldToScreen(adjustedPosition + cameraRight, Camera));
             float verticalPixelsPerWorldUnit = Vector2.Distance(center,
-                Raylib.GetWorldToScreen(flash.Position + cameraUp, Camera));
+                Raylib.GetWorldToScreen(adjustedPosition + cameraUp, Camera));
+            float maximumRayRadius = Math.Min(Target.Texture.Width, Target.Texture.Height) * .22f;
             uint packed = flash.Color;
-            for (int rayIndex = 0; rayIndex < flash.RayCount; rayIndex++)
+            var rays = CinematicSunRayLayout.Create(center, flash.RayCount, flash.Seed,
+                flash.BigAngleJitter, flash.BigLengthMin, flash.BigLengthMax,
+                flash.BigWidthMin, flash.BigWidthMax, flash.SmallAngleJitter,
+                flash.SmallLengthMin, flash.SmallLengthMax, flash.SmallWidthMin, flash.SmallWidthMax,
+                flash.LengthRatio, pixelsPerWorldUnit, verticalPixelsPerWorldUnit, maximumRayRadius);
+            foreach (var ray in rays)
             {
-                bool smallRay = (rayIndex & 1) != 0;
-                float rayLength = (smallRay ? flash.SmallLength : flash.BigLength) * pixelsPerWorldUnit;
-                float rayWidth = (smallRay ? flash.SmallWidth : flash.BigWidth) * verticalPixelsPerWorldUnit;
-                if (rayLength <= 0 || rayWidth <= 0) continue;
-                float angle = rayIndex * (2 * MathF.PI / flash.RayCount) + .17f;
-                var direction = new Vector2(MathF.Cos(angle), MathF.Sin(angle));
-                var side = new Vector2(-direction.Y, direction.X);
-                var origin = center - direction * rayWidth * .35f;
-                var tip = center + direction * rayLength;
-                float alphaFactor = Math.Clamp(smallRay ? flash.SmallAlpha : flash.BigAlpha, 0, 1);
                 var color = new Color((byte)(packed >> 16), (byte)(packed >> 8), (byte)packed,
-                    (byte)Math.Clamp((int)(255 * flash.Opacity * alphaFactor), 0, 255));
-                Raylib.DrawTriangle(origin + side * rayWidth, tip, origin - side * rayWidth, color);
+                    (byte)Math.Clamp((int)(255 * flash.Opacity), 0, 255));
+                DrawSunRay(ray, center, adjustedPosition, cameraRight, cameraUp,
+                    pixelsPerWorldUnit, verticalPixelsPerWorldUnit, color, materialTexture);
             }
         }
+        Rlgl.EnableDepthMask();
         Raylib.EndBlendMode();
+    }
+
+    private Texture2D? ResolveCinematicFlashTexture()
+    {
+        // SFX_Flash_SFX_Flash_comportement binds SFX_light&smoke.gao submaterial 11.
+        // The compiled BGE script references 62000F8F; sally_clean resolves the usable FIX
+        // material graph from root 62000F8C. Submaterial 11 uses a grayscale RGB ray mask, not alpha.
+        const uint lightSmokeMaterialKey = 0x62000F8C;
+        const int sunRayMaterialIndex = 11;
+        if (Resolver == null
+            || !Resolver.Materials.TryGetValue(lightSmokeMaterialKey, out var materialRoot)
+            || materialRoot.SubMaterialKeys.Count <= sunRayMaterialIndex)
+            return null;
+
+        uint materialKey = materialRoot.SubMaterialKeys[sunRayMaterialIndex];
+        var material = Resolver.Materials.GetValueOrDefault(materialKey);
+        var layer = JadeMaterialLayer.Read(material?.SourceBytes).FirstOrDefault(candidate => !candidate.Disabled);
+        if (layer == null || layer.Texture is 0 or uint.MaxValue
+            || !Resolver.TryResolveTexture(layer.Texture, out var texture))
+            return null;
+
+        return GetOrUploadTexture(texture.ToTextureAsset());
+    }
+
+    private static void DrawSunRay(CinematicSunRay ray, Vector2 screenCenter, Vector3 planeCenter,
+        Vector3 cameraRight, Vector3 cameraUp, float horizontalScale, float verticalScale,
+        Color color, Texture2D? texture)
+    {
+        Rlgl.Begin((int)Raylib_cs.DrawMode.Triangles);
+        Rlgl.SetTexture(texture is { Id: > 0 } rayTexture ? rayTexture.Id : 0);
+        Rlgl.Color4ub(color.R, color.G, color.B, color.A);
+        Rlgl.TexCoord2f(.5f, 0);
+        Vertex(ray.Rear);
+        Rlgl.TexCoord2f(0, 1);
+        Vertex(ray.ForwardLeft);
+        Rlgl.TexCoord2f(1, 1);
+        Vertex(ray.ForwardRight);
+        Rlgl.End();
+        Rlgl.SetTexture(0);
+
+        void Vertex(Vector2 screenPoint)
+        {
+            Vector3 texturedPoint = ToCameraPlane(screenPoint);
+            Rlgl.Vertex3f(texturedPoint.X, texturedPoint.Y, texturedPoint.Z);
+        }
+
+        Vector3 ToCameraPlane(Vector2 screenPoint)
+        {
+            float horizontalOffset = (screenPoint.X - screenCenter.X) / Math.Max(.0001f, horizontalScale);
+            float verticalOffset = (screenCenter.Y - screenPoint.Y) / Math.Max(.0001f, verticalScale);
+            return planeCenter + cameraRight * horizontalOffset + cameraUp * verticalOffset;
+        }
     }
 
     private void DrawCinematicLightnings()

@@ -66,7 +66,7 @@ public static class SceneLoader
                     {
                         var chunk = new ChunkInfo(record.Offset - 4, record.Size + 4, MagicGao, false);
                         var obj = ParseGao(bytes, chunk, record.Key, index++, doc.Diagnostics);
-                        if (obj != null) { obj.Name = record.Name; obj.InitialCapabilities = record.InitialCapabilities; obj.Modifiers = record.Modifiers.Select(m => new SceneModifier(m.Type, bytes.AsSpan(m.Offset, m.Size).ToArray())).ToList(); world.Objects.Add(obj); }
+                        if (obj != null) { obj.Name = record.Name; obj.InitialCapabilities = record.InitialCapabilities; obj.SoundBankKey = record.SoundBank; obj.Modifiers = record.Modifiers.Select(m => new SceneModifier(m.Type, bytes.AsSpan(m.Offset, m.Size).ToArray())).ToList(); world.Objects.Add(obj); }
                     }
                     doc.Worlds.Add(world);
                 }

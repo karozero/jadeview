@@ -31,8 +31,13 @@ internal static class AnimationExportSampling
                     throw new InvalidDataException("Invalid source animation key duration.");
                 AddBoundary(times, key.Time, clip.Duration);
                 if (key.TimeCurve != null)
+                {
                     foreach (var point in key.TimeCurve.Points)
-                        AddBoundary(times, key.Time + point.Time, clip.Duration);
+                    {
+                        if (float.IsFinite(point.Time))
+                            AddBoundary(times, key.Time + point.Time, clip.Duration);
+                    }
+                }
                 float end = key.Time + key.Duration;
                 AddBoundary(times, end, clip.Duration);
                 // Mixed STEP/LINEAR source keys cannot be expressed by one glTF sampler.

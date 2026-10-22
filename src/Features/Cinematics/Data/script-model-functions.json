@@ -1,0 +1,3371 @@
+{
+  "1000152B": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "1000389F": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "26000016": [
+    "detect_o_notes_don_test"
+  ],
+  "26000041": [],
+  "2600012F": [
+    "sc_dummy"
+  ],
+  "26000145": [
+    "Detect_o_Email_doe_go"
+  ],
+  "2600015D": [
+    "Waf_Appareil_Photo_gam_init",
+    "Waf_Appareil_Photo_gam_comportement_deplacements",
+    "Waf_Appareil_Photo__gam_comportement_coince",
+    "Waf_Appareil_Photo_gam_reflex",
+    "Waf_Appareil_Photo_gam_tag_on",
+    "Waf_Appareil_Photo_gam_tag_off",
+    "Waf_Appareil_Photo_gam_exec_recherche_chemin",
+    "Waf_Appareil_Photo_gam_comportement_attente_SF",
+    "sc_dummy",
+    "Waf_Appareil_Photo_gam_comportement_attrape",
+    "Waf_Appareil_Photo_gam_after_rec"
+  ],
+  "2600022F": [
+    "Snd_mdf_SF_snd_mdf_play",
+    "Snd_mdf_SF_snd_mdf_stop",
+    "Snd_mdf_SF_snd_mdf_init"
+  ],
+  "26000244": [
+    "Snd_mdf_BVFrontiere_BVF_init",
+    "Snd_mdf_BVFrontiere_BVF_out_BV",
+    "Snd_mdf_BVFrontiere_BVF_in_BV_cotevert",
+    "Snd_mdf_BVFrontiere_BVF_in_BV_pascotevert"
+  ],
+  "2600025B": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "260002FC": [
+    "sc_dummy"
+  ],
+  "260003A7": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "260003FC": [
+    "sc_dummy"
+  ],
+  "260004B9": [
+    "sc_dummy"
+  ],
+  "260004CC": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "2600086C": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "2600087C": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "26000885": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "26000963": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "260009E5": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "26000A21": [
+    "sc_dummy"
+  ],
+  "26000AD3": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "26000B66": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "26000B78": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "26000C8A": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "26000D11": [
+    "SND_MergeKit_SND_Merge",
+    "SND_MergeKit_SND_MergeUnmerge"
+  ],
+  "26000D79": [
+    "Video_Player_VP_go",
+    "Video_Player_VP_int"
+  ],
+  "26000DC7": [
+    "SND_MusicFight_Init_mf_init"
+  ],
+  "26001049": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "2600115E": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "260011EB": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "2600145F": [
+    "sc_dummy"
+  ],
+  "26001680": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "26001816": [
+    "sc_dummy"
+  ],
+  "26001FBB": [
+    "SFX_Sally_SA_Ano_circle_Jade_SuperAction",
+    "SFX_Sally_SA_Ano_circle_init",
+    "SFX_Sally_SA_Ano_circle_bdisplay",
+    "SFX_Sally_SA_Ano_circle_adisplay",
+    "SFX_Sally_SA_Ano_circle_Jade_Uppercut",
+    "SFX_Sally_SA_Ano_circle_Jade_CoupFinal",
+    "SFX_Sally_SA_Ano_circle_garde",
+    "SFX_Sally_SA_Ano_circle_HH_BullRush"
+  ],
+  "2600217F": [
+    "SFX_Sally_Shield_SS_BDisplay",
+    "SFX_Sally_Shield_SS_ADisplay",
+    "SFX_Sally_Shield_SS_C_Apparition",
+    "SFX_Sally_Shield_SS_C_Disparition",
+    "SFX_Sally_Shield_SS_C_Wait",
+    "SFX_Sally_Shield_SS_C_init"
+  ],
+  "2600244D": [
+    "SFX_Sally_AddAno_SFX_BDisplay",
+    "SFX_Sally_AddAno_SFX_ADisplay",
+    "SFX_Sally_AddAno_SFX_go",
+    "SFX_Sally_AddAno_SFX_delete"
+  ],
+  "26002882": [
+    "Monstroplante_mon_init",
+    "Monstroplante_mon_play",
+    "Monstroplante_mon_reflex",
+    "Monstroplante_mon_BDisplay",
+    "Monstroplante_mon_ADisplay"
+  ],
+  "2600288E": [
+    "Monstroplante_Tentacule_MT_init",
+    "Monstroplante_Tentacule_MT_reflex",
+    "Monstroplante_Tentacule_MT_go",
+    "sc_dummy",
+    "Monstroplante_Tentacule_MT_do_snake",
+    "Monstroplante_Tentacule_MT_First_Init",
+    "Monstroplante_Tentacule_MT_Paf"
+  ],
+  "260028FC": [
+    "Monstroplante_Gamin_MPG_init",
+    "Monstroplante_Gamin_MPG_Jump",
+    "Monstroplante_Gamin_MPG_run"
+  ],
+  "26002A2C": [
+    "Sally_TeteChercheuses_stc_init",
+    "Sally_TeteChercheuses_stc_go",
+    "Sally_TeteChercheuses_stc_end",
+    "Sally_TeteChercheuses_stc_loop",
+    "Sally_TeteChercheuses_stc_loop_end"
+  ],
+  "260031FC": [
+    "sc_dummy"
+  ],
+  "26003266": [
+    "sc_dummy"
+  ],
+  "260033F9": [
+    "sc_dummy"
+  ],
+  "26003464": [
+    "TXT_Encart_TXT_go",
+    "TXT_Encart_TXT_init"
+  ],
+  "260034B3": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "260034BE": [
+    "sc_dummy"
+  ],
+  "26003580": [
+    "sc_dummy"
+  ],
+  "2600358F": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "260035AB": [
+    "sc_dummy"
+  ],
+  "260035BE": [
+    "sc_dummy"
+  ],
+  "26003694": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "2600372F": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "2600385A": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "26003D00": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "26004CD1": [],
+  "26004CEF": [],
+  "32000039": [
+    "GST_Script_Combat_GST_Init",
+    "GST_Script_Combat_GST_Macro_AChoixPerso",
+    "GST_Script_Combat_GST_Macro_AForceComportement",
+    "GST_Script_Combat_GST_Macro_TestContinue",
+    "GST_Script_Combat_GST_ConditionPermanente",
+    "GST_Script_Combat_GST_main",
+    "GST_Script_Combat_GST_Macro_Pause",
+    "GST_Script_Combat_GST_Macro_Label",
+    "GST_Script_Combat_GST_Macro_Goto",
+    "GST_Script_Combat_GST_Macro_ActionAlternee",
+    "GST_Script_Combat_GST_CP_Minumum",
+    "GST_Script_Combat_GST_CP_AttendPaf",
+    "GST_Script_Combat_GST_Macro_ActiveCP",
+    "GST_Script_Combat_GST_Macro_ActionEnchaine",
+    "GST_Script_Combat_GST_Macro_ExecMacroSimul",
+    "GST_Script_Combat_GST_Macro_ExecMacroAlterne",
+    "GST_Script_Combat_GST_Macro_DesactiveCP",
+    "GST_Script_Combat_GST_Script_Order_Sarko",
+    "GST_Script_Combat_GST_ComportementSpeciaux",
+    "GST_Script_Combat_GST_Script_Order_Crevette",
+    "GST_Script_Combat_GST_Script_Order_Sauterelle",
+    "GST_Script_Combat_GST_Script_Order_Memorial",
+    "GST_Script_Combat_GST_Script_Order_DireWorm",
+    "GST_Script_Combat_GST_CP_FightSallyOn",
+    "GST_Script_Combat_GST_Macro_SendMessage",
+    "sc_dummy",
+    "GST_Script_Combat_GST_Script_Order_Tikha",
+    "GST_Script_Combat_GST_Script_Order_CaveCrawler",
+    "GST_Script_Combat_GST_Script_Order_Spectre",
+    "GST_Script_Combat_GST_Script_Order_SpectreBas",
+    "GST_Script_Combat_GST_Script_Order_SpectrePlus",
+    "GST_Script_Combat_GST_Script_Order_SpectreProche",
+    "GST_Script_Combat_GST_CP_RefreshActors",
+    "GST_Script_Combat_GST_Script_Order_SpectreContinu"
+  ],
+  "32000064": [
+    "Detect_o_BV_CapaSet_detect_go"
+  ],
+  "320000BD": [
+    "SND_SFnDELAY_sfd_init",
+    "SND_SFnDELAY_sfd_go"
+  ],
+  "320000E2": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "320000FE": [
+    "sc_dummy"
+  ],
+  "3200014D": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3200019B": [
+    "Spirale_Domz_spd_apparition",
+    "Spirale_Domz_spd_disparition",
+    "Spirale_Domz_spirale_bdisplay",
+    "Spirale_Domz_spirale_adisplay",
+    "Spirale_Domz_spd_wait",
+    "Spirale_Domz_spd_init",
+    "Spirale_Domz_spd_centre",
+    "Spirale_Domz_spd_trou"
+  ],
+  "320001B3": [
+    "sc_dummy"
+  ],
+  "35001FF8": [
+    "companion_co_init",
+    "companion_co_action_normal",
+    "companion_co_go_wp_push",
+    "companion_co_action_grab_wall",
+    "companion_co_exec_anim_deplace",
+    "companion_co_action_occupationTerrain",
+    "companion_co_exec_anim_arret",
+    "companion_co_slave_move_choise",
+    "companion_co_exec_get_message_action",
+    "companion_co_slave_move_between_wps",
+    "companion_co_slave_finish",
+    "companion_co_exec_calcul_virtualCoefSens",
+    "companion_co_slave_wait",
+    "companion_co_exec_2__calcul_next_wp",
+    "companion_co_slave_mode_dispatch",
+    "companion_co_init_select_mode",
+    "companion_co_go_nextwp_walk",
+    "companion_co_tag_off",
+    "companion_co_tag_on",
+    "companion_co_exec_deplacements",
+    "companion_co_SFX_coup_de_cul",
+    "companion_co_exec_get_message",
+    "companion_co_exec_suivi_des_yeux",
+    "companion_co_action_parle",
+    "companion_co_exec_jump_frequency_get",
+    "companion_co_action_joy_cheat",
+    "companion_co_exec_normal_arret",
+    "companion_co_exec_normal_reseau_ou_pas",
+    "companion_co_exec_normal_choix_anim",
+    "companion_co_exec_normal_deplacement",
+    "companion_co_exec_rayjump",
+    "companion_co_rayjump_initsaut",
+    "companion_co_rayjump_air",
+    "companion_co_rayjump_initchute",
+    "companion_co_action_blesse",
+    "companion_co_exec_reflex",
+    "companion_co_exec_magnet",
+    "companion_co_exec_test_push",
+    "companion_co_action_push_init",
+    "companion_co_action_push",
+    "companion_co_exec_test_rayjump",
+    "companion_co_action_fight",
+    "companion_co_exec_paf_decode_universel",
+    "companion_co_exec_paf_recul",
+    "companion_co_action_paf",
+    "companion_co_exec_fight_pos_autour_enemy",
+    "companion_co_slave_push_take_eat",
+    "companion_co_exec_fight_action_observe",
+    "sc_dummy",
+    "sc_dummy",
+    "companion_co_exec_fight_pos_surplace",
+    "companion_co_exec_fight_pos_proche_sally",
+    "sc_dummy",
+    "companion_co_exec_fight_action_hide",
+    "companion_co_exec_fight_pos_hide",
+    "companion_co_exec_set_friend_type",
+    "companion_co_action_BullRush",
+    "companion_co_exec_fight_action_dash",
+    "companion_co_slave_action",
+    "companion_co_exec_choix_acteur_suivi_regard",
+    "companion_co_action_cine",
+    "companion_co_exec_paf_zdes_zdes",
+    "companion_co_action_attente",
+    "companion_co_exec_dialogue",
+    "companion_co_exec_expressionkitselector_visage",
+    "companion_co_action_bidouille",
+    "companion_co_exec_fight_action_baffe",
+    "companion_co_exec_fight_AI",
+    "companion_co_action_baffe",
+    "companion_co_exec_expressionkitselector_blink",
+    "companion_co_action_CoupCul",
+    "companion_co_exec_fight_pos_proche",
+    "companion_co_action_a_terre",
+    "companion_co_action_mort",
+    "companion_co_exec_after_blend",
+    "companion_co_action_mort_XB",
+    "companion_co_action_explosion",
+    "companion_co_exec_after_rec",
+    "companion_co_exec_detect_col_NMI",
+    "companion_co_SFX_pied",
+    "sc_dummy",
+    "companion_co_exec_anim_deplace_slave",
+    "companion_co_action_HammerTime"
+  ],
+  "3500648A": [
+    "camera_target_tgt_follow1actor",
+    "sc_dummy",
+    "camera_target_tgt_afterrec"
+  ],
+  "350074D6": [
+    "helper_text_hlptxt_init",
+    "helper_text_hlptxt_tests_depart",
+    "helper_text_hlptxt_exec_tests_interruption",
+    "helper_text_hlptxt_tests_wait",
+    "helper_text_hlptxt_exec_ask_display",
+    "helper_text_hlptxt_exec_fin_ou_abort"
+  ],
+  "35008316": [
+    "Detect_o_Zone_doz_init",
+    "Detect_o_Zone_doz_detec_o_BV",
+    "Detect_o_Zone_doz_detec_o_ZDE"
+  ],
+  "35008518": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "35008E6E": [
+    "Objet_Poussable_obp_init",
+    "Objet_Poussable_obp_tag_off",
+    "Objet_Poussable_obp_tag_on",
+    "Objet_Poussable_obp_go",
+    "Global_Library_exec_magnets_generation",
+    "Global_Library_exec_magnets_destruction",
+    "Objet_Poussable_obp_destroy",
+    "Objet_Poussable_obp_exec_check_obstacle",
+    "Objet_Poussable_obp_reflex"
+  ],
+  "350091B0": [
+    "Cine_Textes_CiTxt_init",
+    "Cine_Textes_CiTxt_reception_messages"
+  ],
+  "350091C3": [
+    "Cine_Events_cine_firstinit",
+    "Cine_Events_cine_init",
+    "Cine_Events_cine_tests_depart",
+    "Cine_Events_cine_play_eventtrack",
+    "Cine_Events_cine_tests_interruption",
+    "Cine_Events_cine_exec_test_priorite",
+    "Cine_Events_cine_test_fin_sons",
+    "Cine_Events_Cine_exec_GoToEvents",
+    "Cine_Events_Cine_exec_EndOfEvents",
+    "Cine_Events_Cine_exec_InitialiseCine",
+    "Cine_Events_Cine_exec_soundtracks_Fade"
+  ],
+  "350093FA": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3500940A": [
+    "SFX_FlashTexture_Fla_BeDisplay",
+    "SFX_FlashTexture_Fla_AfDisplay",
+    "SFX_FlashTexture_Fla_Flash_constant"
+  ],
+  "35009467": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3500947B": [
+    "Detect_o_Capa_doc_init",
+    "sc_dummy",
+    "Detect_o_Capa_doc_une_vrai_une_faux",
+    "Detect_o_Capa_doc_toutes_a_vrai",
+    "Detect_o_Capa_doc_une_a_vrai",
+    "Detect_o_Capa_doc_toutes_a_faux",
+    "Detect_o_Capa_doc_une_a_faux"
+  ],
+  "350095CC": [
+    "Detect_o_SpecialFlags_dosf_init",
+    "Detect_o_SpecialFlags_dosf_tests"
+  ],
+  "35009FBB": [
+    "Generateur_lanceur_gela_init",
+    "Generateur_lanceur_gela_normal"
+  ],
+  "35009FC3": [
+    "Objet_genere_obge_init",
+    "Objet_genere_obge_normal"
+  ],
+  "3500A11F": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3500A1C6": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3500A2EC": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3500A3A9": [
+    "SFX_AfterFX_AFX_Loop"
+  ],
+  "3500A3C8": [
+    "sc_dummy"
+  ],
+  "3500A466": [
+    "snap_oriente_on_bone_soob_snap",
+    "snap_oriente_on_bone_soob_msg",
+    "snap_oriente_on_bone_soob_init",
+    "snap_oriente_on_bone_soob_transit",
+    "snap_oriente_on_bone_soob_scale"
+  ],
+  "3500A531": [
+    "script_obj_destroy"
+  ],
+  "3500A58C": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3500A7A2": [
+    "Activateur_avec_SF_Acs_init",
+    "Activateur_avec_SF_Acs_loop"
+  ],
+  "3500A8C5": [
+    "sc_dummy"
+  ],
+  "3500A954": [
+    "Ondulator_ond_sinus",
+    "Ondulator_ond_init",
+    "Ondulator_ond_rumble"
+  ],
+  "3500ABA9": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3500ABD4": [
+    "sc_dummy"
+  ],
+  "3500AD3C": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3500ADBC": [
+    "Donne_des_Pognes_ddp_wait",
+    "Donne_des_Pognes_ddp_donne",
+    "Donne_des_Pognes_ddp_prend"
+  ],
+  "3500AECE": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3500B22E": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3500B776": [
+    "Cine_lipsynch_auto_Lips_lecture_messages",
+    "Cine_lipsynch_auto_Lips_init",
+    "Cine_lipsynch_auto_Lips_morphing"
+  ],
+  "3500B7C1": [
+    "Material_modificator_Matmod_init",
+    "Material_modificator_Matmod_Fade",
+    "Material_modificator_Matmod_Fade_wait",
+    "Material_modificator_Matmod_Flash",
+    "Material_modificator_Matmod_Flash_wait",
+    "Material_modificator_Matmod_Fade_BD",
+    "Material_modificator_Matmod_Fade_AD",
+    "Material_modificator_Matmod_Fade_CB"
+  ],
+  "3500B900": [
+    "Cine_FigeleMonde_flm_fige",
+    "Cine_FigeleMonde_flm_defige"
+  ],
+  "3500B96D": [
+    "Test_Appui_Bouton_Tab_init",
+    "Test_Appui_Bouton_Tab_loop",
+    "Test_Appui_Bouton_Tab_loop_sequence",
+    "Test_Appui_Bouton_Tab_init_sequence"
+  ],
+  "3500BAE1": [
+    "Cine_orage_Meteores_met_init",
+    "Cine_orage_Meteores_met_bombarde"
+  ],
+  "3500BB1D": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3500BE14": [
+    "Object_Scalator_osc_init",
+    "Object_Scalator_osc_wait",
+    "Object_Scalator_osc_scale",
+    "Object_Scalator_osc_scale_objet"
+  ],
+  "3500BE49": [
+    "Scarabee_cine_sca_init",
+    "Scarabee_cine_sca_oriente"
+  ],
+  "3500C024": [
+    "Onde_de_choc_cine_ODCc_init",
+    "Onde_de_choc_cine_ODCc_comportement",
+    "Onde_de_choc_cine_ODCc_bdisplay",
+    "Onde_de_choc_cine_ODCc_adisplay"
+  ],
+  "3500DF5B": [
+    "Perle_base_perl_init",
+    "Perle_base_perl_cycle",
+    "Perle_base_perl_snap",
+    "Perle_base_perl_transit",
+    "Perle_base_perl_zoom"
+  ],
+  "3500E660": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3500E8B3": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D00029D": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D000589": [
+    "SFX_GoutteO_g_init",
+    "SFX_GoutteO_g_gener",
+    "SFX_GoutteO_g_move",
+    "SFX_GoutteO_g_ripple"
+  ],
+  "3D000627": [
+    "AR_luciole_luciole_init",
+    "AR_luciole_luciole_loop",
+    "AR_luciole_luciole_move",
+    "AR_luciole_luciole_reflexe"
+  ],
+  "3D0006FC": [
+    "Fun_EtoileFilante_ef_loop",
+    "Fun_EtoileFilante_ef_init",
+    "Fun_EtoileFilante_ef_move"
+  ],
+  "3D000717": [
+    "AR_RatBleu_rb_init",
+    "AR_RatBleu_rb_loop"
+  ],
+  "3D00099F": [
+    "Fun_baleine_bal_init",
+    "Fun_baleine_bal_move",
+    "Fun_baleine_bal_plonge",
+    "Fun_baleine_bal_saute",
+    "Fun_baleine_bal_afterrec",
+    "Fun_baleine_bal_queue",
+    "Fun_baleine_bal_plouf",
+    "Fun_baleine_bal_exec_snd"
+  ],
+  "3D000CA9": [
+    "Fun_Poleine_pol_loop"
+  ],
+  "3D000CD2": [
+    "Raskass_r_init",
+    "Raskass_r_attend_zone",
+    "Raskass_r_enter_zone",
+    "Raskass_r_move",
+    "Raskass_r_reflexe",
+    "Raskass_r_afterrec",
+    "sc_dummy",
+    "Raskass_r_tracepos",
+    "Raskass_r_saute",
+    "Raskass_r_plouf",
+    "Raskass_r_ripple",
+    "Raskass_r_sortie_zone",
+    "Raskass_r_exec_testgens"
+  ],
+  "3D000D9E": [
+    "Garde_Barriere_Mine_GBM_init",
+    "Garde_Barriere_Mine_GBM_attend",
+    "Garde_Barriere_Mine_GBM_attaque",
+    "Garde_Barriere_Mine_GBM_reflex",
+    "Garde_Barriere_Mine_GBM_depart",
+    "Garde_Barriere_Mine_GBM_retour",
+    "Garde_Barriere_Mine_GBM_afterrec",
+    "Garde_Barriere_Mine_GBM_exec_GFX"
+  ],
+  "3D000E47": [
+    "vaisseau_hyllis_vh_init",
+    "vaisseau_hyllis_vh_go",
+    "vaisseau_hyllis_vh_reflexe",
+    "vaisseau_hyllis_vh_go_move",
+    "vaisseau_hyllis_vh_go_vrille",
+    "vaisseau_hyllis_vh_explosion"
+  ],
+  "3D000FFB": [
+    "vaisseau_hyllis_flic_vhf_init",
+    "vaisseau_hyllis_flic_vhf_move",
+    "vaisseau_hyllis_flic_vhf_reflexe",
+    "vaisseau_hyllis_flic_vhf_shoot",
+    "vaisseau_hyllis_flic_vhf_part",
+    "sc_dummy"
+  ],
+  "3D001015": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D001153": [
+    "Flic_Tir_ft_init",
+    "Flic_Tir_ft_explode",
+    "Flic_Tir_ft_loop",
+    "Flic_Tir_ft_afterr"
+  ],
+  "3D001173": [
+    "charlie_ch_init",
+    "charlie_ch_reflexe",
+    "charlie_ch_move",
+    "charlie_ch_poser"
+  ],
+  "3D0011BD": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D001248": [
+    "tir_blok_hyllis_tbh_init",
+    "tir_blok_hyllis_tbh_attend",
+    "tir_blok_hyllis_tbh_shoot",
+    "tir_blok_hyllis_tbh_sort",
+    "tir_blok_hyllis_tbh_entre"
+  ],
+  "3D001290": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D0012D5": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D001347": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D001387": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D0014BA": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D0014D8": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D0015F2": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D00162F": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D001660": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D001684": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D001700": [
+    "Move_Grid_Move_Grid_init"
+  ],
+  "3D0017E5": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D001853": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D001911": [
+    "perle_perle_goto_sally",
+    "perle_perle_loop",
+    "perle_perle_afterrec",
+    "perle_perle_meurt",
+    "perle_perle_meurtpied",
+    "perle_perle_dummy",
+    "perle_perle_init"
+  ],
+  "3D001AE3": [
+    "hyllis_gp_manager_hgm_init",
+    "hyllis_gp_manager_hgm_loop",
+    "hyllis_gp_manager_hgm_attend"
+  ],
+  "3D001AF2": [
+    "hyllis_meteor_hm_init",
+    "hyllis_meteor_hm_loop"
+  ],
+  "3D001B67": [],
+  "3D001CF4": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D001D4E": [
+    "distrib_crunsh_dc_init",
+    "distrib_crunsh_dc_reflex",
+    "distrib_crunsh_dc_deroule",
+    "distrib_crunsh_dc_bouge",
+    "distrib_crunsh_dc_exec_cam",
+    "distrib_crunsh_dc_texte",
+    "distrib_crunsh_dc_tourne"
+  ],
+  "3D0021B2": [
+    "depaneuse_dp_init",
+    "depaneuse_dp_toaircraft",
+    "depaneuse_dp_toaircraftreel",
+    "depaneuse_dp_donnegrapin",
+    "depaneuse_dp_reflex",
+    "depaneuse_dp_retour",
+    "depaneuse_dp_texte",
+    "depaneuse_dp_exec_afterrec"
+  ],
+  "3D0028F3": [
+    "Monstroplante_socle_mp_sfx_eclat",
+    "Monstroplante_socle_mp_init",
+    "Monstroplante_socle_mp_reflex",
+    "Monstroplante_socle_mp_donne_perle",
+    "Monstroplante_socle_mp_meurt",
+    "Monstroplante_socle_mp_morph",
+    "Monstroplante_socle_mp_tige",
+    "Monstroplante_socle_mp_exec_materia",
+    "Monstroplante_socle_mp_attend_paradie"
+  ],
+  "3D002989": [
+    "sfx_pas_poussiere_spp_go",
+    "sfx_pas_poussiere_spp_bv",
+    "sfx_pas_poussiere_spp_ar",
+    "sfx_pas_poussiere_spp_exec_test"
+  ],
+  "3D002CCC": [
+    "afx_manager_afx_msg",
+    "afx_manager_afx_loop"
+  ],
+  "3D002D24": [
+    "SFX_eclaire_se_go",
+    "SFX_eclaire_se_bdisplay",
+    "SFX_eclaire_se_adisplay",
+    "SFX_eclaire_se_meurt",
+    "SFX_eclaire_se_orient"
+  ],
+  "3D002D5B": [
+    "sfx_bouclier_phare_sbp_init",
+    "sfx_bouclier_phare_sbp_apparition",
+    "sfx_bouclier_phare_sbp_exec_pos",
+    "sfx_bouclier_phare_sbp_disparition",
+    "sfx_bouclier_phare_sbp_apparition1",
+    "sfx_bouclier_phare_abp_apparition2",
+    "sfx_bouclier_phare_sbp_wait_eteind",
+    "sfx_bouclier_phare_sbp_msg",
+    "sfx_bouclier_phare_sbp_bdisplay",
+    "sfx_bouclier_phare_sbp_adisplay",
+    "sfx_bouclier_phare_sbp_firstinit",
+    "sfx_bouclier_phare_sbp_apparition0"
+  ],
+  "3D002E00": [
+    "SFX_Dome_Hyllis_sdh_reflex",
+    "SFX_Dome_Hyllis_sdh_adisplay",
+    "SFX_Dome_Hyllis_sdh_bdisplay",
+    "SFX_Dome_Hyllis_sdh_init"
+  ],
+  "3D002E28": [
+    "sfx_plouf_sfx_loop",
+    "sfx_plouf_sp_bdis",
+    "sfx_plouf_sp_adis",
+    "sfx_plouf_sp_init"
+  ],
+  "3D002F6F": [
+    "SFX_colpag_cam_scp_loop"
+  ],
+  "3D002F90": [
+    "camera_new_cn_init",
+    "camera_new_cn_process",
+    "camera_new_cn_mode_sally",
+    "camera_new_cn_select_mode",
+    "camera_new_cn_extern",
+    "camera_new_cn_mode_aircraft"
+  ],
+  "3D0030ED": [
+    "AR_tickpoil_art_init",
+    "AR_tickpoil_art_marche",
+    "AR_tickpoil_art_att",
+    "AR_tickpoil_art_reflex",
+    "AR_tickpoil_art_firstinit",
+    "AR_tickpoil_art_meurt"
+  ],
+  "3D00313B": [
+    "activator_simple_ac_loop"
+  ],
+  "3D0032A2": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D003831": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D003894": [
+    "main_menu_mn_init"
+  ],
+  "3D003A46": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D003B26": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D003B45": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D003B80": [
+    "dca_dca_loop"
+  ],
+  "3D003D56": [
+    "InfoAnimaux_ia_init"
+  ],
+  "3D003DF9": [
+    "main_E3_loadmap_me3_init",
+    "main_E3_loadmap_me3_finit",
+    "main_E3_loadmap_me3_waitload"
+  ],
+  "3D003ED4": [
+    "SF_Destroy_sfd_loop"
+  ],
+  "3D004246": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "3D0042B6": [
+    "sc_dummy"
+  ],
+  "3D005171": [
+    "caisse_gene_init",
+    "caisse_gene_loop"
+  ],
+  "3D0096AB": [
+    "INV_cacheobjet_loop"
+  ],
+  "49001D83": [
+    "SFX_Disapear_dis_init",
+    "SFX_Disapear_dis_phases",
+    "SFX_Disapear_dis_before_display",
+    "SFX_Disapear_dis_after_display"
+  ],
+  "4900FDBC": [
+    "INV_manager_INV_Init",
+    "INV_manager_Loop",
+    "INV_manager_Update_Buttons",
+    "INV_manager_Select_Menu_Main",
+    "INV_manager_Update_Menu",
+    "INV_manager_Select_Menu_Options",
+    "INV_manager_Move_Speed",
+    "INV_manager_ComputeModuloAngle",
+    "INV_manager_Buttons_Select",
+    "sc_dummy",
+    "INV_manager_INV_InitFirstTrame",
+    "INV_manager_INV_InitStartGame",
+    "INV_manager_Menu_Object",
+    "INV_manager_Update_Object",
+    "INV_manager_Select_Menu_Object",
+    "INV_manager_Effect_MenuDisapear",
+    "INV_manager_Effect_MenuAppear",
+    "INV_manager_Update_MenuEnd",
+    "INV_manager_Update_MenuStart",
+    "INV_manager_Effect_MenuAppear2",
+    "INV_manager_Select_Back",
+    "INV_manager_Spiral_Init",
+    "INV_manager_Spiral_DisplayCase",
+    "INV_manager_Spiral_Loop",
+    "INV_manager_Spiral_Exit",
+    "INV_manager_Move_3DObject",
+    "INV_manager_Buttons_Object",
+    "INV_manager_Update_Note",
+    "INV_manager_INV_Exit",
+    "INV_manager_Buttons_Next",
+    "INV_manager_Update_UpLeft",
+    "INV_manager_Loop2",
+    "sc_dummy",
+    "INV_manager_Loop_Cheat",
+    "INV_manager_Mission_Init",
+    "INV_manager_Mission_Exit",
+    "INV_manager_Mission_Loop",
+    "INV_manager_INV_InitSpecialMode",
+    "INV_manager_Object_Init",
+    "INV_manager_Object_Loop",
+    "INV_manager_Object_Exit",
+    "sc_dummy",
+    "INV_manager_Object_SetPage",
+    "INV_manager_Perso_FillMenu",
+    "INV_manager_Perso_DisplayMenu",
+    "INV_manager_Perso_Select",
+    "INV_manager_Perso_GiveTo",
+    "INV_manager_Perso_Eat",
+    "INV_manager_Select_Menu_Mission",
+    "INV_manager_Mission_Params",
+    "INV_manager_Buttons_Mission",
+    "Global_Library_Perso_TreatEquipement",
+    "INV_manager_Aide_Init",
+    "INV_manager_Aide_Loop",
+    "INV_manager_Aide_Exit",
+    "INV_manager_Aide_MailDisplay",
+    "INV_manager_Aide_NoteDisplay",
+    "INV_manager_Update_Mail",
+    "INV_manager_Menu_Equip",
+    "INV_manager_Select_Menu_Equip",
+    "INV_manager_Buttons_Equip",
+    "INV_manager_Menu_Mission",
+    "INV_manager_Buttons_Give",
+    "INV_manager_Perso_GiveToNote",
+    "INV_manager_Perso_CanUnequip",
+    "INV_manager_Object_ChargeurMDisk",
+    "INV_manager_Buttons_Open",
+    "INV_manager_Perso_Unequip",
+    "INV_manager_Perso_Equip",
+    "INV_manager_Message",
+    "INV_manager_Message_Loop",
+    "sc_dummy",
+    "INV_manager_MissionPhoto_Init",
+    "INV_manager_MissionPhoto_Loop",
+    "INV_manager_MissionPhoto_Exit",
+    "INV_manager_Mission_DisplayAnimalCollect",
+    "INV_manager_Mission_DisplayAnimalName",
+    "INV_manager_Message_Close",
+    "INV_manager_File_Init",
+    "INV_manager_File_Loop",
+    "INV_manager_File_Exit",
+    "INV_manager_File_DisplayDesc",
+    "INV_manager_MissionPhoto_Album",
+    "INV_manager_Perso_DropObject",
+    "INV_manager_Aide_DisplayPage",
+    "sc_dummy",
+    "INV_manager_Cheat_Loop",
+    "INV_manager_Cheat_Exit",
+    "INV_manager_Cheat_Init",
+    "INV_manager_Pognes_Display",
+    "INV_manager_Pognes_Init",
+    "INV_manager_Pognes_Close",
+    "INV_manager_Update_PrevNextCase",
+    "INV_manager_Options_Exit",
+    "INV_manager_Options_Loop",
+    "INV_manager_Options_Init",
+    "INV_manager_Pognes_Loop",
+    "INV_manager_Mission_DisplayAnimalReward",
+    "INV_manager_Object_Appear",
+    "INV_manager_Object_Perle",
+    "INV_manager_Aide_DisplayCarte",
+    "INV_manager_File_CheckMC",
+    "INV_manager_Options_Display",
+    "INV_manager_Loop_NewGame"
+  ],
+  "4900FDDD": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "4900FF83": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "49018738": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "4901880F": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "49018A53": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "490198B6": [
+    "SFX_Sun_loop"
+  ],
+  "4901A152": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "4901BEE6": [
+    "mpegplayer_init",
+    "mpegplayer_loop"
+  ],
+  "4901E6EA": [
+    "GST_Carte3D_Close",
+    "GST_Carte3D_Open",
+    "GST_Carte3D_Init",
+    "sc_dummy",
+    "GST_Carte3D_exec_UpdatePiece",
+    "GST_Carte3D_exec_SpotInsert",
+    "GST_Carte3D_exec_Spot",
+    "GST_Carte3D_Loop"
+  ],
+  "4901EC8C": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "4901F719": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "4901FC1D": [
+    "INV_SecundoEtLaFacture_init",
+    "INV_SecundoEtLaFacture_loop",
+    "INV_SecundoEtLaFacture_firstinit"
+  ],
+  "49020714": [
+    "Hovercraft_shoot_HoverShoot_init",
+    "Hovercraft_shoot_HoverShoot_move",
+    "Hovercraft_shoot_HoverShoot_death",
+    "Hovercraft_shoot_HoverShoot_exec_impact",
+    "Hovercraft_shoot_HoverShoot_reflex",
+    "Hovercraft_shoot_HoverShoot_exec_GFX_Flash"
+  ],
+  "49020BF0": [
+    "monstroplante_death_mpd_beforedisplay",
+    "monstroplante_death_mpd_afterdisplay",
+    "monstroplante_death_mpd_loop",
+    "monstroplante_death_mpd_init",
+    "monstroplante_death_mpd_waitfordeath"
+  ],
+  "49021040": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "49021214": [
+    "SFX_Disapear2_init",
+    "SFX_Disapear2_loop",
+    "SFX_Disapear2_ComputeMatParams"
+  ],
+  "49021E51": [
+    "cine_perletransformation_init",
+    "cine_perletransformation_wait",
+    "cine_perletransformation_params",
+    "cine_perletransformation_BeforeDisplay"
+  ],
+  "49021F27": [
+    "cine_perledanslesac_init",
+    "cine_perledanslesac_loop",
+    "cine_perledanslesac_fct_pour_inventaire"
+  ],
+  "49022259": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "49028657": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "5B000182": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "5B0002AF": [
+    "mirror_mirror_lightning_on",
+    "mirror_mirror_lightning_update",
+    "mirror_mirror_lightning_off",
+    "mirror_mirror_beforedisplay",
+    "mirror_mirror_afterdisplay",
+    "mirror_mirror_init",
+    "mirror_mirror_loop",
+    "mirror_mirror_exec_set_snd_pos"
+  ],
+  "5B000385": [
+    "move_with_me_move_with_me_init",
+    "move_with_me_move_with_me_loop"
+  ],
+  "5B0004DD": [
+    "Fun_Mouette_mouette_reflexe",
+    "Fun_Mouette_mouette_init",
+    "Fun_Mouette_mouette_gotonext",
+    "Fun_Mouette_mouette_move",
+    "Fun_Mouette_mouette_follow"
+  ],
+  "5E000005": [
+    "world_cycle_world_cycle",
+    "world_cycle_world_planetes",
+    "world_cycle_world_init"
+  ],
+  "5E00021F": [
+    "planete_rotation_pr_init",
+    "planete_rotation_pr_loop"
+  ],
+  "5E00026A": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "5E000320": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "5E0003BD": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "5E000487": [
+    "Activator_act_loop",
+    "Activator_act_cutter",
+    "Activator_act_afterrec",
+    "Activator_act_init"
+  ],
+  "5E005FAB": [
+    "camera_derriere_cd_movecam",
+    "camera_derriere_cd_execcut",
+    "camera_derriere_cd_loop",
+    "camera_derriere_cd_init"
+  ],
+  "5E006326": [
+    "main_logo_ml_load",
+    "main_logo_ml_init1",
+    "main_logo_ml_init2",
+    "sc_dummy",
+    "main_logo_ml_trailer",
+    "hack"
+  ],
+  "5E00632F": [
+    "main_newgame_mng_init"
+  ],
+  "5E0063B0": [
+    "gencam_es_ges_loop",
+    "gencam_es_ges_init"
+  ],
+  "5E006925": [
+    "MDisk_MD_Photos_SetNewPage",
+    "MDisk_MD_init",
+    "MDisk_MD_avi",
+    "MDisk_MD_reflex",
+    "MDisk_MD_photos",
+    "MDisk_MD_Camera",
+    "MDisk_MD_exec_sfx"
+  ],
+  "5E006E7E": [
+    "world_cycle_init_wsi_init"
+  ],
+  "5E00797E": [
+    "multi_snape_on_bone_msnb_snap_anim",
+    "multi_snape_on_bone_msnb_snap_objets",
+    "multi_snape_on_bone_msnb_init"
+  ],
+  "5E007D1F": [
+    "activator_door_ad_loop",
+    "activator_door_ad_init"
+  ],
+  "5E00820B": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "5E0084E6": [
+    "main_fix_mf_init"
+  ],
+  "62001249": [
+    "SFX_HaloSimple_move",
+    "SFX_HaloSimple_init"
+  ],
+  "620032AC": [],
+  "6C004583": [
+    "zone_detect_actors_zda_check_ou",
+    "zone_detect_actors_zda_init",
+    "zone_detect_actors_zda_check_et"
+  ],
+  "6C0058B3": [
+    "Zone_CompanionNetwork_nz_set",
+    "Zone_CompanionNetwork_nz_init"
+  ],
+  "6C00AD8D": [
+    "board_panel_bp_boutonces_init",
+    "board_panel_bp_beforedisplay",
+    "board_panel_bp_updatedisplay",
+    "Global_Library_photo_add",
+    "Global_Library_photo_take",
+    "sc_dummy",
+    "board_panel_bp_exec_select_button_mode_test",
+    "board_panel_bp_mode_look",
+    "board_panel_bp_mode_normal",
+    "board_panel_bp_init_trame1",
+    "board_panel_bp_exec_clear",
+    "board_panel_bp_exec_look_photoborder_on",
+    "board_panel_bp_exec_look_photoborder_off",
+    "board_panel_bp_exec_look_photo_select_info",
+    "board_panel_bp_exec_sprite_boutons_on",
+    "board_panel_bp_exec_reflex",
+    "board_panel_bp_inventaire_mode",
+    "board_panel_bp_exec_look_reset",
+    "board_panel_bp_init_trame2",
+    "board_panel_bp_mode_dialogue",
+    "board_panel_bp_dialogue_check",
+    "board_panel_bp_exec_button_valide_nextfastitem",
+    "board_panel_bp_exec_button_valide_suite_dialogue",
+    "board_panel_bp_exec_button_valide_friend",
+    "board_panel_bp_exec_button_valide_exit_dialogue",
+    "board_panel_bp_exec_button_valide_use",
+    "board_panel_bp_inventaire_out",
+    "board_panel_bp_inventaire_in",
+    "board_panel_bp_exec_button_valide_look",
+    "board_panel_bp_exec_select_button_normal_mode",
+    "board_panel_bp_exec_select_button_dialog_mode",
+    "board_panel_bp_exec_select_button_look_mode_shift",
+    "board_panel_bp_exec_choix_perso_pointe",
+    "board_panel_bp_exec_affiche_contextuel",
+    "board_panel_bp_exec_button_valide_action_jump",
+    "board_panel_bp_mode_enterprise",
+    "board_panel_bp_exec_select_button_enterprise",
+    "board_panel_bp_exec_button_valide_action_sally",
+    "board_panel_bp_exec_button_valide_next_companion",
+    "board_panel_bp_exec_look_photo",
+    "board_panel_bp_exec_look_jeter",
+    "board_panel_bp_exec_look_init",
+    "board_panel_bp_exec_look_simple",
+    "board_panel_bp_exec_look_phototraitement",
+    "board_panel_bp_exec_joje_set",
+    "board_panel_bp_afterrec",
+    "board_panel_bp_exec_menu_swap",
+    "board_panel_bp_mode_aircraft",
+    "board_panel_bp_INTF_boutonces_update_new",
+    "board_panel_bp_INTF_update",
+    "board_panel_bp_INTF_exec_photo",
+    "board_panel_bp_INTF_exec_radar",
+    "board_panel_bp_INTF_exec_target",
+    "board_panel_bp_exec_compte_a_rebour"
+  ],
+  "71000CAA": [
+    "sc_dummy"
+  ],
+  "71000CDD": [
+    "Sally_sa_after_rec",
+    "Sally_sa_action_takeput_virtuel",
+    "Sally_sa_action_eat",
+    "Sally_sa_action_roulade",
+    "Sally_sa_exec_expressionkitselector_main",
+    "Sally_sa_action_tourne",
+    "Sally_sa_SFX_Gaz",
+    "Sally_sa_SFX_XMEN",
+    "Sally_sa_SFX_XMEN_Ano",
+    "Sally_sa_action_gaz",
+    "Sally_sa_exec_fight_on",
+    "Sally_sa_exec_fight_get_kick_sight",
+    "Sally_sa_exec_fight_kickselector",
+    "Sally_sa_exec_fight_esquiveselector",
+    "Sally_sa_reflex_exec_chaque_trame",
+    "Sally_sa_exec_test_roulade",
+    "Sally_sa_SFX_Baton",
+    "Sally_sa_exec_get_modules",
+    "Sally_sa_SFX_Shadows",
+    "Sally_sa_exec_demi_tour_track",
+    "Sally_sa_action_animchange",
+    "Sally_sa_exec_message_read",
+    "Sally_sa_action_push",
+    "Sally_sa_action_grabwall",
+    "Sally_sa_exec_testpush",
+    "Sally_sa_action_kickassis",
+    "Sally_sa_exec_sight_banking",
+    "Sally_sa_exec_init_normale",
+    "Sally_sa_2D",
+    "Sally_sa_exec_tag_on",
+    "Sally_sa_exec_tag_off",
+    "Sally_sa_exec_animselector",
+    "Sally_sa_reflex",
+    "Sally_sa_exec_jump_frequency_get",
+    "Sally_sa_exec_animkitselector",
+    "Sally_sa_init_select_mode",
+    "Sally_sa_init",
+    "Sally_sa_exec_magnet",
+    "Sally_sa_exec_chocmur",
+    "Sally_sa_exec_joynorm_blend",
+    "Sally_sa_exec_demi_tour",
+    "Sally_sa_exec_testrayjump",
+    "Sally_sa_rayjump_air",
+    "Sally_sa_rayjump_initsaut",
+    "Sally_sa_exec_same_sight_checker",
+    "Sally_sa_exec_expressionkitselector_blink",
+    "Sally_sa_rayjump_initchute",
+    "Sally_sa_exec_rayjump",
+    "Sally_sa_exec_lance",
+    "Sally_sa_exec_expressionkitselector_visage",
+    "Sally_sa_action_paf",
+    "Sally_sa_action_capture",
+    "Sally_sa_exec_testplaquagemur",
+    "Sally_sa_action_plaquage_mur",
+    "Sally_sa_exec_paf_decode_universel",
+    "Sally_sa_exec_paf_recul",
+    "Sally_sa_cinematique",
+    "Sally_sa_action_interupteur",
+    "Sally_sa_exec_paf_zdef_zdec",
+    "Sally_sa_exec_stop_on_corner",
+    "Sally_sa_exec_paf_zdes_zdes",
+    "Sally_sa_action_takeput",
+    "Sally_sa_exec_actionkitselector",
+    "Sally_sa_action_kickfight",
+    "Sally_sa_mort",
+    "Sally_sa_action_entercode",
+    "sc_dummy",
+    "Sally_sa_action_pass",
+    "Sally_sa_action_morfle",
+    "Sally_sa_action_kicklow",
+    "Sally_sa_action_lance",
+    "Sally_sa_exec_message_select_action",
+    "Sally_sa_after_blend",
+    "Sally_sa_exec_suivi_des_yeux",
+    "sc_dummy",
+    "Sally_sa_action_speak",
+    "Sally_sa_exec_update_shield_energie"
+  ],
+  "7100108B": [
+    "camera_cam_1_init",
+    "camera_cam_exec_cine",
+    "camera_cam_exec_visibility",
+    "camera_cam_dynplan",
+    "camera_cam_dynplaninit",
+    "camera_cam_exec_enterprise",
+    "camera_cam_exec_mario",
+    "camera_cam_1_mainloop",
+    "camera_cam_afterrec",
+    "camera_cam_exec_change_mode"
+  ],
+  "71003292": [
+    "ent_shoot_simple_ess_tete_chercheuse",
+    "ent_shoot_simple_ess_init",
+    "ent_shoot_simple_ess_go",
+    "sc_dummy"
+  ],
+  "71003617": [
+    "ent_shoot_follower_esf_init",
+    "ent_shoot_follower_esf_follow",
+    "ent_shoot_follower_est_exec_mvt"
+  ],
+  "71003B21": [
+    "Global_glob_exec_world_cycle",
+    "Global_glob_exec_music_machine",
+    "Global_glob_exec_game_speed",
+    "Global_glob_mort",
+    "Global_glob_exec_volumes_manager",
+    "Global_Library_Perso_TreatEquipement",
+    "Global_glob_init",
+    "Global_glob_go",
+    "Global_glob_raz_univers",
+    "Global_glob_exec_joy",
+    "Global_glob_exec_alarme",
+    "Global_glob_exec_buttons",
+    "Global_glob_exec_event_sound",
+    "Global_glob_exec_hauteur_eau",
+    "Global_glob_reflex",
+    "sc_dummy",
+    "Global_glob_init_object",
+    "Global_glob_exec_flash"
+  ],
+  "71003F6E": [
+    "ES_au_sol_esas_force_change_status",
+    "ES_au_sol_esas_game",
+    "ES_au_sol_esas_decode_world_key",
+    "ES_au_sol_esas_external",
+    "ES_au_sol_esas_play_events",
+    "ES_au_sol_esas_enter_the_map",
+    "ES_au_sol_esas_exit_cinematique",
+    "ES_au_sol_esas_exit_the_map",
+    "ES_au_sol_esas_checkpoint",
+    "ES_au_sol_esas_mdisk",
+    "ES_au_sol_esas_reflex"
+  ],
+  "710047BB": [
+    "map_manager_mm_exec_choc_sur_mat_speciale",
+    "map_manager_mm_exec_carte_manager",
+    "map_manager_mm_exec_TM_Editeur",
+    "map_manager_mm_exec_TM_SpecialLoad",
+    "sc_dummy",
+    "map_manager_mm_init_trame1",
+    "map_manager_mm_exec_TM",
+    "map_manager_mm_reflex",
+    "map_manager_mm_init_trame2",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "71005C6D": [
+    "snap_on_actor_soa_go",
+    "snap_on_actor_soa_init"
+  ],
+  "71005CB1": [
+    "sc_dummy"
+  ],
+  "7100BBCC": [
+    "aircraft_air_exec_pilote",
+    "aircraft_air_exec_pilote_auto",
+    "aircraft_air_exec_pilote_course",
+    "aircraft_air_init",
+    "aircraft_air_mode_deplacement_init",
+    "aircraft_air_exec_s_b",
+    "aircraft_air_exec_test_jump",
+    "aircraft_air_exec_waterforce",
+    "aircraft_air_exec_frictions",
+    "aircraft_air_exec_camera",
+    "aircraft_air_mode_a_quai_init",
+    "aircraft_air_reflex",
+    "aircraft_air_init_select_mode",
+    "aircraft_air_exec_test_accostage",
+    "aircraft_air_mode_accostage_init",
+    "aircraft_air_mode_embarquement_init",
+    "aircraft_air_exec_landing_effect",
+    "aircraft_air_mode_debarquement_init",
+    "aircraft_air_exec_debarquement_autres",
+    "sc_dummy",
+    "aircraft_air_exec_gestion_paf",
+    "aircraft_air_exec_GFX_trace",
+    "aircraft_air_exec_pilote_poursuite",
+    "aircraft_air_exec_normales_get",
+    "aircraft_air_exec_GFX_tirs",
+    "aircraft_air_exec_pilote_poursuite2",
+    "aircraft_air_mode_mort_init",
+    "aircraft_air_mode_off_init",
+    "aircraft_air_exec_GFX_Helices",
+    "aircraft_air_exec_afterrec",
+    "aircraft_air_mode_dock_out_init",
+    "aircraft_air_mode_dock_in_init",
+    "aircraft_air_exec_zone_set",
+    "aircraft_air_exec_joy_mario",
+    "aircraft_air_exec_joy_local",
+    "sc_dummy",
+    "aircraft_air_exec_check_plug",
+    "aircraft_air_exec_gravity",
+    "aircraft_air_exec_shoot",
+    "aircraft_air_exec_set_afterrec_mode",
+    "aircraft_air_mode_deplacement",
+    "aircraft_air_mode_a_quai",
+    "aircraft_air_mode_accostage",
+    "aircraft_air_mode_off",
+    "aircraft_air_mode_debarquement",
+    "aircraft_air_mode_dock_in",
+    "aircraft_air_mode_dock_out",
+    "aircraft_air_mode_embarquement",
+    "aircraft_air_mode_mort",
+    "aircraft_air_exec_GFX_Morph",
+    "aircraft_air_exec_GFX_Halos",
+    "aircraft_air_exec_GFX_Modules",
+    "aircraft_air_exec_GFX_Etincelles",
+    "aircraft_air_exec_GFX_Flammes",
+    "aircraft_air_exec_GFX_global",
+    "aircraft_air_exec_GFX_Particules",
+    "aircraft_air_mode_docked",
+    "aircraft_air_mode_docked_init",
+    "aircraft_air_exec_embarquement_autres",
+    "aircraft_air_exec_GFX_ripple",
+    "sc_dummy",
+    "aircraft_air_exec_GFX_Flash",
+    "aircraft_air_exec_corde_force",
+    "aircraft_air_exec_update_water_info",
+    "aircraft_air_exec_anti_traversing",
+    "aircraft_air_exec_GFX_Poussiere",
+    "aircraft_air_exec_GFX_Boost",
+    "aircraft_air_exec_visual_rotation",
+    "aircraft_air_exec_dont_sink"
+  ],
+  "7100BCFF": [
+    "sc_dummy"
+  ],
+  "7100BD0D": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "7100BD19": [
+    "sc_dummy",
+    "ES_ciel_esc_joy",
+    "ES_ciel_esc_exit_the_map",
+    "ES_ciel_esc_enter_the_map"
+  ],
+  "7100BD39": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "7100BD4B": [
+    "armoire_arm_init",
+    "armoire_arm_go"
+  ],
+  "7100BEB5": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "7100BF05": [
+    "porte_po_reflex",
+    "porte_po_mode_indy",
+    "porte_po_mode_indy_ARec",
+    "porte_po_etat_ouverte",
+    "porte_po_etat_ferme",
+    "porte_po_init",
+    "sc_dummy",
+    "porte_po_ouvre_toi",
+    "porte_po_ferme_toi",
+    "porte_po_paf",
+    "porte_po_check_separation"
+  ],
+  "7100C170": [
+    "Detect_o_SuperSpecialFlags_ssf_init",
+    "Detect_o_SuperSpecialFlags_ssf_ET_test",
+    "Detect_o_SuperSpecialFlags_ssf_OU_test",
+    "Detect_o_SuperSpecialFlags_ssf_OU_dialogue",
+    "Detect_o_SuperSpecialFlags_ssf_ET_dialogue"
+  ],
+  "7100C545": [
+    "vehicule_speed_max_vsm_test"
+  ],
+  "7100C586": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "7100CAFE": [
+    "get_object_on_ground_goog_reflex",
+    "get_object_on_ground_goog_init",
+    "get_object_on_ground_goog_go",
+    "get_object_on_ground_goog_chute"
+  ],
+  "7100CB23": [
+    "sc_dummy"
+  ],
+  "7100E398": [
+    "Detect_o_4SpecialFlags_D4sf_init",
+    "Detect_o_4SpecialFlags_D4sf_wait",
+    "Detect_o_4SpecialFlags_D4sf_go"
+  ],
+  "7100E3A8": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "7100E79C": [
+    "Detect_o_1SpecialFlag_dos_init"
+  ],
+  "7100E7A9": [
+    "cine_text_display_ctd_manager",
+    "cine_text_display_ctd_display",
+    "cine_text_display_ctd_init"
+  ],
+  "7100F33E": [
+    "GST_Sound_Manager_gs_play_sound"
+  ],
+  "7100F56F": [
+    "BV_Active_Desactive_BV_In",
+    "BV_Active_Desactive_BV_Out",
+    "BV_Active_Desactive_BV_CBits_Out",
+    "BV_Active_Desactive_BV_CBits_In",
+    "BV_Active_Desactive_BV_AD"
+  ],
+  "7100F6D2": [
+    "sc_dummy"
+  ],
+  "7100F6FC": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "7100F75C": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "7100F770": [
+    "Gam_emploi_du_temps_edt_occupation_loup_attentejoueur",
+    "Gam_emploi_du_temps_edt_occupation_loup_poursuite",
+    "Gam_emploi_du_temps_edt_occupation_loup_nargue",
+    "Gam_emploi_du_temps_edt_occupation_loup_safe",
+    "Gam_emploi_du_temps_edt_exec_get_free_player",
+    "Gam_emploi_du_temps_edt_occupation_regarde",
+    "Gam_emploi_du_temps_edt_occupation_mange",
+    "Gam_emploi_du_temps_edt_after_blend",
+    "Gam_emploi_du_temps_edt_exec_suivi_regard",
+    "Gam_emploi_du_temps_edt_dialogue_check",
+    "Gam_emploi_du_temps_edt_init",
+    "Gam_emploi_du_temps_edt_exec_next_edt",
+    "Gam_emploi_du_temps_edt_reflex",
+    "Gam_emploi_du_temps_edt_tag_off",
+    "Gam_emploi_du_temps_edt_tag_on",
+    "Gam_emploi_du_temps_edt_exec_recherche_chemin",
+    "Gam_emploi_du_temps_edt_deplacement",
+    "Gam_emploi_du_temps_edt_exec_cherche_dest",
+    "Gam_emploi_du_temps_edt_deplacement_direct",
+    "Gam_emploi_du_temps_edt_exec_track_occupation",
+    "Gam_emploi_du_temps_edt_occupation_dodo",
+    "Gam_emploi_du_temps_edt_occupation_jump",
+    "Gam_emploi_du_temps_edt_occupation_loup_init",
+    "Gam_emploi_du_temps_edt_action_attente"
+  ],
+  "7100F7AC": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72000161": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720002AE": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72000381": [
+    "sc_dummy"
+  ],
+  "7200043E": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720004A3": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720004C0": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720005D6": [
+    "SFX_JaugeEnnemi_jauge_init",
+    "SFX_JaugeEnnemi_jauge_comportement"
+  ],
+  "72000682": [
+    "torpille_tor_exec_trace",
+    "torpille_tor_init",
+    "torpille_tor_mode_mer",
+    "torpille_tor_mode_explosion",
+    "torpille_tor_reflex",
+    "torpille_tor_mode_air",
+    "torpille_tor_exec_send_paf",
+    "torpille_tor_exec_test_collision",
+    "torpille_tor_exec_visuel",
+    "torpille_tor_exec_before_display",
+    "torpille_tor_exec_after_display"
+  ],
+  "720006D2": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "7200073C": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "7200076B": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72000802": [
+    "SFX_RedFlash_RF_init",
+    "SFX_RedFlash_RF_comportement"
+  ],
+  "72000823": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "7200082F": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720008BD": [
+    "Laser_Laser_tempo_destroy",
+    "Laser_Laser_exec_shot",
+    "Laser_Laser_comportement",
+    "Laser_Laser_init"
+  ],
+  "72000998": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720009C7": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720009F7": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72000A1C": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72000A2E": [
+    "Vendeur_Vendeur_AfterBlend",
+    "Vendeur_Vendeur_Comp_Bio",
+    "Vendeur_Vendeur_Comp_Journaux",
+    "Vendeur_Vendeur_Comp_Simple",
+    "Vendeur_Vendeur_mamago",
+    "Vendeur_Vendeur_init",
+    "Vendeur_Vendeur_reflex",
+    "Vendeur_Vendeur_Comportements",
+    "Vendeur_Vendeur_exec_dialog"
+  ],
+  "72000AC4": [
+    "Detect_o_SF_Avancement_DSFA_init",
+    "Detect_o_SF_Avancement_DSFA_comportement"
+  ],
+  "72000AE9": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72000AF5": [
+    "SFX_Fragments_SFX_frag_init",
+    "SFX_Fragments_SFX_frag_comportement",
+    "SFX_Fragments_SFX_frag_disparition"
+  ],
+  "72000B0E": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72000B22": [
+    "Caisse_Man_Missile_CMM_init",
+    "Caisse_Man_Missile_CMM_comportement",
+    "Caisse_Man_Missile_CMM_reflex",
+    "Caisse_Man_Missile_CMM_explosion",
+    "Caisse_Man_Missile_CMM_afterrec",
+    "Caisse_Man_Missile_CMM_disparition"
+  ],
+  "72000B57": [
+    "Vaisseau_Transport_Militaire_VTM_init",
+    "Vaisseau_Transport_Militaire_VTM_exec_s_b",
+    "Vaisseau_Transport_Militaire_VTM_mode_deplacement",
+    "Vaisseau_Transport_Militaire_VTM_exec_afterrec",
+    "Vaisseau_Transport_Militaire_VTM_reflex",
+    "Vaisseau_Transport_Militaire_VTM_exec_GFX"
+  ],
+  "72000BC2": [
+    "SFX_Etincelles_SFX_Etincelles_init",
+    "SFX_Etincelles_SFX_Etincelles_comportement",
+    "SFX_Etincelles_SFX_Etincelles_afterrec",
+    "SFX_Etincelles_SFX_Etincelles_reflex"
+  ],
+  "72000C04": [
+    "Empty_IA_Empty_IA_init"
+  ],
+  "72000CF9": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72000DEF": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72000E6F": [
+    "Objet_Flottant_OF_Reward",
+    "Objet_Flottant_OF_exec_FX_Smoke",
+    "Objet_Flottant_OF_Message_Read",
+    "Objet_Flottant_OF_NoReward",
+    "Objet_Flottant_OF_init",
+    "Objet_Flottant_OF_comportement",
+    "Objet_Flottant_OF_afterrec",
+    "sc_dummy",
+    "Objet_Flottant_OF_exec_GFX_Smoke",
+    "Objet_Flottant_OF_exec_GFX_Fire",
+    "Objet_Flottant_OF_mode_ground",
+    "Objet_Flottant_OF_destroy"
+  ],
+  "72000F11": [
+    "Pod_De_Reparation_PDR_init",
+    "Pod_De_Reparation_PDR_mode_wait",
+    "Pod_De_Reparation_PDR_mode_plug",
+    "Pod_De_Reparation_PDR_mode_fix",
+    "Pod_De_Reparation_PDR_mode_unplug",
+    "Pod_De_Reparation_PDR_mode_reach",
+    "Pod_De_Reparation_PDR_mode_back",
+    "Pod_De_Reparation_PDR_mode_get_materia"
+  ],
+  "72000F41": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720010EF": [
+    "sc_dummy"
+  ],
+  "720011D8": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720012AD": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "7200131C": [
+    "Ent_missile_EM_afterrec",
+    "Ent_missile_EM_comportement",
+    "Ent_missile_EM_disparition",
+    "Ent_missile_EM_explosion",
+    "Ent_missile_EM_init",
+    "Ent_missile_EM_reflex"
+  ],
+  "72001354": [
+    "SFX_Lightning_SFX_Lightning_comportement",
+    "SFX_Lightning_SFX_Lightning_init",
+    "SFX_Lightning_SFX_Lightning_afterrec",
+    "SFX_Lightning_SFX_Lightning_reflex"
+  ],
+  "72001365": [
+    "SFX_Halo_Dynamique_SFXHD_halo_rays",
+    "SFX_Halo_Dynamique_SFXHD_exec_looptest",
+    "SFX_Halo_Dynamique_SFXHD_halo_simple",
+    "SFX_Halo_Dynamique_SFXHD_init",
+    "SFX_Halo_Dynamique_SFXHD_afterrec"
+  ],
+  "72001991": [
+    "CV_aircraft_CV_bdisplay",
+    "CV_aircraft_CV_init",
+    "CV_aircraft_CV_mode_deplacement",
+    "CV_aircraft_CV_exec_waterforce",
+    "CV_aircraft_CV_exec_s_b",
+    "CV_aircraft_CV_exec_check_pos",
+    "CV_aircraft_CV_exec_test_collision",
+    "sc_dummy",
+    "CV_aircraft_CV_exec_GFX_Halo",
+    "CV_aircraft_CV_exec_afterrec",
+    "CV_aircraft_CV_exec_GFX_Flammes",
+    "CV_aircraft_CV_exec_GFX_Smoke",
+    "CV_aircraft_CV_exec_before_display",
+    "CV_aircraft_CV_exec_after_display"
+  ],
+  "72001ADA": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72001C77": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72001DDF": [
+    "Des_Tourelle_laser_Des_TL_init",
+    "Des_Tourelle_laser_Des_TL_mode_attaque",
+    "Des_Tourelle_laser_Des_TL_reflex",
+    "Des_Tourelle_laser_Des_TL_exec_afterrec",
+    "Des_Tourelle_laser_Des_TL_mode_explosion"
+  ],
+  "72001EC9": [
+    "Enterprise_Ent_exec_snd_allume_les_moteurs",
+    "Enterprise_Ent_init",
+    "Enterprise_Ent_mode_flying",
+    "Enterprise_Ent_exec_shoot",
+    "Enterprise_Ent_exec_camera",
+    "Enterprise_Ent_reflex",
+    "Enterprise_Ent_exec_s_b",
+    "Enterprise_Ent_exec_constraint_Z",
+    "Enterprise_Ent_exec_constraint_Z_with_dist",
+    "Enterprise_Ent_exec_read_joy",
+    "Enterprise_Ent_exec_companions_leave_enterprise",
+    "Enterprise_Ent_exec_select_init_mode",
+    "Enterprise_Ent_exec_test_atterrissage",
+    "Enterprise_Ent_mode_cine",
+    "Enterprise_Ent_unknown_demo_only",
+    "Enterprise_Ent_mode_landing",
+    "Enterprise_Ent_mode_on_ground",
+    "Enterprise_Ent_mode_takeoff",
+    "Enterprise_Ent_mode_wait_aircraft",
+    "Enterprise_Ent_exec_gestion_paf",
+    "Enterprise_Ent_mode_meurt",
+    "Enterprise_Ent_exec_constraint_collision",
+    "Enterprise_Ent_exec_afterrec",
+    "Enterprise_Ent_exec_change_mode",
+    "Enterprise_Ent_exec_water_force",
+    "Enterprise_Ent_exec_water_trace",
+    "Enterprise_Ent_exec_landing_effect",
+    "sc_dummy",
+    "Enterprise_Ent_exec_GFX_Burning",
+    "Enterprise_Ent_exec_s_b_space",
+    "Enterprise_Ent_mode_flying_no_gyro",
+    "Enterprise_Ent_exec_GFX_Reacteurs",
+    "Enterprise_Ent_exec_GFX_Transfert",
+    "Enterprise_Ent_exec_GFX_Flash",
+    "Enterprise_Ent_exec_snd_stop_les_moteurs"
+  ],
+  "72002063": [
+    "Twin_Ion_Engine_TIE_init",
+    "Twin_Ion_Engine_TIE_exec_s_b",
+    "Twin_Ion_Engine_TIE_mode_flying",
+    "Twin_Ion_Engine_TIE_reflex",
+    "Twin_Ion_Engine_TIE_exec_gestion_paf",
+    "Twin_Ion_Engine_TIE_exec_constraint_Z",
+    "Twin_Ion_Engine_TIE_exec_afterrec",
+    "Twin_Ion_Engine_TIE_exec_constraint_collision",
+    "Twin_Ion_Engine_TIE_mode_meurt",
+    "Twin_Ion_Engine_TIE_mode_wait_for_target"
+  ],
+  "720020A3": [
+    "Dog_Fight_Manager_DFM_init",
+    "Dog_Fight_Manager_DFM_comportement"
+  ],
+  "720023C9": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720025EF": [
+    "Garde_anti_vaisseau_gav_test",
+    "Garde_anti_vaisseau_gav_init",
+    "Garde_anti_vaisseau_gav_interception"
+  ],
+  "72002647": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "7200268E": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720026B8": [
+    "Crochax_3_Cro3_reflex",
+    "Crochax_3_Cro3_init",
+    "Crochax_3_Cro3_mode_wait",
+    "Crochax_3_Cro3_mode_snap",
+    "Crochax_3_Cro3_mode_fight",
+    "Crochax_3_Cro3_mode_eject",
+    "Crochax_3_Cro3_mode_plug",
+    "Crochax_3_Cro3_exec_do_snake",
+    "Crochax_3_Cro3_exec_init_snake",
+    "Crochax_3_Cro3_exec_ailes",
+    "Crochax_3_Cro3_exec_s_b",
+    "Crochax_3_Cro3_exec_push_enemy",
+    "Crochax_3_Cro3_exec_free_enemy",
+    "Crochax_3_Cro3_exec_pattes",
+    "Crochax_3_Cro3_mode_balade",
+    "Crochax_3_Cro3_mode_meurt",
+    "Crochax_3_Cro3_mode_sort",
+    "Crochax_3_Cro3_exec_GFX_Paf",
+    "Crochax_3_Cro3_mode_plug_on_ground",
+    "Crochax_3_Cro3_mode_cine",
+    "Crochax_3_Cro3_mode_paf",
+    "Crochax_3_Cro3_exec_zdm_posset",
+    "Crochax_3_Cro3_exec_GFX_Crache",
+    "Crochax_3_Cro3_exec_before_display",
+    "Crochax_3_Cro3_exec_after_display"
+  ],
+  "720026EE": [
+    "Garde_Barriere_Entrepot_GBE_init",
+    "Garde_Barriere_Entrepot_GBE_mode_attente",
+    "Garde_Barriere_Entrepot_GBE_mode_repousse",
+    "Garde_Barriere_Entrepot_GBE_mode_flotte",
+    "Garde_Barriere_Entrepot_GBE_reflex",
+    "Garde_Barriere_Entrepot_GBE_mode_choppe",
+    "Garde_Barriere_Entrepot_GBE_exec_camera",
+    "Garde_Barriere_Entrepot_GBE_exec_trace",
+    "Garde_Barriere_Entrepot_GBE_exec_GFX_anneaux",
+    "Garde_Barriere_Entrepot_GBE_exec_GFX_Lightning",
+    "Garde_Barriere_Entrepot_GBE_exec_GFX_Smoke",
+    "sc_dummy",
+    "Garde_Barriere_Entrepot_GBE_unknown_demo"
+  ],
+  "72002818": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72002915": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "7200294C": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72002A1A": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72002B97": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72002C09": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72002CFC": [
+    "Jumping_Snake_JS_firstinit",
+    "Jumping_Snake_JS_init",
+    "Jumping_Snake_JS_comportement"
+  ],
+  "72002DAE": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72002F15": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "7200381A": [
+    "Ascenseur_Nazh_Asc_Nazh_init",
+    "Ascenseur_Nazh_Asc_Nazh_mode_wait",
+    "Ascenseur_Nazh_Asc_Nazh_mode_transfert_companion",
+    "Ascenseur_Nazh_Asc_Nazh_mode_transfert_sally",
+    "Ascenseur_Nazh_Asc_Nazh_exec_GFX",
+    "Ascenseur_Nazh_Asc_Nazh_exec_comp_status",
+    "Ascenseur_Nazh_Asc_Nazh_exec_sound"
+  ],
+  "7200397B": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72003A11": [
+    "SFX_Flammes_SFX_Flammes_comportement",
+    "SFX_Flammes_SFX_Flammes_init"
+  ],
+  "72003F48": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72003FDF": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72003FED": [
+    "SFX_Smoke_SFX_Smoke_comportement",
+    "SFX_Smoke_SFX_Smoke_init"
+  ],
+  "72004004": [
+    "Porte_Armoire_Porte_Armoire_init",
+    "Porte_Armoire_Porte_Armoire_mode_wait",
+    "Porte_Armoire_Porte_Armoire_mode_open",
+    "Porte_Armoire_Porte_Armoire_mode_close"
+  ],
+  "720040AC": [
+    "RLI_Variator_RLI_Variator_init",
+    "RLI_Variator_RLI_Variator_comportement",
+    "RLI_Variator_RLI_Variator_exec_before_display",
+    "RLI_Variator_RLI_Variator_exec_after_display",
+    "RLI_Variator_RLI_Variator_exec_mode_standard",
+    "RLI_Variator_RLI_Variator_exec_mode_stealth"
+  ],
+  "720041CF": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "7200420C": [
+    "SFX_Phare_SFX_Phare_comportement",
+    "SFX_Phare_SFX_Phare_init"
+  ],
+  "720043E2": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72004469": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "7200466D": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720046B1": [
+    "Bouee_Anti_Aircraft_BAA_init",
+    "Bouee_Anti_Aircraft_BAA_mode_dynamique",
+    "Bouee_Anti_Aircraft_BAA_exec_GFX_trace",
+    "Bouee_Anti_Aircraft_BAA_reflex",
+    "Bouee_Anti_Aircraft_BAA_exec_afterrec",
+    "Bouee_Anti_Aircraft_BAA_mode_statique",
+    "Bouee_Anti_Aircraft_BAA_exec_interception"
+  ],
+  "720046DA": [
+    "SFX_Comete_SFX_Comete_dead",
+    "SFX_Comete_SFX_AfterD",
+    "SFX_Comete_SFX_BeforeD",
+    "SFX_Comete_SFX_Comete_mort",
+    "SFX_Comete_SFX_Comete_comp",
+    "SFX_Comete_SFX_Comete_init"
+  ],
+  "7200472F": [
+    "Bison_Fute_Bison_Fute_init",
+    "Bison_Fute_Bison_Fute_comportement"
+  ],
+  "720048AC": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720048C2": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720048D4": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720048EB": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72004A91": [
+    "Onde_de_Choc_ODC_bdisplay",
+    "Onde_de_Choc_ODC_adisplay",
+    "Onde_de_Choc_ODC_init",
+    "Onde_de_Choc_ODC_comportement",
+    "Onde_de_Choc_ODC_destroy"
+  ],
+  "72004BCA": [
+    "Barrique_Barrique_init",
+    "Barrique_Barrique_mode_balance",
+    "Barrique_Barrique_reflex"
+  ],
+  "72004BD5": [
+    "Mobile_Mobile_init",
+    "Mobile_Mobile_comportement"
+  ],
+  "72004C0B": [
+    "Colmap_Accostage_Colmap_Accostage_comportement"
+  ],
+  "72004C1B": [
+    "Ventouse_Ventouse_init",
+    "Ventouse_Ventouse_explosion",
+    "Ventouse_Ventouse_avec_cible",
+    "Ventouse_Ventouse_afterrec"
+  ],
+  "72004C60": [
+    "Domz_Sansue_Domz_Sansue_init",
+    "Domz_Sansue_Domz_Sansue_mode_fight",
+    "Domz_Sansue_Domz_Sansue_mode_meurt",
+    "Domz_Sansue_Domz_Sansue_Manager",
+    "Domz_Sansue_Domz_Sansue_exec_camera",
+    "Domz_Sansue_Domz_Sansue_exec_init_snake",
+    "Domz_Sansue_Domz_Sansue_exec_do_snake",
+    "Domz_Sansue_Domz_Sansue_exec_GFX_Spark",
+    "Domz_Sansue_Domz_Sansue_mode_projectile",
+    "Domz_Sansue_Domz_Sansue_exec_get_target",
+    "Domz_Sansue_Domz_Sansue_exec_afterrec",
+    "Domz_Sansue_Domz_Sansue_exec_GFX_trace",
+    "Domz_Sansue_Domz_Sansue_exec_gestion_paf",
+    "Domz_Sansue_Domz_Sansue_exec_GFX_Flash",
+    "Domz_Sansue_Domz_Sansue_exec_GFX_Boom",
+    "Domz_Sansue_Domz_Sansue_mode_apparition",
+    "Domz_Sansue_Domz_Sansue_exec_GFX_AirSmoke",
+    "Domz_Sansue_Domz_Sansue_mode_reward",
+    "Domz_Sansue_Domz_Sansue_exec_meteor",
+    "Domz_Sansue_Domz_Sansue_mode_beluga",
+    "sc_dummy",
+    "Domz_Sansue_Domz_Sansue_exec_compute_position",
+    "Domz_Sansue_Domz_Sansue_exec_compute_wp"
+  ],
+  "72004D26": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72004D33": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72004D7E": [
+    "Hyllis_Meteor_Manager_HMM_init",
+    "Hyllis_Meteor_Manager_HMM_mode_wait",
+    "Hyllis_Meteor_Manager_HMM_mode_aircraft",
+    "Hyllis_Meteor_Manager_HMM_mode_vaisseau",
+    "Hyllis_Meteor_Manager_HMM_mode_reinit"
+  ],
+  "72004DD8": [
+    "Pompier_Pompier_init",
+    "Pompier_Pompier_mode_wait",
+    "Pompier_Pompier_mode_hyllis",
+    "Pompier_Pompier_exec_get_aircraft",
+    "Pompier_Pompier_mode_canaux",
+    "Pompier_Pompier_exec_GFX_Smoke",
+    "Pompier_Pompier_exec_GFX_Halo",
+    "Pompier_Police_mode_hyllis",
+    "Pompier_Police_mode_canaux",
+    "Pompier_Pompier_exec_GFX_Flash",
+    "Pompier_Police_mode_wait"
+  ],
+  "72004DEC": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72004E9C": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72004F2A": [
+    "GAO_Shaker_GAOS_init",
+    "GAO_Shaker_GAOS_comportement"
+  ],
+  "72005049": [
+    "SFX_Bone_Fire_SFX_Bone_Fire_Destroy",
+    "SFX_Bone_Fire_SFX_Bone_Fire_init",
+    "SFX_Bone_Fire_SFX_Bone_Fire_After_Rec",
+    "SFX_Bone_Fire_SFX_Bone_Fire_After_Blend",
+    "SFX_Bone_Fire_SFX_Bone_Fire_exec_fire",
+    "SFX_Bone_Fire_SFX_Bone_Fire_exec_smooth_fire"
+  ],
+  "7200506B": [
+    "Section_Alpha_Transport_SAT_init",
+    "Section_Alpha_Transport_SAT_exec_GFX_smoke",
+    "Section_Alpha_Transport_SAT_exec_GFX_Fire",
+    "Section_Alpha_Transport_SAT_exec_GFX_Glow",
+    "Section_Alpha_Transport_SAT_exec_afterrec"
+  ],
+  "72005082": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720050F1": [
+    "Drone_Mdisk_Drone_Mdisk_init",
+    "Drone_Mdisk_Drone_Mdisk_mode_wait",
+    "Drone_Mdisk_Drone_Mdisk_exec_GFX_Plasma",
+    "Drone_Mdisk_Drone_Mdisk_exec_GFX_Halo",
+    "Drone_Mdisk_Drone_Mdisk_mode_deplacement",
+    "Drone_Mdisk_Drone_Mdisk_mode_plug",
+    "Drone_Mdisk_Drone_Mdisk_exec_check_dialog"
+  ],
+  "72005296": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720054F1": [
+    "SFX_Secundo_SFX_Secundo_Destroy",
+    "SFX_Secundo_SFX_Secundo_init",
+    "SFX_Secundo_SFX_Secundo_exec_afterblend",
+    "SFX_Secundo_SFX_Secundo_Manager",
+    "SFX_Secundo_SFX_Secundo_exec_afterrec",
+    "SFX_Secundo_SFX_Secundo_exec_beforedisplay",
+    "SFX_Secundo_SFX_Secundo_exec_afterdisplay",
+    "SFX_Secundo_SFX_Secundo_Reflex",
+    "SFX_Secundo_SFX_Secundo_Disparition",
+    "SFX_Secundo_SFX_Secundo_Apparition"
+  ],
+  "7200550B": [
+    "PNJ_Spectre_bras_PNJ_Spectre_Bras_init",
+    "PNJ_Spectre_bras_PNJ_Spectre_Bras_afterblend_init",
+    "PNJ_Spectre_bras_PNJ_Spectre_Bras_exec_GFX_Part",
+    "PNJ_Spectre_bras_PNJ_Spectre_Bras_exec_init_snake",
+    "PNJ_Spectre_bras_PNJ_Spectre_Bras_exec_do_snake",
+    "PNJ_Spectre_bras_PNJ_Spectre_Bras_afterrec_move",
+    "PNJ_Spectre_bras_PNJ_Spectre_Bras_exec_after_display",
+    "PNJ_Spectre_bras_PNJ_Spectre_Bras_exec_before_display",
+    "PNJ_Spectre_bras_PNJ_Spectre_Bras_Destroy",
+    "PNJ_Spectre_bras_PNJ_Spectre_Bras_reflex"
+  ],
+  "7200555E": [
+    "SFX_XMEN_SFX_XMEN_Destroy",
+    "SFX_XMEN_SFX_XMEN_init",
+    "SFX_XMEN_SFX_XMEN_afterrec_init",
+    "SFX_XMEN_SFX_XMEN_afterblend_init",
+    "SFX_XMEN_SFX_XMEN_set_moving_function",
+    "SFX_XMEN_SFX_XMEN_afterrec_move",
+    "SFX_XMEN_SFX_XMEN_afterblend_move",
+    "SFX_XMEN_SFX_XMEN_reflex",
+    "SFX_XMEN_SFX_XMEN_exec_GFX_Halo"
+  ],
+  "72005587": [
+    "Porte_Anti_Domz_PAD_init",
+    "Porte_Anti_Domz_PAD_mode_fermee",
+    "Porte_Anti_Domz_PAD_mode_ouverte",
+    "Porte_Anti_Domz_PAD_mode_ouverture",
+    "Porte_Anti_Domz_PAD_mode_fermeture"
+  ],
+  "720056DB": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72005778": [
+    "SFX_Arrose_SFX_Arrose_init",
+    "SFX_Arrose_SFX_Arrose_reflex",
+    "SFX_Arrose_SFX_Arrose_comportement"
+  ],
+  "7200589E": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720058C0": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "720058F2": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72005928": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72005AE4": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72005F16": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72005FA9": [
+    "Pilot_Wing_Ring_PWR_init",
+    "Pilot_Wing_Ring_PWR_comportement",
+    "Pilot_Wing_Ring_PWR_exec_before_display",
+    "Pilot_Wing_Ring_PWR_exec_after_display"
+  ],
+  "720062C4": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "72006327": [],
+  "83000882": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "87000AA6": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "87000AED": [
+    "sc_dummy"
+  ],
+  "8D005218": [
+    "gencam_mario_gcm_exec_activation",
+    "gencam_mario_gcm_first",
+    "gencam_mario_gcm_normal"
+  ],
+  "9200124E": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "9E000655": [
+    "action_reaction_ar_exec_send_info",
+    "action_reaction_ar_init",
+    "action_reaction_ar_check",
+    "action_reaction_ar_action"
+  ],
+  "9E0007E9": [
+    "camera_speciale_cs_wait",
+    "camera_speciale_cs_mode_look",
+    "camera_speciale_cs_init",
+    "camera_speciale_cs_mode_inventaire",
+    "camera_speciale_cs_after_rec",
+    "camera_speciale_cs_reflex"
+  ],
+  "9E000897": [
+    "sc_dummy"
+  ],
+  "9E00152F": [
+    "activateur_act_ini"
+  ],
+  "9E0015FF": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "9E00163C": [
+    "projectile_pr_init",
+    "projectile_pr_go"
+  ],
+  "9E001645": [
+    "Switch_s1_exec_set_constante",
+    "Switch_s1_exec_reset_constante",
+    "Switch_s1_exec_send_info",
+    "Switch_s1_init",
+    "Switch_s1_exec_magnet_gene",
+    "Switch_s1_wait",
+    "Switch_s1_set_action",
+    "Switch_s1_exec_on_off",
+    "Switch_s1_exec_set_action",
+    "Switch_s1_exec_get_message"
+  ],
+  "9E001C0B": [
+    "frisbee_fr_rebound",
+    "frisbee_fr_impact",
+    "frisbee_fr_disparition",
+    "frisbee_fr_exec_GFX_Plouf",
+    "frisbee_fr_init",
+    "frisbee_fr_jet",
+    "frisbee_fr_destroy",
+    "frisbee_fr_before_display"
+  ],
+  "9E001C44": [
+    "get_object_go_SFX",
+    "get_object_go_absent",
+    "get_object_go_present",
+    "get_object_go_get_i_bit",
+    "get_object_go_exec_gene_magnet",
+    "get_object_go_init"
+  ],
+  "9E00252C": [
+    "Zone_OccupationTerrain_Zo_reflex",
+    "Zone_OccupationTerrain_zo_exec_clear",
+    "Zone_OccupationTerrain_zo_init",
+    "Zone_OccupationTerrain_zo_exec_transfert",
+    "Zone_OccupationTerrain_zo_dans_la_place",
+    "Zone_OccupationTerrain_zo_dehors"
+  ],
+  "9E002F73": [
+    "Zone_ChangeStatus_zcs_wait",
+    "Zone_ChangeStatus_zcs_init",
+    "Zone_ChangeStatus_zcs_exec_texte"
+  ],
+  "9E002FBC": [
+    "Indice_Avancement_Jeu_iaj_init",
+    "Indice_Avancement_Jeu_iaj_change",
+    "sc_dummy"
+  ],
+  "9E002FFE": [
+    "Fight_Manager_fm_exec_get_msg",
+    "Fight_Manager_fm_exec_music",
+    "Fight_Manager_fm_reflex",
+    "Fight_Manager_fm_init",
+    "Fight_Manager_fm_mise_a_jour"
+  ],
+  "9E003030": [
+    "Indice_Jeu_Local_ijl_init",
+    "Indice_Jeu_Local_ijl_wait",
+    "Indice_Jeu_Local_iaj_change"
+  ],
+  "9E0031DA": [
+    "SFX_explosion_sfx_combo5",
+    "SFX_explosion_sfx_combo6",
+    "SFX_explosion_sfx_combo7",
+    "SFX_explosion_sfx_AfterRec_snap",
+    "SFX_explosion_sfx_combo_explo_rocs",
+    "SFX_explosion_sfx_combo20",
+    "SFX_explosion_sfx_effect1",
+    "SFX_explosion_sfx_effect2",
+    "SFX_explosion_sfx_effect3",
+    "SFX_explosion_sfx_effect4",
+    "SFX_explosion_sfx_effect5",
+    "SFX_explosion_sfx_effect6",
+    "SFX_explosion_sfx_effect7",
+    "SFX_explosion_sfx_effect8",
+    "SFX_explosion_sfx_effect9",
+    "SFX_explosion_sfx_combo1",
+    "SFX_explosion_sfx_combo0",
+    "SFX_explosion_sfx_combo3",
+    "SFX_explosion_sfx_combo2",
+    "SFX_explosion_sfx_combo4",
+    "SFX_explosion_sfx_combo8",
+    "SFX_explosion_sfx_combo9",
+    "SFX_explosion_sfx_combo10",
+    "SFX_explosion_sfx_combo11",
+    "SFX_explosion_sfx_combo12",
+    "SFX_explosion_sfx_combo13",
+    "SFX_explosion_sfx_combo14",
+    "SFX_explosion_sfx_combo15",
+    "SFX_explosion_sfx_combo16",
+    "SFX_explosion_sfx_combo17",
+    "SFX_explosion_sfx_combo18",
+    "SFX_explosion_sfx_combo19",
+    "SFX_explosion_sfx_combo21",
+    "SFX_explosion_sfx_combo22",
+    "SFX_explosion_sfx_expl_init",
+    "SFX_explosion_sfx_effect0",
+    "SFX_explosion_sfx_effect10"
+  ],
+  "9E0035A0": [
+    "JeTeParle_jtp_exec_regarde",
+    "JeTeParle_jtp_mamago_bricole",
+    "JeTeParle_jtp_mamago_presente_objets",
+    "JeTeParle_jtp_mamago_bricole_AB",
+    "JeTeParle_jtp_rottete",
+    "JeTeParle_jtp_palet",
+    "JeTeParle_jtp_revol",
+    "JeTeParle_jtp_revol_AB",
+    "JeTeParle_jtp_palet_posperle",
+    "Dialogue_dialogue_check",
+    "JeTeParle_jtp_reflex",
+    "JeTeParle__jtp_check",
+    "JeTeParle_jtp_init"
+  ],
+  "9E0035B6": [
+    "Lecteur_Code_lc_reflex",
+    "Lecteur_Code_lc_attente_code",
+    "Lecteur_Code_lc_init"
+  ],
+  "9E0035E0": [
+    "Dialogue_Reset_All_SF_sfr_init",
+    "Dialogue_Reset_All_SF_sfr_reset"
+  ],
+  "9E003612": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "9E003686": [
+    "nrj_pure_np_timeout",
+    "nrj_pure_np_exec_before_display",
+    "nrj_pure_np_exec_after_display",
+    "nrj_pure_np_sol",
+    "nrj_pure_np_init",
+    "nrj_pure_np_air",
+    "nrj_pure_np_afterrec",
+    "nrj_pure_np_reviens"
+  ],
+  "9E0036C3": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "9E0036DE": [
+    "sc_dummy"
+  ],
+  "9E0036EA": [
+    "sc_dummy"
+  ],
+  "9E003941": [
+    "sc_dummy"
+  ],
+  "9E003B33": [
+    "LecteurCarte_lcrt_wait",
+    "LecteurCarte_lcrt_init"
+  ],
+  "9E003B49": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "9E003B93": [
+    "Detect_o_Time_dot_on",
+    "Detect_o_Time_dot_wait_chgt",
+    "Detect_o_Time_dot_off",
+    "Detect_o_Time_dot_init"
+  ],
+  "9E003C79": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "9E003C87": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "9E003D8D": [
+    "Zone_ChangeStatus_MultiCompagnon_zcsmc_init",
+    "Zone_ChangeStatus_MultiCompagnon_zcsmc_wait"
+  ],
+  "9E003DD1": [
+    "Zone_OrdreVala_zov_init",
+    "Zone_OrdreVala_zov_wait",
+    "Zone_OrdreVala_zov_ini"
+  ],
+  "9E003EF6": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "9E003F99": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "9E0040E0": [
+    "Capa_SF_Active_Desactive_csad_detect"
+  ],
+  "9E0040FB": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "9E00447B": [
+    "Detect_o_16_SF_D16sf_init",
+    "Detect_o_16_SF_D16sf_go"
+  ],
+  "9E00557B": [
+    "Detect_Alarm_Global_dag_init"
+  ],
+  "9E00567A": [
+    "sc_dummy"
+  ],
+  "9E005B21": [
+    "Random_Track_Player_rtp_init",
+    "Random_Track_Player_trp_play"
+  ],
+  "9E005B4A": [
+    "Grillon_Cigales_gc_init",
+    "Grillon_Cigales_gc_play"
+  ],
+  "9E005BD3": [
+    "Light_PAF_lp_init",
+    "Light_PAF_lp_FarUp_FarDown",
+    "Light_PAF_C_Light_mode_FarDown",
+    "Light_PAF_lp_FarUp_ColorDown"
+  ],
+  "9E005C0E": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "9E005EA6": [
+    "SND_Musique_Jour_Nuit_Zone_mjnz_play"
+  ],
+  "9E005F11": [
+    "SND_CapaWatch_RandomPlay_cwrp_watch"
+  ],
+  "9E005FA5": [
+    "SND_LoopVolFreqCapa_lvfc_watch"
+  ],
+  "9E006367": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "9E0064C8": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "9E00668C": [
+    "PNJ_Spectre_sp_tag_on",
+    "PNJ_Spectre_sp_tag_off",
+    "PNJ_Spectre_sp_mode_apparition_xmen",
+    "PNJ_Spectre_sp_init",
+    "PNJ_Spectre_sp_mode_apparition_anim",
+    "PNJ_Spectre_sp_mode_combat",
+    "PNJ_Spectre_sp_reflex",
+    "PNJ_Spectre_sp_mode_mort",
+    "PNJ_Spectre_sp_exec_decode_paf_univ",
+    "PNJ_Spectre_sp_mode_paf",
+    "PNJ_Spectre_sp_after_blend",
+    "PNJ_Spectre_sp_bef_disp",
+    "PNJ_Spectre_sp_after_disp"
+  ],
+  "9E006A9C": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "9E006AFF": [
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "9E006DF2": [
+    "sc_dummy"
+  ],
+  "9E007755": [],
+  "9E007766": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "9E0077CC": [
+    "Unknown_DEMO_ES_select"
+  ],
+  "9F000067": [
+    "dead_if_invisible_dii_go"
+  ],
+  "BD00017D": [
+    "SND_MDF_periode_snd_mp",
+    "SND_MDF_periode_snd_init"
+  ],
+  "BF000293": [
+    "Merge_ActionKit_mak_init"
+  ],
+  "BF00251A": [
+    "SFX_Flash_SFX_Flash_init",
+    "SFX_Flash_SFX_Flash_comportement"
+  ],
+  "BF004364": [
+    "sc_dummy"
+  ],
+  "C1015F8F": [],
+  "E8000E3A": [
+    "sc_dummy"
+  ],
+  "E8001280": [
+    "sc_dummy"
+  ],
+  "E80013C1": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "E8001A45": [
+    "sc_dummy",
+    "sc_dummy"
+  ],
+  "E8001E83": [
+    "sc_dummy"
+  ]
+}

@@ -5,6 +5,15 @@ Updated 2026-10-20 from the reported scenes and a read-only audit of
 
 ## Confirmed shared causes
 
+- **Scene export previously dropped two previewed state paths:** script-driven
+  `OBJ_ScaleSet` commands and literal hide/show events were evaluated in the
+  viewport but not represented in the cinematic GLB. Export now merges decoded
+  scripted scale tracks with direct object tracks and samples supported
+  scene-prop visibility changes as zero/restored scale at source event times.
+  This does not yet bake actor-component visibility, script-spawned objects,
+  or material/lighting state into GLB; those still require broader script and
+  glTF animation support.
+
 - **Local alpha precision:** Jade stores local alpha in five bits (`s_AditionalFlags[15:11]`), with 31 representing full opacity. The viewport/exporter had interpreted this as an eight-bit field. The decoder now reads the native five-bit range. Additive Jade passes use `ONE/ONE`, so changing framebuffer alpha alone cannot fade the visible RGB; the viewport now applies local alpha to additive RGB as a preview approximation.
 - **The spiral is script-animated:** `Cine_SFX_Ondedechoc_Spirale.gao` (`3500D30E`) starts hidden and is enabled by clip `3500B8EA` at 33.016 seconds. Its brain resolves to the shared `Onde_de_choc_cine_ODCc` script model (`3500C024`), which grows the effect with `sin(blend * π/2)`, fades its material constants, and temporarily overrides global RLI. Preview now discovers this behavior from the brain function references and evaluates it on the cinematic clock. To keep scrubbing repeatable, preview uses the authored radius and a neutral speed; the game randomizes both within a range.
 - **The green environment uses attack palettes:** at 31.217 seconds the clip calls `ARR_GlobalIntFlagSet(2718)`. The world-cycle script blends from normal to attack colors while that global flag is set. The environment reader already had the attack palettes; cinematic playback now applies them as the flag transitions. The frame audit at 42.7 seconds shows the green attack sky.
@@ -87,3 +96,30 @@ The alpha fix is generic. The remaining rows are not verified as one shared bug;
 they span missing runtime script behavior, unresolved animation data, and shader
 features. They should be fixed by the relevant shared subsystem as evidence is
 recovered, rather than by per-scene or per-character rules.
+
+### Follow-up: 01_05 camera, 01_09 prop actions and source audio selection (2026-10-22)
+
+- `FF005520 / 3500A927` is a 43.63-second clip with direct tracks for Peyj,
+  Sally, two cinematic guards, camera helpers and effects. Offline frame samples
+  show the source-camera preview entering scene geometry: at 0 s it frames an
+  overhead beam, near 20 s it frames a floor surface at extreme close range,
+  and near 30 s the characters are clipped by nearby wall/fence geometry. This
+  is a camera route/transform evaluation issue, not an absent-camera case. The
+  renderer currently follows literal message-60 position/target routes; native
+  camera transition dynamics and collision handling are not reconstructed.
+- `FF000352 / 3500A438` (121.07 s) has 579 source events and a separate
+  `3500A3BE` 13-second scene-motion clip whose only participants are
+  `OBJ_Ancrage_VaisseauD.gao` and `OBJ_Ancrage_VaisseauG.gao`. The editor exposes
+  these as distinct clips; no verified start-time link was found in the parent
+  clip, so automatically offsetting the anchor motion would be a guess.
+- `Cine_Garde_Decor.gao` is a direct participant in `3500A438`. Source events
+  set its module-channel table at time 0 and select actions 210–217 later. JadeView
+  does not yet instantiate the selected channel components from that table;
+  the missing weapon is therefore an unresolved module/appearance binding, not
+  proof that the actor or animation track is absent. `SFX_ParticuleTOYOD.gao`
+  also needs its own source-track/callback binding audit before attributing its
+  irregular smoke to a generic particle renderer defect.
+- Audio audits resolve one source sound cue for each of `3500A927` and
+  `3500A438`. The audio panel now lets the user select individual resolved cues
+  or choose all/none; selections rebuild the source-time mix. The preview still
+  does not emulate the game's spatialization or audio script VM.

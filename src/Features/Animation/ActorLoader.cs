@@ -35,6 +35,8 @@ internal static partial class ActorLoader
         CinematicFlashReader.Load(all, origins, doc);
         CinematicLightningReader.Load(all, origins, doc);
         var resources = all.GroupBy(r => r.Key).ToDictionary(g => g.Key, g => g.Last());
+        var scopedResources = new PcSceneResourceIndex(all);
+        CinematicScriptReader.Load(all, origins, doc);
         Dictionary<uint, PcSceneLoader.Record>? scope = null;
         PcSceneLoader.Record? Find(uint key) => scope?.GetValueOrDefault(key) ?? resources.GetValueOrDefault(key);
         List<PcSceneLoader.Record> Group(uint key)
@@ -162,12 +164,14 @@ internal static partial class ActorLoader
                     sceneObject.GroupMemberKeys = Group(source.Prefab).Select(member => member.Key).ToArray();
             }
         }
-        foreach (var actor in doc.Worlds.SelectMany(world => world.Actors))
+        foreach (var world in doc.Worlds)
+        foreach (var actor in world.Actors)
             foreach (var source in doc.CinematicClips.Values)
             {
-                var timeline = CinematicBodyTimeline.Create(source, actor, doc.CinematicActionKits);
+                var timeline = CinematicBodyTimeline.Create(source, actor, world.Key,
+                    doc.CinematicActionKitsByOwner);
                 if (timeline.ShapeKeys.Any())
-                    LoadCinematicActionShapes(actor, timeline, resources, origins, doc);
+                    LoadCinematicActionShapes(actor, timeline, world.Key, scopedResources, origins, doc);
 
                 var actorClip = actor.Clips.FirstOrDefault(clip => clip.Cinematic && clip.Key == source.Key);
                 if (actorClip != null)
@@ -179,14 +183,14 @@ internal static partial class ActorLoader
     }
 
     private static void LoadCinematicActionShapes(SceneActor actor, CinematicBodyTimeline timeline,
-        IReadOnlyDictionary<uint, PcSceneLoader.Record> resources,
+        uint preferredWorldKey, PcSceneResourceIndex resources,
         Dictionary<PcSceneLoader.Record, byte[]> origins,
         SceneDocument document)
     {
         foreach (uint shapeKey in timeline.ShapeKeys)
         {
             if (actor.Shapes.ContainsKey(shapeKey)) continue;
-            if (!resources.TryGetValue(shapeKey, out var shapeRecord)
+            if (resources.Resolve(shapeKey, preferredWorldKey) is not { } shapeRecord
                 || shapeRecord.Size <= 0 || !origins.TryGetValue(shapeRecord, out var sourceBytes))
             {
                 document.Diagnostics.Add($"Cinematic action shape {shapeKey:X8} for {actor.Root.Name} was not found.");

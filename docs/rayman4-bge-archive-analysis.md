@@ -112,6 +112,15 @@ with maximum absolute error below one microsecond. Integer frame accumulation
 also replaced repeated float-duration addition. Stable zero-offset camera pairs
 are read from literal message 60; source smoothing/shake/lens logic remains open.
 
+The retail `BF002300` SceneEvents record linked by `CINE_ARRIVEE_ALPHA_EVENT.gao`
+contains a time-curve point whose time is positive infinity. Iris's native
+interpolator walks the serialized points in order and compares each next time
+against the finite playhead; this terminal point therefore leaves the preceding
+factor active. JadeView now preserves that source behavior and does not add the
+infinite point as an export sample. Duplicate timestamps are also retained in
+serialized order, matching the native `<=` boundary walk. This lets the scene
+record be decoded without claiming the record's runtime gate has passed.
+
 Other engine paths remain useful references: `ACTcompute.c` / `ANIplay.c` for
 action transitions, blending and MagicBox movement; `EVEplay.c` for per-track
 looping/activation; `AIdeffct.h` for selector signatures. The later direct

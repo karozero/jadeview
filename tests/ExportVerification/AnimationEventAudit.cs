@@ -26,7 +26,17 @@ internal static class AnimationEventAudit
                     payload.SourceOffset, Bytes = Convert.ToHexString(payload.Data),
                     Words = Enumerable.Range(0, payload.Data.Length / 4).Select(index => BitConverter.ToUInt32(payload.Data, index * 4).ToString("X8")).ToArray() });
         }
-        var report = new { Actor = owner, TotalClips = clips.Count, Decoded = decoded, Failures = failures, Events = events };
+        var calls = clips.SelectMany(clip => CinematicLiteralCall.ReadTimeline(clip).Select(item => new
+        {
+            Clip = clip.Key.ToString("X8"),
+            clip.Name,
+            item.Time,
+            Target = item.Call.Target.ToString("X8"),
+            Function = CinematicEngineFunctionCatalog.NameFor(item.Call.Selector),
+            Arguments = item.Call.Arguments.Select(argument => $"0x{argument:X8}").ToArray(),
+            Description = CinematicEngineFunctionCatalog.Describe(item.Call)
+        })).ToArray();
+        var report = new { Actor = owner, TotalClips = clips.Count, Decoded = decoded, Failures = failures, Events = events, DecodedCalls = calls };
         File.WriteAllText(Path.Combine(output, SceneExporter.SafeFileName(owner) + "-animation-events.json"),
             System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
         Console.WriteLine($"EVENT AUDIT: {owner}: {decoded}/{clips.Count} clips decoded, {events.Count} retained opaque payloads, {failures.Count} failures");

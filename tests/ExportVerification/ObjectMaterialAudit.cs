@@ -26,7 +26,11 @@ internal static class ObjectMaterialAudit
                 {
                     Console.WriteLine($"MATERIAL {material!.Id} type={material.Type}");
                     foreach (var layer in JadeMaterialLayer.Read(material.SourceBytes))
+                    {
                         Console.WriteLine($"LAYER flags={layer.Flags:X8} custom={layer.Custom:X4} uv={layer.UvMode} color={layer.ColorMode} blend={layer.Blend} texture={layer.Texture:X8} rgb={layer.WriteRgb} alpha={layer.WriteAlpha} disabled={layer.Disabled}");
+                        if (resolver.ProceduralTextures.TryGetValue(layer.Texture, out var procedural))
+                            Console.WriteLine($"PROCEDURAL texture={procedural.Key:X8} subtype={procedural.Subtype} size={procedural.Width}x{procedural.Height} media={procedural.MediaName ?? "unresolved"} ({procedural.MediaKey:X8})");
+                    }
                 }
                 var result = SceneExporter.Export(Path.Combine(output, SceneExporter.SafeFileName(objectName) + "-audit.glb"), world, resolver, new() { Textures = true }, sceneObject);
                 foreach (var warning in result.Warnings) Console.WriteLine($"WARNING {warning}");

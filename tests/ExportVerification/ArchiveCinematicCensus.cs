@@ -9,7 +9,8 @@ internal static class ArchiveCinematicCensus
     private sealed record SceneSummary(string Container, int Records, int AnimationRecords,
         int DecodedClips, int DecodeFailures, Dictionary<int, int> SendSelectors,
         Dictionary<string, int> EventControlFlags, List<object> FlaggedCinematicTracks,
-        List<object> LiteralMessageTemplates);
+        List<object> LiteralMessageTemplates, int DecodedLiteralCommands,
+        int DescribedLiteralCommands, Dictionary<string, int> UndescribedEngineCommands);
 
     internal static void Write(string archivePath, string output)
     {
@@ -36,6 +37,11 @@ internal static class ArchiveCinematicCensus
                 AnimationRecords = summaries.Sum(summary => summary.AnimationRecords),
                 DecodedClips = summaries.Sum(summary => summary.DecodedClips),
                 DecodeFailures = summaries.Sum(summary => summary.DecodeFailures),
+                DecodedLiteralCommands = summaries.Sum(summary => summary.DecodedLiteralCommands),
+                DescribedLiteralCommands = summaries.Sum(summary => summary.DescribedLiteralCommands),
+                UndescribedEngineCommands = summaries.SelectMany(summary => summary.UndescribedEngineCommands)
+                    .GroupBy(item => item.Key, StringComparer.Ordinal)
+                    .ToDictionary(group => group.Key, group => group.Sum(item => item.Value), StringComparer.Ordinal),
                 EventControlFlags = summaries.SelectMany(summary => summary.EventControlFlags)
                     .GroupBy(item => item.Key, StringComparer.Ordinal)
                     .ToDictionary(group => group.Key, group => group.Sum(item => item.Value), StringComparer.Ordinal)
@@ -76,8 +82,11 @@ internal static class ArchiveCinematicCensus
         var eventControlFlags = new Dictionary<string, int>(StringComparer.Ordinal);
         var flaggedCinematicTracks = new List<object>();
         var literalCandidates = new List<object>();
+        var undescribedEngineCommands = new Dictionary<string, int>(StringComparer.Ordinal);
         int decodedClips = 0;
         int decodeFailures = 0;
+        int decodedLiteralCommands = 0;
+        int describedLiteralCommands = 0;
         foreach (object record in animationRecords)
         {
             int offset = (int)GetField(record, "Offset")!;
@@ -98,6 +107,19 @@ internal static class ArchiveCinematicCensus
             {
                 decodeFailures++;
                 continue;
+            }
+
+            foreach (var (_, call) in CinematicLiteralCall.ReadTimeline(clip))
+            {
+                decodedLiteralCommands++;
+                if (CinematicEngineFunctionCatalog.Describe(call).Length > 0)
+                {
+                    describedLiteralCommands++;
+                    continue;
+                }
+
+                string name = CinematicEngineFunctionCatalog.NameFor(call.Selector);
+                undescribedEngineCommands[name] = undescribedEngineCommands.GetValueOrDefault(name) + 1;
             }
 
             foreach (var track in clip.Tracks)
@@ -196,7 +218,8 @@ internal static class ArchiveCinematicCensus
         }
 
         return new(entry.Id, sourceRecords.Length, animationRecords.Count, decodedClips,
-            decodeFailures, selectorCounts, eventControlFlags, flaggedCinematicTracks, literalCandidates);
+            decodeFailures, selectorCounts, eventControlFlags, flaggedCinematicTracks, literalCandidates,
+            decodedLiteralCommands, describedLiteralCommands, undescribedEngineCommands);
     }
 
     private static void CountFlag(Dictionary<string, int> counts, string name, int value, int mask)

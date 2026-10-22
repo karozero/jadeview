@@ -19,9 +19,14 @@ public sealed class AnimationTimeCurve
         {
             float time = index == 0 ? 0 : ReadFloat(payload, index * 8);
             float factor = ReadFloat(payload, index * 8 + 4);
-            if (!float.IsFinite(time) || !float.IsFinite(factor)
-                || index > 0 && time <= points[index - 1].Time)
-                throw new InvalidDataException("Animation time-curve points must be finite and ordered.");
+            bool validTime = !float.IsNaN(time) && !float.IsNegativeInfinity(time);
+            if (!validTime || !float.IsFinite(factor)
+                || index > 0 && time < points[index - 1].Time)
+            {
+                float previousTime = index > 0 ? points[index - 1].Time : 0;
+                throw new InvalidDataException($"Invalid animation time-curve point {index}: "
+                    + $"time={time:R}, factor={factor:R}, previous time={previousTime:R}.");
+            }
             points[index] = new(time, factor);
         }
         return new(points);
@@ -33,13 +38,16 @@ public sealed class AnimationTimeCurve
     {
         float warped = 0;
         elapsed = Math.Max(0, elapsed);
-        for (int index = 0; index < Points.Count; index++)
+        int index = 0;
+        while (index < Points.Count - 1 && Points[index + 1].Time <= elapsed)
         {
             var point = Points[index];
-            float end = index + 1 < Points.Count ? Math.Min(elapsed, Points[index + 1].Time) : elapsed;
-            warped += (end - point.Time) * point.Factor;
-            if (end >= elapsed) break;
+            var nextPoint = Points[index + 1];
+            warped += (nextPoint.Time - point.Time) * point.Factor;
+            index++;
         }
+        var activePoint = Points[index];
+        warped += (elapsed - activePoint.Time) * activePoint.Factor;
         return warped;
     }
 

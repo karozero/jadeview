@@ -1,4 +1,6 @@
 using System.Collections;
+using System.Buffers.Binary;
+using System.Globalization;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -14,7 +16,18 @@ internal static class ArchiveCinematicScriptIndex
     private sealed record OwnerVariableSnapshot(string Container, string WorldKey, string WorldName,
         string OwnerKey, string OwnerName, string BrainKey, string ModelKey, string EventsKey, string SceneEventsKey,
         CinematicOwnerDefaults.Snapshot? Variables,
-        OwnerObjectReference[] ObjectReferences, string? Error);
+        OwnerObjectReference[] ObjectReferences, CinematicScriptCallbackSlot[]? CallbackSlots, string? Error)
+    {
+        internal EventFlagAccess[] EventFlagAccesses { get; init; } = [];
+    }
+    private sealed record SourceFlagAccessOwner(string Container, string WorldKey, string WorldName,
+        string OwnerKey, string OwnerName, string ModelKey, string[] CallbackNames,
+        CinematicScriptFlagAccess[] Accesses, EventFlagAccess[] EventAccesses);
+    private sealed record EventFlagAccess(string LinkName, string EventKey, string EventName,
+        int TrackIndex, float Time, string TargetKey, int Flag, string Access, string Function,
+        bool? WrittenSet, string Description);
+    private sealed record UnmappedCallbackExample(string Container, string WorldKey, string WorldName,
+        string OwnerKey, string OwnerName, string BrainKey, string ModelKey, int SlotIndex);
 
     private sealed class ScriptUsage(uint key)
     {
@@ -42,6 +55,27 @@ internal static class ArchiveCinematicScriptIndex
     internal static void WriteAllWorlds(string archivePath, string sourceRoot, string output) =>
         Write(archivePath, sourceRoot, output, includeAllWorlds: true);
 
+    internal static bool VerifyOwnerResourceResolution()
+    {
+        byte[] firstPayload = [1, 2, 3, 4];
+        byte[] conflictingPayload = [4, 3, 2, 1];
+        var preferredFirst = new RecordView("FF001000", firstPayload, 0xA100, 'q', 0, 4,
+            0xB100, "first", -1, uint.MaxValue, uint.MaxValue, []);
+        var preferredConflict = new RecordView("FF001000", conflictingPayload, 0xA100, 'q', 0, 4,
+            0xB100, "conflict", -1, uint.MaxValue, uint.MaxValue, []);
+        Dictionary<(char Kind, uint Key), RecordView> ambiguousResult = ResolveOwnerResources(
+            [], [preferredFirst, preferredConflict], "FF001000", 0xB100, out var ambiguousKeys);
+
+        var identicalSharedCopy = new RecordView("FF002000", firstPayload, 0xA200, 's', 0, 4,
+            0, "shared", -1, uint.MaxValue, uint.MaxValue, []);
+        Dictionary<(char Kind, uint Key), RecordView> sharedResult = ResolveOwnerResources(
+            [identicalSharedCopy], [], "FF003000", 0xB100, out var sharedAmbiguities);
+        return !ambiguousResult.ContainsKey(('q', 0xA100))
+            && ambiguousKeys.Contains(('q', 0xA100))
+            && sharedResult.ContainsKey(('s', 0xA200))
+            && sharedAmbiguities.Count == 0;
+    }
+
     private static void Write(string archivePath, string sourceRoot, string output, bool includeAllWorlds)
     {
         var archive = new Archive(archivePath);
@@ -55,6 +89,8 @@ internal static class ArchiveCinematicScriptIndex
             }).ToArray());
         var fixedEntry = archive.Entries.FirstOrDefault(entry => entry.Id == "FF0084DF");
         var fixedRecords = fixedEntry == null ? [] : ReadRecords(archive.Read(fixedEntry), archive.PathName, fixedEntry.Id);
+        var namedResourceCandidates = new Dictionary<uint, HashSet<string>>();
+        AddNamedResourceCandidates(namedResourceCandidates, fixedRecords);
         var scriptRecordsByKey = new Dictionary<uint, List<RecordView>>();
         foreach (var scriptRecord in fixedRecords.Where(record => record.Kind == 's'))
             Add(scriptRecordsByKey, scriptRecord.Key, scriptRecord);
@@ -64,6 +100,8 @@ internal static class ArchiveCinematicScriptIndex
         var functionContainers = new Dictionary<uint, HashSet<string>>();
         var missingModels = new Dictionary<uint, HashSet<string>>();
         var ownerVariableSnapshots = new List<OwnerVariableSnapshot>();
+        var decodedEventClips = new Dictionary<(string Container, uint Key), AnimationClip>();
+        var unmappedCallbackOwners = new Dictionary<uint, List<UnmappedCallbackExample>>();
         int containerIndex = 0;
         int cinematicContainers = 0;
         int brainOwners = 0;
@@ -72,8 +110,14 @@ internal static class ArchiveCinematicScriptIndex
         int sharedModelOwners = 0;
         int ownersWithMappedFunctions = 0;
         int ownersWithoutMappedFunctions = 0;
+        int ownersWithDecodedCallbackSlots = 0;
+        int ownersWithUnmappedCallbacks = 0;
+        int configuredCallbackSlots = 0;
+        int unmappedCallbackSlots = 0;
         int missingBrainRecords = 0;
         int missingScriptModels = 0;
+        int ambiguousBrainRecords = 0;
+        int ambiguousScriptModels = 0;
         var cinematicContainerIds = new List<string>();
         var indexedWorlds = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         var sceneEntries = archive.Entries.Where(entry => (entry.Key & 0xfff00000) == 0xff000000)
@@ -82,6 +126,7 @@ internal static class ArchiveCinematicScriptIndex
         foreach (var entry in sceneEntries)
         {
             var sceneRecords = ReadRecords(archive.Read(entry), archive.PathName, entry.Id);
+            AddNamedResourceCandidates(namedResourceCandidates, sceneRecords);
             foreach (var scriptRecord in sceneRecords.Where(record => record.Kind == 's'))
                 Add(scriptRecordsByKey, scriptRecord.Key, scriptRecord);
             var cinematicWorldKeys = sceneRecords.Where(record => record.Kind == 'z'
@@ -112,8 +157,14 @@ internal static class ArchiveCinematicScriptIndex
                     ? allWorldKeys.Contains(record.World)
                     : cinematicWorldKeys.Contains(record.World)));
             var sceneObjectNames = sceneRecords.Where(record => record.Kind == 'l')
-                .GroupBy(record => record.Key)
-                .ToDictionary(group => group.Key, group => group.First().Name);
+                .GroupBy(record => (record.World, record.Key))
+                .Select(group => new
+                {
+                    group.Key,
+                    Names = group.Select(record => record.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+                })
+                .Where(group => group.Names.Length == 1)
+                .ToDictionary(group => group.Key, group => group.Names[0]);
             foreach (var owner in roots)
             {
                 brainOwners++;
@@ -121,25 +172,31 @@ internal static class ArchiveCinematicScriptIndex
                 if (!worldName.Contains("cine", StringComparison.OrdinalIgnoreCase))
                     nonCinematicBrainOwners++;
                 uint brainKey = ReadUInt32(owner.Source, owner.BrainOffset);
-                var resources = fixedRecords.Concat(sceneRecords)
-                    .Where(record => record.Container == "FF0084DF" || record.World == 0 || record.World == owner.World)
-                    .GroupBy(record => (record.Kind, record.Key))
-                    .ToDictionary(group => group.Key, group => group
-                        .OrderByDescending(record => record.Container == entry.Id).First());
+                var resources = ResolveOwnerResources(fixedRecords, sceneRecords, entry.Id, owner.World,
+                    out var ambiguousResourceKeys);
                 if (!resources.TryGetValue(('q', brainKey), out var brain) || brain.Size < sizeof(uint) * 2)
                 {
                     missingBrainRecords++;
+                    if (ambiguousResourceKeys.Contains(('q', brainKey))) ambiguousBrainRecords++;
                     continue;
                 }
                 uint modelKey = ReadUInt32(brain.Source, brain.Offset);
                 if (!resources.TryGetValue(('s', modelKey), out var model))
                 {
+                    if (ambiguousResourceKeys.Contains(('s', modelKey)))
+                    {
+                        ambiguousScriptModels++;
+                        missingScriptModels++;
+                        Add(missingModels, modelKey, $"{entry.Id}:{owner.Key:X8}:{owner.Name}");
+                        continue;
+                    }
                     var crossContainerMatches = scriptRecordsByKey.GetValueOrDefault(modelKey, []);
                     var modelVariants = crossContainerMatches.GroupBy(record =>
                         Convert.ToHexString(SHA256.HashData(record.Source.AsSpan(record.Offset, record.Size)))).ToArray();
                     if (modelVariants.Length != 1)
                     {
                         missingScriptModels++;
+                        if (modelVariants.Length > 1) ambiguousScriptModels++;
                         Add(missingModels, modelKey, $"{entry.Id}:{owner.Key:X8}:{owner.Name}");
                         continue;
                     }
@@ -149,28 +206,70 @@ internal static class ArchiveCinematicScriptIndex
                     sharedModelOwners++;
                 }
 
+                var variableClosure = resources.Values
+                    .Select(record => new ArchiveFacialScriptCensus.SourceRecord(record.Container,
+                        record.Source, record.Key, record.Kind, record.Offset, record.Size, record.World,
+                        record.Name, null, record.References))
+                    .ToList();
+                AddUniqueModelDefaults(variableClosure, model, sceneRecords, fixedRecords);
                 CinematicOwnerDefaults.Snapshot? variableSnapshot = null;
                 OwnerObjectReference[] objectReferences = [];
                 string? variableError = null;
                 try
                 {
-                    var variableClosure = resources.Values
-                        .Select(record => new ArchiveFacialScriptCensus.SourceRecord(record.Container,
-                            record.Source, record.Key, record.Kind, record.Offset, record.Size, record.World,
-                            record.Name, null, record.References))
-                        .ToList();
-                    AddUniqueModelDefaults(variableClosure, model, sceneRecords, fixedRecords);
                     variableSnapshot = CinematicOwnerDefaults.Read(brainKey, variableClosure);
-                    objectReferences = ReadOwnerObjectReferences(variableSnapshot, sceneObjectNames);
+                    objectReferences = ReadOwnerObjectReferences(variableSnapshot, owner.World, sceneObjectNames);
                 }
                 catch (InvalidDataException error)
                 {
                     variableError = error.Message;
                 }
+                CinematicScriptCallbackSlot[]? callbackSlots = null;
+                try
+                {
+                    callbackSlots = CinematicOwnerDefaults.ReadCallbackSlots(brainKey, variableClosure,
+                        functionNames);
+                }
+                catch (InvalidDataException)
+                {
+                    // Keep callback-slot coverage separate from variable-layout diagnostics.
+                }
+                if (callbackSlots != null)
+                {
+                    ownersWithDecodedCallbackSlots++;
+                    var ownerHasUnmappedCallback = false;
+                    foreach (var slot in callbackSlots.Where(slot => slot.FunctionKey != 0))
+                    {
+                        configuredCallbackSlots++;
+                        if (slot.FunctionName != null) continue;
+                        ownerHasUnmappedCallback = true;
+                        unmappedCallbackSlots++;
+                        if (!unmappedCallbackOwners.TryGetValue(slot.FunctionKey, out var examples))
+                            unmappedCallbackOwners.Add(slot.FunctionKey, examples = []);
+                        examples.Add(new(entry.Id, owner.World.ToString("X8"), worldName,
+                            owner.Key.ToString("X8"), owner.Name, brainKey.ToString("X8"),
+                            modelKey.ToString("X8"), slot.Index));
+                    }
+                    if (ownerHasUnmappedCallback) ownersWithUnmappedCallbacks++;
+                }
                 ownerVariableSnapshots.Add(new(entry.Id, owner.World.ToString("X8"), worldName,
                     owner.Key.ToString("X8"), owner.Name,
                     brainKey.ToString("X8"), modelKey.ToString("X8"), owner.EventsKey.ToString("X8"),
-                    owner.SceneEventsKey.ToString("X8"), variableSnapshot, objectReferences, variableError));
+                    owner.SceneEventsKey.ToString("X8"), variableSnapshot, objectReferences, callbackSlots,
+                    variableError));
+
+                // Owner-linked EVE resources carry serialized event commands. Decode each resource
+                // once, then retain only global saved-flag accesses for the archive-wide graph.
+                var linkedEventFlagAccesses = ReadLinkedEventFlagAccesses(owner, resources,
+                    decodedEventClips);
+                if (linkedEventFlagAccesses.Length > 0)
+                {
+                    int snapshotIndex = ownerVariableSnapshots.Count - 1;
+                    ownerVariableSnapshots[snapshotIndex] = ownerVariableSnapshots[snapshotIndex] with
+                    {
+                        EventFlagAccesses = linkedEventFlagAccesses
+                    };
+                }
 
                 resolvedOwners++;
                 var usage = usages.GetValueOrDefault(modelKey) ?? (usages[modelKey] = new(modelKey));
@@ -193,6 +292,173 @@ internal static class ArchiveCinematicScriptIndex
             if (containerIndex % 10 == 0 || containerIndex == sceneEntries.Length)
                 Console.WriteLine($"SCRIPT OWNER INDEX: {containerIndex}/{sceneEntries.Length} containers");
         }
+
+        var scriptOwnerCandidates = ownerVariableSnapshots.Select(snapshot =>
+            new CinematicScriptOwnerReferenceCandidate(snapshot.Container,
+                uint.Parse(snapshot.WorldKey, NumberStyles.HexNumber, CultureInfo.InvariantCulture),
+                uint.Parse(snapshot.OwnerKey, NumberStyles.HexNumber, CultureInfo.InvariantCulture),
+                snapshot.OwnerName)).ToArray();
+        var ownerReferenceResolutions = ownerVariableSnapshots.SelectMany(source => source.ObjectReferences
+            .Select(reference =>
+            {
+                uint targetKey = uint.Parse(reference.Key, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+                uint sourceWorldKey = uint.Parse(source.WorldKey, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+                var resolution = CinematicScriptOwnerReferenceResolver.Resolve(source.Container,
+                    sourceWorldKey, targetKey, scriptOwnerCandidates);
+                return new { Source = source, Reference = reference, Resolution = resolution };
+            })
+            .Where(item => item.Resolution.Candidates.Length > 0))
+            .ToArray();
+        var referencesToScriptOwners = ownerReferenceResolutions
+            .Where(item => item.Resolution.IsResolved)
+            .Select(item => new
+            {
+                item.Source.Container,
+                item.Source.WorldKey,
+                item.Source.WorldName,
+                item.Source.OwnerKey,
+                item.Source.OwnerName,
+                Reference = item.Reference.Variable,
+                item.Reference.Source,
+                item.Reference.Key,
+                TargetName = item.Resolution.Owner!.OwnerName,
+                TargetWorldKey = item.Resolution.Owner.WorldKey.ToString("X8"),
+                TargetContainer = item.Resolution.Owner.Container,
+                item.Resolution.Status
+            })
+            .OrderBy(link => link.Key, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(link => link.Container, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var unresolvedReferencesToScriptOwners = ownerReferenceResolutions
+            .Where(item => !item.Resolution.IsResolved)
+            .Select(item => new
+            {
+                item.Source.Container,
+                item.Source.WorldKey,
+                item.Source.WorldName,
+                item.Source.OwnerKey,
+                item.Source.OwnerName,
+                Reference = item.Reference.Variable,
+                item.Reference.Source,
+                item.Reference.Key,
+                item.Resolution.Status,
+                Candidates = item.Resolution.Candidates.Select(candidate => new
+                {
+                    candidate.Container,
+                    WorldKey = candidate.WorldKey.ToString("X8"),
+                    OwnerKey = candidate.OwnerKey.ToString("X8"),
+                    candidate.OwnerName
+                }).ToArray()
+            })
+            .OrderBy(link => link.Key, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(link => link.Container, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var callbacksByModel = usages.ToDictionary(pair => pair.Key,
+            pair => pair.Value.Functions.Select(functionKey => functionNames[functionKey])
+                .ToHashSet(StringComparer.Ordinal));
+        var sourceFlagAccessOwners = includeAllWorlds
+            ? ownerVariableSnapshots.Select(snapshot => BuildSourceFlagAccessOwner(snapshot, callbacksByModel))
+                .Where(owner => owner != null).Select(owner => owner!).ToArray()
+            : [];
+        var sourceFlagGroups = sourceFlagAccessOwners
+            .SelectMany(owner => owner.Accesses.Select(access => new
+                { Owner = owner, Access = access, Event = (EventFlagAccess?)null }))
+            .Concat(sourceFlagAccessOwners.SelectMany(owner => owner.EventAccesses.Select(access => new
+                { Owner = owner, Access = new CinematicScriptFlagAccess(access.Flag, access.Access,
+                    access.Function, access.Description, WrittenSet: access.WrittenSet), Event = (EventFlagAccess?)access })))
+            .GroupBy(row => row.Access.Flag)
+            .OrderBy(group => group.Key)
+            .Select(group =>
+            {
+                var accesses = group.ToArray();
+                var readers = accesses.Where(row => row.Access.Access == "reads").ToArray();
+                var writers = accesses.Where(row => row.Access.Access == "writes").ToArray();
+                var links = writers.SelectMany(writer => readers
+                        .Where(reader => reader.Owner.Container != writer.Owner.Container
+                            || reader.Owner.WorldKey != writer.Owner.WorldKey
+                            || reader.Owner.OwnerKey != writer.Owner.OwnerKey)
+                        .Select(reader => new { Writer = writer, Reader = reader }))
+                    .DistinctBy(link => (link.Writer.Owner.Container, link.Writer.Owner.WorldKey,
+                        link.Writer.Owner.OwnerKey, link.Reader.Owner.Container, link.Reader.Owner.WorldKey,
+                        link.Reader.Owner.OwnerKey))
+                    .ToArray();
+                return new
+                {
+                    Flag = group.Key,
+                    PotentialLinkCount = links.Length,
+                    LinksTruncated = links.Length > 64,
+                    Readers = readers.Select(row => new
+                    {
+                        row.Owner.Container,
+                        row.Owner.WorldKey,
+                        row.Owner.WorldName,
+                        row.Owner.OwnerKey,
+                        row.Owner.OwnerName,
+                        row.Owner.ModelKey,
+                        row.Owner.CallbackNames,
+                        row.Access.VariableName,
+                        row.Access.RequiredSet,
+                        row.Access.Description,
+                        Event = row.Event
+                    }).ToArray(),
+                    Writers = writers.Select(row => new
+                    {
+                        row.Owner.Container,
+                        row.Owner.WorldKey,
+                        row.Owner.WorldName,
+                        row.Owner.OwnerKey,
+                        row.Owner.OwnerName,
+                        row.Owner.ModelKey,
+                        row.Owner.CallbackNames,
+                        row.Access.VariableName,
+                        row.Access.WrittenSet,
+                        row.Access.Description,
+                        Event = row.Event
+                    }).ToArray(),
+                    Links = links.Take(64).Select(link =>
+                    {
+                        var writer = link.Writer;
+                        var reader = link.Reader;
+                        return new
+                        {
+                            Writer = new
+                            {
+                                writer.Owner.Container,
+                                writer.Owner.WorldKey,
+                                writer.Owner.OwnerKey,
+                                writer.Owner.OwnerName,
+                                writer.Access.VariableName,
+                                writer.Access.WrittenSet,
+                                writer.Event
+                            },
+                            Reader = new
+                            {
+                                reader.Owner.Container,
+                                reader.Owner.WorldKey,
+                                reader.Owner.OwnerKey,
+                                reader.Owner.OwnerName,
+                                reader.Access.VariableName,
+                                reader.Access.RequiredSet,
+                                reader.Event
+                            },
+                            StateRelation = DescribeFlagStateRelation(writer.Access.WrittenSet,
+                                reader.Access.RequiredSet)
+                        };
+                    }).ToArray()
+                };
+            }).ToArray();
+        var cineEventsOwners = includeAllWorlds
+            ? ownerVariableSnapshots.Where(snapshot => callbacksByModel
+                    .GetValueOrDefault(Convert.ToUInt32(snapshot.ModelKey, 16))?
+                    .Contains("Cine_Events_cine_tests_depart") == true)
+                .Select(snapshot => BuildCineEventsSummary(snapshot))
+                .ToArray()
+            : null;
+        var messageGateOwners = includeAllWorlds
+            ? ownerVariableSnapshots.Where(snapshot => HasConfiguredMessageGate(snapshot, callbacksByModel))
+                .Select(snapshot => BuildMessageGateSummary(snapshot, callbacksByModel))
+                .ToArray()
+            : null;
 
         var scriptModels = usages.Values.OrderByDescending(usage => usage.Owners.Count)
             .ThenBy(usage => usage.Key).Select(usage => new
@@ -243,8 +509,39 @@ internal static class ArchiveCinematicScriptIndex
             ResolvedByUniqueSharedModelBytes = sharedModelOwners,
             OwnersWithMappedFunctions = ownersWithMappedFunctions,
             OwnersWithoutMappedFunctions = ownersWithoutMappedFunctions,
+            OwnersWithDecodedCallbackSlots = ownersWithDecodedCallbackSlots,
+            OwnersWithoutDecodedCallbackSlots = resolvedOwners - ownersWithDecodedCallbackSlots,
+            OwnersWithUnmappedCallbacks = ownersWithUnmappedCallbacks,
+            ConfiguredCallbackSlots = configuredCallbackSlots,
+            UnmappedCallbackSlots = unmappedCallbackSlots,
+            UnmappedCallbackKeys = unmappedCallbackOwners.OrderByDescending(pair => pair.Value.Count)
+                .ThenBy(pair => pair.Key).Select(pair => new
+                {
+                    Key = pair.Key.ToString("X8"),
+                    Slots = pair.Value.Count,
+                    Owners = pair.Value.DistinctBy(example => (example.Container, example.OwnerKey)).Count(),
+                    Examples = pair.Value.DistinctBy(example => (example.Container, example.OwnerKey))
+                        .Take(8).Select(example =>
+                            $"{example.Container}:{example.WorldKey}:{example.OwnerKey}:{example.OwnerName}").ToArray(),
+                    SlotDetails = pair.Value.Take(16).Select(example => new
+                    {
+                        example.Container,
+                        example.WorldKey,
+                        example.WorldName,
+                        example.OwnerKey,
+                        example.OwnerName,
+                        example.BrainKey,
+                        example.ModelKey,
+                        CallbackSlot = example.SlotIndex,
+                        FunctionKey = pair.Key.ToString("X8"),
+                        CandidateResources = namedResourceCandidates.GetValueOrDefault(pair.Key)?
+                            .Order(StringComparer.OrdinalIgnoreCase).ToArray() ?? []
+                    }).ToArray()
+                }).ToArray(),
             MissingBrainRecords = missingBrainRecords,
+            AmbiguousBrainRecords = ambiguousBrainRecords,
             MissingScriptModels = missingScriptModels,
+            AmbiguousScriptModels = ambiguousScriptModels,
             UniqueScriptModels = scriptModels.Length,
             MappedFunctionKeys = functionNames.Count,
             OwnersWithDecodedVariables = ownerVariableSnapshots.Count(snapshot => snapshot.Variables != null),
@@ -263,7 +560,15 @@ internal static class ArchiveCinematicScriptIndex
                 snapshot.SceneEventsKey,
                 VariableError = snapshot.Error
             }).ToArray() : null,
-            Limits = "Brain/model reference census plus initial merged OVA values. Cross-container script models are reused only when copies are byte-identical; a model-default OVA missing from the owner's scoped resource closure is reported as a variable error rather than guessed. Object references remain serialized keys and are not runtime-resolved. Iris function labels are source-map matches, not proof of execution in this scene. Jaded is a later engine source and is not used as a retail-PC function map. Owner/action dispatch, script conditions and runtime state are not executed.",
+            ReferencesToScriptOwners = includeAllWorlds ? referencesToScriptOwners : null,
+            UnresolvedReferencesToScriptOwners = includeAllWorlds ? unresolvedReferencesToScriptOwners : null,
+            SourceFlagAccessOwners = includeAllWorlds ? sourceFlagAccessOwners : null,
+            SourceFlagGroups = includeAllWorlds ? sourceFlagGroups : null,
+            EventFlagAccessCount = includeAllWorlds
+                ? sourceFlagAccessOwners.Sum(owner => owner.EventAccesses.Length) : (int?)null,
+            CineEventsOwners = cineEventsOwners,
+            MessageGateOwners = messageGateOwners,
+            Limits = "Brain/model reference census plus initial merged OVA values, callback-analyzer accesses, direct Iris ARRGlobalIntFlag* calls, ARRBitTest/Set/Clear calls only when the source buffer resolves to Flag_speciaux_sauve, bounded ARRBitSetRange/ARRBitClearRange calls only when buffer and inclusive endpoints resolve within the 4488-byte Iris buffer, and literal saved-flag commands in owner-linked Events/SceneEvents EVE records. Owner-to-owner edge counts are complete for the recognized accesses, with up to 64 sample links per flag. Unknown saved-buffer aliases, dynamic/reversed/out-of-bounds ranges and unrelated bitsets are not decoded as saved flags. Cross-container script models are reused only when copies are byte-identical; a model-default OVA missing from the owner's scoped resource closure is reported as a variable error rather than guessed. OVA object-reference values remain serialized keys; owner-reference edges use container/world precedence and preserve ambiguous candidates, but do not prove runtime binding. Iris function labels are source-map matches, not proof of execution in this scene. Jaded is a later engine source and is not used as a retail-PC function map. Owner/action dispatch, script conditions and runtime state are not executed.",
             PreviewSignatures = PreviewSignatures.Select(signature => new
             { Role = signature.Key, FunctionKeys = signature.Value.Select(key => key.ToString("X8")).ToArray() }).ToArray(),
             TopFunctions = functionSummary.Take(300).ToArray(),
@@ -297,6 +602,317 @@ internal static class ArchiveCinematicScriptIndex
         return functionNames;
     }
 
+    private static SourceFlagAccessOwner? BuildSourceFlagAccessOwner(OwnerVariableSnapshot snapshot,
+        IReadOnlyDictionary<uint, HashSet<string>> functionsByModel)
+    {
+        uint ownerKey = Convert.ToUInt32(snapshot.OwnerKey, 16);
+        uint brainKey = Convert.ToUInt32(snapshot.BrainKey, 16);
+        uint modelKey = Convert.ToUInt32(snapshot.ModelKey, 16);
+        string[] callbackNames = (snapshot.CallbackSlots ?? []).Where(slot => slot.FunctionName != null)
+            .Select(slot => slot.FunctionName!).Distinct(StringComparer.Ordinal).ToArray();
+        CinematicScriptFlagAccess[] sourceFlagAccesses = [];
+        if (snapshot.Variables != null && snapshot.CallbackSlots != null)
+        {
+            uint worldKey = Convert.ToUInt32(snapshot.WorldKey, 16);
+            uint eventsKey = Convert.ToUInt32(snapshot.EventsKey, 16);
+            uint sceneEventsKey = Convert.ToUInt32(snapshot.SceneEventsKey, 16);
+            var owner = new CinematicScriptOwner(ownerKey, brainKey, modelKey, worldKey, eventsKey,
+                sceneEventsKey, snapshot.OwnerName, callbackNames, [], ConvertVariables(snapshot.Variables))
+            {
+                CallbackSlots = snapshot.CallbackSlots,
+                ModelFunctionNames = functionsByModel.GetValueOrDefault(modelKey)?.ToArray() ?? []
+            };
+            sourceFlagAccesses = CinematicScriptFlagFlowAnalyzer.GetAccesses(owner);
+        }
+        if (sourceFlagAccesses.Length == 0 && snapshot.EventFlagAccesses.Length == 0) return null;
+
+        return new(snapshot.Container, snapshot.WorldKey, snapshot.WorldName, snapshot.OwnerKey,
+            snapshot.OwnerName, snapshot.ModelKey, callbackNames, sourceFlagAccesses,
+            snapshot.EventFlagAccesses);
+    }
+
+    private static EventFlagAccess[] ReadLinkedEventFlagAccesses(RecordView owner,
+        IReadOnlyDictionary<(char Kind, uint Key), RecordView> resources,
+        IDictionary<(string Container, uint Key), AnimationClip> decodedClips)
+    {
+        var accesses = new List<EventFlagAccess>();
+        AddLinkedList("Events", owner.EventsKey);
+        AddLinkedList("SceneEvents", owner.SceneEventsKey);
+        return accesses.DistinctBy(access => (access.LinkName, access.EventKey, access.TrackIndex,
+                access.Time, access.TargetKey, access.Flag, access.Function))
+            .OrderBy(access => access.LinkName, StringComparer.Ordinal)
+            .ThenBy(access => access.EventKey, StringComparer.Ordinal)
+            .ThenBy(access => access.TrackIndex)
+            .ThenBy(access => access.Time)
+            .ToArray();
+
+        void AddLinkedList(string linkName, uint eventKey)
+        {
+            if (eventKey is <= 2 or uint.MaxValue
+                || !resources.TryGetValue(('i', eventKey), out var eventRecord)) return;
+            var cacheKey = (eventRecord.Container, eventRecord.Key);
+            if (!decodedClips.TryGetValue(cacheKey, out var clip))
+            {
+                try
+                {
+                    clip = AnimationReader.Read(eventRecord.Source, eventRecord.Offset, eventRecord.Size);
+                    decodedClips.Add(cacheKey, clip);
+                }
+                catch (Exception exception) when (exception is InvalidDataException or ArgumentException
+                    or OverflowException or IndexOutOfRangeException)
+                {
+                    return;
+                }
+            }
+
+                for (int trackIndex = 0; trackIndex < clip.Tracks.Count; trackIndex++)
+            {
+                var channelClip = new AnimationClip
+                {
+                    Key = eventRecord.Key,
+                    Name = eventRecord.Name,
+                    CinematicOwnerKey = owner.Key,
+                    CinematicOwnerKeys = [owner.Key],
+                    CinematicWorldKey = owner.World,
+                    Loaded = true,
+                    Tracks = [clip.Tracks[trackIndex]],
+                    Duration = clip.Duration
+                };
+                foreach (var (time, call) in CinematicLiteralCall.ReadTimeline(channelClip))
+                {
+                    string function = CinematicEngineFunctionCatalog.NameFor(call.Selector);
+                    bool sets = function == "ARRGlobalIntFlagSet";
+                    bool clears = function == "ARRGlobalIntFlagClear";
+                    bool tests = function == "ARRGlobalIntFlagTest";
+                    if ((!sets && !clears && !tests) || call.Arguments.Length == 0
+                        || call.Arguments[0] is 0 or > int.MaxValue) continue;
+
+                    int flag = (int)call.Arguments[0];
+                    string access = tests ? "reads" : "writes";
+                    string effect = sets ? "sets" : clears ? "clears" : "tests";
+                    accesses.Add(new(linkName, eventRecord.Key.ToString("X8"), eventRecord.Name,
+                        trackIndex, time, call.Target.ToString("X8"), flag, access, function,
+                        sets ? true : clears ? false : (bool?)null,
+                        $"{linkName} event track {trackIndex} at {time.ToString("G", CultureInfo.InvariantCulture)}s {effect} this global saved flag"));
+                }
+            }
+        }
+    }
+
+    private static string DescribeFlagStateRelation(bool? writtenSet, bool? requiredSet) =>
+        (writtenSet, requiredSet) switch
+        {
+            (true, true) or (false, false) => "configured write matches reader predicate; runtime order is unknown",
+            (true, false) or (false, true) => "configured write opposes reader predicate; other writes or branches may apply",
+            _ => "configured state compatibility is unknown"
+        };
+
+    private static CinematicScriptVariable[] ConvertVariables(CinematicOwnerDefaults.Snapshot snapshot)
+    {
+        var converted = new List<CinematicScriptVariable>(snapshot.Variables.Length);
+        foreach (var variable in snapshot.Variables)
+        {
+            string source = variable.Source.StartsWith("instance", StringComparison.OrdinalIgnoreCase)
+                ? "instance" : "model";
+            string value = string.Empty;
+            int[]? integerArrayValues = null;
+            int? arrayValueCount = null;
+            if (variable.Type == PcVariableFormat.IntegerType)
+            {
+                byte[] rawBytes = Convert.FromHexString(variable.ValueBytes);
+                int dimensions = checked((int)(variable.PackedLength >> 30));
+                int elementCount = checked((int)(variable.PackedLength & 0x3FFFFFFF));
+                int prefixBytes = variable.PackedLength == 1 ? 0 : checked(dimensions * sizeof(uint));
+                int requiredBytes = checked(prefixBytes + elementCount * sizeof(int));
+                if (requiredBytes <= rawBytes.Length && elementCount > 0)
+                {
+                    integerArrayValues = Enumerable.Range(0, elementCount)
+                        .Select(index => BinaryPrimitives.ReadInt32LittleEndian(
+                            rawBytes.AsSpan(prefixBytes + index * sizeof(int), sizeof(int))))
+                        .ToArray();
+                    if (elementCount == 1 && dimensions == 0)
+                        value = integerArrayValues[0].ToString(CultureInfo.InvariantCulture);
+                    else
+                        arrayValueCount = elementCount;
+                }
+            }
+
+            converted.Add(new(variable.Name, variable.Type, source, value,
+                integerArrayValues, arrayValueCount));
+        }
+
+        return converted.ToArray();
+    }
+
+    private static object BuildCineEventsSummary(OwnerVariableSnapshot snapshot)
+    {
+        int? ripleyMode = ReadInteger(snapshot.Variables, "des_i_ripley");
+        int? associatedTrue = ReadInteger(snapshot.Variables, "des_i_SPFlag_associe_vrai");
+        int? associatedFalse = ReadInteger(snapshot.Variables, "des_i_SPFlag_associe_faux");
+        string[] associatedConditions = new[]
+        {
+            DescribeFlag(associatedTrue, mustBeSet: true),
+            DescribeFlag(associatedFalse, mustBeSet: false)
+        }.Where(condition => condition != null).Cast<string>().ToArray();
+        string replaySuppression = ripleyMode == 0 && associatedConditions.Length > 0
+            ? $"Owner is destroyed at initialization if all associated conditions match: {string.Join(" and ", associatedConditions)}."
+            : ripleyMode is > 0
+                ? "Nonzero des_i_ripley bypasses the associated-flag initialization suppression."
+                : "Associated-flag initialization suppression is unknown from these OVA values.";
+
+        return new
+        {
+            snapshot.Container,
+            snapshot.WorldKey,
+            snapshot.WorldName,
+            snapshot.OwnerKey,
+            snapshot.OwnerName,
+            snapshot.ModelKey,
+            snapshot.EventsKey,
+            snapshot.SceneEventsKey,
+            DerivedStartGateMask = DeriveCineEventsStartMask(snapshot.Variables),
+            StartFlagConditions = new[]
+            {
+                DescribeFlag(ReadInteger(snapshot.Variables, "des_i_specialFlag_test1"), mustBeSet: true),
+                DescribeFlag(ReadInteger(snapshot.Variables, "des_i_specialFlag_test2"), mustBeSet: true)
+            }.Where(condition => condition != null),
+            AssociatedFlagConditions = associatedConditions,
+            RipleyMode = ripleyMode,
+            ReplaySuppression = replaySuppression
+        };
+    }
+
+    private static bool HasConfiguredMessageGate(OwnerVariableSnapshot snapshot,
+        IReadOnlyDictionary<uint, HashSet<string>> callbacksByModel)
+    {
+        if (snapshot.Variables == null || !HasObjectReference(snapshot.Variables, "des_o_acteur_msg"))
+            return false;
+        if (!uint.TryParse(snapshot.ModelKey, System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out uint modelKey))
+            return false;
+
+        var callbacks = callbacksByModel.GetValueOrDefault(modelKey);
+        return callbacks?.Contains("Cine_Events_cine_tests_depart") == true
+            || callbacks?.Contains("helper_text_hlptxt_tests_depart") == true;
+    }
+
+    private static object BuildMessageGateSummary(OwnerVariableSnapshot snapshot,
+        IReadOnlyDictionary<uint, HashSet<string>> callbacksByModel)
+    {
+        uint modelKey = Convert.ToUInt32(snapshot.ModelKey, 16);
+        var callbacks = callbacksByModel.GetValueOrDefault(modelKey) ?? [];
+        return new
+        {
+            snapshot.Container,
+            snapshot.WorldKey,
+            snapshot.WorldName,
+            snapshot.OwnerKey,
+            snapshot.OwnerName,
+            snapshot.ModelKey,
+            MessageQueue = snapshot.Variables == null ? null
+                : ReadObjectKey(snapshot.Variables, "des_o_acteur_msg")?.ToString("X8"),
+            ExpectedMessageId = ReadInteger(snapshot.Variables, "des_i_msg_ID"),
+            Int1Mask = ReadInteger(snapshot.Variables, "des_i_msg_INT1"),
+            CallbackFamily = callbacks.Contains("Cine_Events_cine_tests_depart")
+                ? "Cine_Events" : "helper_text_hlptxt",
+            snapshot.EventsKey,
+            snapshot.SceneEventsKey
+        };
+    }
+
+    private static int DeriveCineEventsStartMask(CinematicOwnerDefaults.Snapshot? snapshot)
+    {
+        if (snapshot == null) return 0;
+        int mask = 0;
+        if (HasObjectReference(snapshot, "des_o_actor_zone1")
+            || ReadInteger(snapshot, "des_i_actor_type1") is not 0 and not null) mask |= 0x001;
+        if (HasObjectReference(snapshot, "des_o_actor_zone2")) mask |= 0x002;
+        if (HasObjectReference(snapshot, "des_o_actor_status1")) mask |= 0x004;
+        if (HasObjectReference(snapshot, "des_o_actor_capa1")) mask |= 0x008;
+        if (HasObjectReference(snapshot, "des_o_actor_cbit1")) mask |= 0x010;
+        if (HasObjectReference(snapshot, "des_o_acteur_msg")) mask |= 0x020;
+        if (HasObjectReference(snapshot, "des_o_actor_visible1")) mask |= 0x040;
+        if (ReadInteger(snapshot, "des_i_specialFlag_test1") is not 0 and not null) mask |= 0x080;
+        if (ReadInteger(snapshot, "des_i_specialFlag_test2") is not 0 and not null) mask |= 0x100;
+        if (HasObjectReference(snapshot, "des_o_actor_desstruct")) mask |= 0x200;
+        return mask;
+    }
+
+    private static bool HasObjectReference(CinematicOwnerDefaults.Snapshot snapshot, string name) =>
+        ReadObjectKey(snapshot, name) is > 0 and < uint.MaxValue;
+
+    private static int? ReadInteger(CinematicOwnerDefaults.Snapshot? snapshot, string name)
+    {
+        var variable = snapshot?.Variables.LastOrDefault(candidate => candidate.Name == name
+            && candidate.Type == PcVariableFormat.IntegerType);
+        return ReadScalar(variable?.ValueBytes) is uint value ? unchecked((int)value) : null;
+    }
+
+    private static uint? ReadObjectKey(CinematicOwnerDefaults.Snapshot snapshot, string name)
+    {
+        var variable = snapshot.Variables.LastOrDefault(candidate => candidate.Name == name
+            && candidate.Type == PcVariableFormat.ObjectReferenceType);
+        return ReadScalar(variable?.ValueBytes);
+    }
+
+    private static uint? ReadScalar(string? bytesHex)
+    {
+        if (bytesHex == null) return null;
+        byte[] bytes;
+        try { bytes = Convert.FromHexString(bytesHex); }
+        catch (FormatException) { return null; }
+        if (bytes.Length < sizeof(uint)) return null;
+        return System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes);
+    }
+
+    private static string? DescribeFlag(int? encodedFlag, bool mustBeSet)
+    {
+        if (encodedFlag is not > 0) return null;
+        bool inverted = encodedFlag > 10000;
+        int flag = inverted ? encodedFlag.Value - 10000 : encodedFlag.Value;
+        bool requiredSet = inverted ? !mustBeSet : mustBeSet;
+        return $"{flag} {(requiredSet ? "set" : "clear")}";
+    }
+
+    private static void AddNamedResourceCandidates(
+        Dictionary<uint, HashSet<string>> namesByKey, IEnumerable<RecordView> records)
+    {
+        foreach (RecordView record in records.Where(record => record.Name.Length > 0
+            && record.Key is not 0 and not uint.MaxValue))
+        {
+            if (!namesByKey.TryGetValue(record.Key, out var candidates))
+                namesByKey.Add(record.Key, candidates = new(StringComparer.OrdinalIgnoreCase));
+            candidates.Add($"{record.Container}:{record.World:X8} [{record.Kind}] {record.Name}");
+        }
+    }
+
+    private static Dictionary<(char Kind, uint Key), RecordView> ResolveOwnerResources(
+        IReadOnlyList<RecordView> fixedRecords, IReadOnlyList<RecordView> sceneRecords,
+        string preferredContainer, uint ownerWorldKey, out HashSet<(char Kind, uint Key)> ambiguousKeys)
+    {
+        var candidates = fixedRecords.Concat(sceneRecords)
+            .Where(record => record.Container == "FF0084DF" || record.World == 0 || record.World == ownerWorldKey)
+            .GroupBy(record => (record.Kind, record.Key));
+        var resolved = new Dictionary<(char Kind, uint Key), RecordView>();
+        ambiguousKeys = [];
+        foreach (var group in candidates)
+        {
+            RecordView[] preferred = group.Where(record => record.Container == preferredContainer).ToArray();
+            RecordView[] inScope = preferred.Length > 0 ? preferred : group.ToArray();
+            string[] payloadVariants = inScope.Select(record => Convert.ToHexString(
+                    SHA256.HashData(record.Source.AsSpan(record.Offset, record.Size))))
+                .Distinct(StringComparer.Ordinal).Take(2).ToArray();
+            if (payloadVariants.Length != 1)
+            {
+                ambiguousKeys.Add(group.Key);
+                continue;
+            }
+
+            resolved.Add(group.Key, inScope[0]);
+        }
+        return resolved;
+    }
+
     private static List<RecordView> ReadRecords(byte[] bytes, string archivePath, string container)
     {
         var loader = typeof(SceneActor).Assembly.GetType("JadeView.PcSceneLoader")!;
@@ -327,12 +943,12 @@ internal static class ArchiveCinematicScriptIndex
     private static uint ReadUInt32(byte[] source, int offset) => BitConverter.ToUInt32(source, offset);
 
     private static OwnerObjectReference[] ReadOwnerObjectReferences(CinematicOwnerDefaults.Snapshot snapshot,
-        IReadOnlyDictionary<uint, string> sceneObjectNames) => snapshot.Variables
+        uint worldKey, IReadOnlyDictionary<(uint WorldKey, uint ObjectKey), string> sceneObjectNames) => snapshot.Variables
         .Where(variable => variable.Type == 40)
         .SelectMany(variable => ReadVariableObjectKeys(variable)
             .Where(key => key is not 0 and not uint.MaxValue)
             .Select(key => new OwnerObjectReference(variable.Name, key.ToString("X8"),
-                sceneObjectNames.GetValueOrDefault(key), variable.Source)))
+                sceneObjectNames.GetValueOrDefault((worldKey, key)), variable.Source)))
         .Distinct()
         .ToArray();
 

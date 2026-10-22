@@ -56,6 +56,8 @@ public sealed class SceneObject
     public uint RenderGeometryKey => PreviewGeometryKey != 0 ? PreviewGeometryKey : GeometryKey;
     public uint GeometryKey { get; set; }
     public uint MaterialKey { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal uint SoundBankKey { get; set; } = uint.MaxValue;
     public uint Flags { get; set; }
     public List<SceneModifier> Modifiers { get; set; } = [];
     public SourceRange RecordRange { get; init; }

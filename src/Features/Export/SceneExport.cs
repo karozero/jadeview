@@ -59,10 +59,14 @@ public sealed partial class SceneExporter
     private static HashSet<SceneObject> FindCinematicObjects(WorldData world,
         List<SceneObject> objects, SceneExportOptions options)
     {
-        var targetKeys = SelectedCinematicClips(world, options).SelectMany(clip => clip.Tracks)
+        var clips = SelectedCinematicClips(world, options);
+        var targetKeys = clips
+            .SelectMany(clip => clip.Tracks.Concat(CinematicScriptTransformTracks.Read(clip)))
             .Where(track => track.Bone < 0).Select(track => track.Target).ToHashSet();
+        var visibilityTargets = clips.SelectMany(clip =>
+            new CinematicObjectState(clip, world, world.Actors).VisibilityTargets).ToHashSet();
         return objects.Where(sceneObject => sceneObject.Actor == null
-            && targetKeys.Contains(sceneObject.GaoKey)).ToHashSet();
+            && (targetKeys.Contains(sceneObject.GaoKey) || visibilityTargets.Contains(sceneObject))).ToHashSet();
     }
 
     private static List<SceneObject> SelectObjects(WorldData world, SceneExportOptions options, SceneObject? selected)

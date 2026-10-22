@@ -3,6 +3,13 @@ namespace JadeView;
 internal static class CinematicAudioTimeline
 {
     internal static CinematicAudioCue[] Build(AnimationClip clip, WorldData world, SceneDocument document)
+        => Build(clip, world, document, null, out _);
+
+    internal static CinematicAudioCue[] Build(AnimationClip clip, WorldData world, SceneDocument document,
+        out string[] diagnostics) => Build(clip, world, document, null, out diagnostics);
+
+    internal static CinematicAudioCue[] Build(AnimationClip clip, WorldData world, SceneDocument document,
+        IReadOnlyList<Entry>? archiveEntries, out string[] diagnostics)
     {
         var modifiers = world.Objects.GroupBy(sceneObject => sceneObject.GaoKey).ToDictionary(group => group.Key,
             group => group.SelectMany(sceneObject => sceneObject.Modifiers)
@@ -25,6 +32,35 @@ internal static class CinematicAudioTimeline
                 cues.Add(new(time + modifier.Delay, clip.Duration, call.Target,
                     modifier.Id, modifier.SoundKey, modifier.Volume, modifier.Loop));
         }
-        return cues.Where(cue => cue.End > cue.Start).ToArray();
+
+        var dialogue = BuildDialogueCues(clip.Duration, CinematicTimelineMessage.ReadTimeline(clip), world, document);
+        cues.AddRange(dialogue.Cues);
+        diagnostics = dialogue.Diagnostics;
+        var sourceCues = cues.Where(cue => cue.End > cue.Start).OrderBy(cue => cue.Start).ToArray();
+        return archiveEntries == null ? sourceCues : CinematicAudioLocalization.Expand(sourceCues, archiveEntries);
+    }
+
+    internal static CinematicAudioTimelineResult BuildDialogueCues(float duration,
+        IEnumerable<(float Time, CinematicTimelineMessage Message)> messages,
+        WorldData world, SceneDocument document)
+    {
+        var cues = new List<CinematicAudioCue>();
+        var diagnostics = new List<string>();
+        foreach (var (time, message) in messages.Where(item => item.Message.Type == 30).OrderBy(item => item.Time))
+        {
+            var resolution = CinematicDialogueMessageResolver.Resolve(message,
+                document.CinematicScriptOwners.Values, world.Key);
+            if (resolution.Line is not { SoundId: >= 0 } line) continue;
+
+            // Iris passes this ID to SND_l_Request(NULL, id): it indexes the runtime-global sound table,
+            // not a bank attached to the location/speaker GAO. The serialized archive does not preserve
+            // that runtime table order, so use the explicit cinematic WAD cues instead of guessing.
+            if (line.SoundId == 0) continue;
+
+            diagnostics.Add($"Dialogue at {time:F2}s (slot {resolution.Slot}) uses global sound ID {line.SoundId}; "
+                + "the runtime sound-table order is unavailable in this archive preview.");
+        }
+
+        return new(cues.ToArray(), diagnostics.Distinct().ToArray());
     }
 }

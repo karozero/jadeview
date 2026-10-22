@@ -16,6 +16,18 @@ internal static class AnimationTimeCurveChecks
         Near(key.TimeCurve.Evaluate(.5f), .25f);
         Near(key.TimeCurve.Evaluate(.75f), .625f);
         Near(key.TimeCurve.Evaluate(1), 1);
+        var duplicateTimeCurve = AnimationTimeCurve.Read(DuplicateTimeCurveBytes());
+        Near(duplicateTimeCurve.Evaluate(.5f), .5f);
+        Near(duplicateTimeCurve.Evaluate(.75f), 1.25f);
+        var openEndedCurve = AnimationTimeCurve.Read(CurveBytes(1.5f, float.PositiveInfinity));
+        Near(openEndedCurve.Evaluate(.5f), .75f);
+        Near(openEndedCurve.Evaluate(2), 3);
+        var openEndedKey = new AnimationKey { Time = 0, Duration = 1, TimeCurve = openEndedCurve };
+        _ = AnimationExportSampling.Times(new AnimationClip
+        {
+            Duration = 1,
+            Tracks = [new AnimationTrack { Keys = [openEndedKey] }]
+        });
         var root = new SceneObject { GaoKey = 1 };
         var bone = new SceneObject { GaoKey = 17, ActorNode = new() { Parent = 1, Local = Matrix4x4.Identity } };
         var actor = new SceneActor { Root = root, Members = [root, bone], Bones = [bone] };
@@ -29,8 +41,8 @@ internal static class AnimationTimeCurveChecks
         Near(AnimationInterpolation.Amount(key, .75f), 0);
         Reject([0, 0, 0, 0]);
         Reject(CurveBytes(float.NaN, .5f));
-        Reject(CurveBytes(1, 0));
-        Console.WriteLine("PASS: native piecewise time-factor integration, shared actor/camera interpolation, retained bytes, STEP and malformed curves");
+        Reject(CurveBytes(1, -.1f));
+        Console.WriteLine("PASS: native piecewise time-factor integration, duplicate and +infinity control points, shared actor/camera interpolation, retained bytes, STEP and malformed curves");
     }
 
     private static byte[] ClipBytes()
@@ -54,6 +66,16 @@ internal static class AnimationTimeCurveChecks
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream);
         writer.Write(2); writer.Write(factor); writer.Write(changeTime); writer.Write(1.5f);
+        return stream.ToArray();
+    }
+
+    private static byte[] DuplicateTimeCurveBytes()
+    {
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
+        writer.Write(3); writer.Write(1f);
+        writer.Write(.5f); writer.Write(2f);
+        writer.Write(.5f); writer.Write(3f);
         return stream.ToArray();
     }
 

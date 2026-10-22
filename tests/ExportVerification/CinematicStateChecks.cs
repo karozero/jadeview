@@ -3,7 +3,7 @@ using JadeView;
 
 internal static class CinematicStateChecks
 {
-    internal static void Verify()
+    internal static void Verify(string outputDirectory)
     {
         var effect = new SceneObject
         {
@@ -11,15 +11,19 @@ internal static class CinematicStateChecks
             GaoKey = 99,
             ControlFlags = CinematicObjectState.Invisible | CinematicObjectState.Inactive
         };
+        effect.Name = "Conditional effect";
         var root = new SceneObject { GaoKey = 1, Name = "Participant" };
         var actor = new SceneActor { Root = root, Members = [root] };
         root.Actor = actor;
         var unrelatedRoot = new SceneObject { GaoKey = 2, Name = "Gameplay actor" };
         var unrelated = new SceneActor { Root = unrelatedRoot, Members = [unrelatedRoot] };
         unrelatedRoot.Actor = unrelated;
+        var residentRoot = new SceneObject { GaoKey = 3, Name = "Scene resident actor" };
+        var resident = new SceneActor { Root = residentRoot, Members = [residentRoot], IsCinematicWorldResident = true };
+        residentRoot.Actor = resident;
         var world = new WorldData();
-        world.Objects.AddRange([root, unrelatedRoot, effect]);
-        world.Actors.AddRange([actor, unrelated]);
+        world.Objects.AddRange([root, unrelatedRoot, residentRoot, effect]);
+        world.Actors.AddRange([actor, unrelated, resident]);
         var source = new AnimationClip
         {
             Key = 10,
@@ -42,9 +46,13 @@ internal static class CinematicStateChecks
         };
         var document = new SceneDocument();
         document.CinematicClips.Add(source.Key, source);
+        world.CinematicClips.Add(source.Key, source);
         var playback = CinematicPlayback.Discover(document, world, new()).Single();
         playback.Activate();
-        Require(effect.IsControlHidden && unrelatedRoot.IsControlHidden, "Initial conditional objects must be hidden");
+        Require(effect.IsControlHidden && unrelatedRoot.IsControlHidden,
+            "Initial conditional objects and unrelated imported actors must be hidden");
+        Require(!residentRoot.IsControlHidden,
+            "Actors originating in the cinematic's gameplay world must retain their serialized visibility");
         playback.Seek(1.5f);
         Require(!effect.IsControlHidden && unrelatedRoot.IsControlHidden, "Only the activated effect should appear");
         playback.Seek(2.5f);
@@ -61,6 +69,36 @@ internal static class CinematicStateChecks
             "Leaving cutscenes must clear preview-only state");
         Require(effect.ControlFlags == 0x00600000, "Source control flags were modified");
         Require(!effect.IsControlHidden, "Asset mode must remain inspectable after the cinematic overlay is removed");
+
+        string exportPath = Path.Combine(outputDirectory, "cinematic-conditional-effect.glb");
+        SceneExporter.Export(exportPath, world, new(), new()
+        {
+            Animations = true,
+            UnknownObjects = true,
+            GameHidden = true,
+            CinematicClipKey = source.Key
+        });
+        using (var glb = new GlbReader(exportPath))
+        {
+            var nodes = glb.Root.GetProperty("nodes");
+            int effectNode = Enumerable.Range(0, nodes.GetArrayLength()).Single(index =>
+                nodes[index].GetProperty("name").GetString() == effect.Name);
+            var animation = glb.Root.GetProperty("animations").EnumerateArray().Single();
+            var scaleChannel = animation.GetProperty("channels").EnumerateArray().Single(channel =>
+                channel.GetProperty("target").GetProperty("node").GetInt32() == effectNode
+                && channel.GetProperty("target").GetProperty("path").GetString() == "scale");
+            var sampler = animation.GetProperty("samplers")[scaleChannel.GetProperty("sampler").GetInt32()];
+            var times = glb.Accessor(sampler.GetProperty("input").GetInt32());
+            var scales = glb.Accessor(sampler.GetProperty("output").GetInt32());
+            Require(ScaleAt(1.5f) == 1 && ScaleAt(2) == 0 && ScaleAt(3.75f) == 1,
+                "GLB export must reproduce source-timed visibility activation and reactivation.");
+
+            float ScaleAt(float time)
+            {
+                int index = Array.FindIndex(times, sample => sample[0] == time);
+                return index < 0 ? -1 : scales[index][0];
+            }
+        }
 
         var firstOwner = new SceneObject { GaoKey = 44, InitialCapabilities = 0x03 };
         var secondOwner = new SceneObject { GaoKey = 45, InitialCapabilities = 0x08 };
@@ -86,7 +124,7 @@ internal static class CinematicStateChecks
         var form = CinematicChannelFormEvent.Decode(CinematicTestEvents.Call(1, 99, 8263, 0, 2, 1, 11));
         Require(form?.TargetKey == 99 && form.Channel == 2 && form.Group == 11,
             "Facial channel events must preserve their explicit recipient on shared tracks");
-        Console.WriteLine("PASS: conditional state, shared-owner capabilities, backward seek and preview cleanup");
+        Console.WriteLine("PASS: conditional state and GLB visibility export, shared-owner capabilities, backward seek and preview cleanup");
     }
 
     private static void Require(bool condition, string message)

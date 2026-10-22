@@ -11,8 +11,9 @@ internal static class CinematicAudioAudit
         var source = document.CinematicClips[clipKey];
         var world = CinematicWorldAssembler.Assemble(document,
             document.Worlds.Single(world => world.Key == source.CinematicWorldKey));
-        var cues = CinematicAudioTimeline.Build(source, world, document);
-        var playback = CinematicPlayback.Discover(document, world, new()).Single(player => player.Key == clipKey);
+        var cues = CinematicAudioTimeline.Build(source, world, document, archive.Entries, out var audioDiagnostics);
+        var playback = CinematicPlayback.Discover(document, world, new(), archive.Entries)
+            .Single(player => player.Key == clipKey);
         playback.Activate();
         var initiallyHidden = world.Objects.Where(sceneObject => sceneObject.IsControlHidden)
             .Select(sceneObject => sceneObject.Name).ToArray();
@@ -43,9 +44,26 @@ internal static class CinematicAudioAudit
             });
         }
         playback.Deactivate();
-        var mix = CinematicAudioMixer.Load(archive, cues, source.Duration, CancellationToken.None);
+        var defaultCues = cues.Where(cue => cue.ChoiceGroup == null || cue.ChoiceIndex == 0).ToArray();
+        var mix = CinematicAudioMixer.Load(archive, defaultCues, source.Duration, CancellationToken.None);
         if (mix.ResolvedCues == 0 || !mix.Audio.Samples.Any(sample => Math.Abs((int)sample) > 100))
             throw new InvalidDataException("No non-silent source audio was resolved.");
+        var bankChecks = cues.Select(cue =>
+        {
+            var bankMix = CinematicAudioMixer.Load(archive, [cue], source.Duration, CancellationToken.None);
+            return new
+            {
+                cue.SoundKey,
+                cue.Label,
+                cue.ChoiceIndex,
+                cue.ChoiceCount,
+                Resolved = bankMix.ResolvedCues == 1,
+                NonSilent = bankMix.Audio.Samples.Any(sample => Math.Abs((int)sample) > 100),
+                Diagnostics = bankMix.Diagnostics
+            };
+        }).ToArray();
+        if (bankChecks.Any(check => !check.Resolved || !check.NonSilent))
+            throw new InvalidDataException("At least one discovered localized audio bank could not be decoded as non-silent audio.");
         string prefix = Path.Combine(output, $"{container}-{clipKey:X8}");
         File.WriteAllBytes(prefix + "-cinematic-audio.wav", mix.Audio.Wav);
         File.WriteAllText(prefix + "-cinematic-audio.json", JsonSerializer.Serialize(new
@@ -55,6 +73,25 @@ internal static class CinematicAudioAudit
             source.Duration,
             mix.ResolvedCues,
             mix.Diagnostics,
+            AudioDiagnostics = audioDiagnostics,
+            AudioBanks = bankChecks,
+            SceneSoundBanks = document.CinematicSoundBanks.Select(bank => new
+            {
+                Key = bank.Key.ToString("X8"),
+                Sounds = bank.Value.Select(soundKey => new
+                {
+                    Key = soundKey.ToString("X8"),
+                    Name = archive.Entries.FirstOrDefault(entry => entry.Key == soundKey)?.ExportName
+                })
+            }),
+            ObjectSoundBanks = world.Objects.Where(sceneObject => sceneObject.SoundBankKey != uint.MaxValue)
+                .Select(sceneObject => new
+                {
+                    Object = sceneObject.Name,
+                    ObjectKey = sceneObject.GaoKey.ToString("X8"),
+                    BankKey = sceneObject.SoundBankKey.ToString("X8"),
+                    HasDecodedBank = document.CinematicSoundBanks.ContainsKey(sceneObject.SoundBankKey)
+                }),
             Cues = cues.Select(cue => new
             {
                 cue.Start,
@@ -64,7 +101,11 @@ internal static class CinematicAudioAudit
                 cue.SoundKey,
                 Asset = archive.Entries.FirstOrDefault(entry => entry.Key == cue.SoundKey)?.ExportName,
                 cue.Volume,
-                cue.Loop
+                cue.Loop,
+                cue.Label,
+                cue.ChoiceGroup,
+                cue.ChoiceIndex,
+                cue.ChoiceCount
             }),
             InvisibleAtStart = initiallyHidden,
             StateSamples = stateSamples,

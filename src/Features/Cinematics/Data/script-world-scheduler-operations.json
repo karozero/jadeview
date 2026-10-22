@@ -1,0 +1,158 @@
+{
+  "board_panel_bp_inventaire_mode": [
+    {
+      "Operation": "Pause",
+      "Arguments": "v7, -1",
+      "ArgumentSources": [
+        "v7 = AI_EvalFunc_WORCurIndexGet_C"
+      ],
+      "Source": "ai/ai_bge/ai_compiledscripts_global_board_panel.c",
+      "Line": 2804
+    }
+  ],
+  "board_panel_bp_inventaire_out": [
+    {
+      "Operation": "UnPause",
+      "Arguments": "a1, -1",
+      "ArgumentSources": [
+        "a1 = AI_EvalFunc_WORCurIndexGet_C"
+      ],
+      "Source": "ai/ai_bge/ai_compiledscripts_global_board_panel.c",
+      "Line": 11823
+    }
+  ],
+  "Cine_FigeleMonde_flm_defige": [
+    {
+      "Operation": "UnPause",
+      "Arguments": "a1, 0x20",
+      "ArgumentSources": [
+        "a1 = AI_EvalFunc_WORCurIndexGet_C"
+      ],
+      "Source": "ai/ai_bge/ai_compiledscripts_global_managers.c",
+      "Line": 7832
+    }
+  ],
+  "Cine_FigeleMonde_flm_fige": [
+    {
+      "Operation": "Pause",
+      "Arguments": "v5, 0x20",
+      "ArgumentSources": [
+        "v5 = AI_EvalFunc_WORCurIndexGet_C"
+      ],
+      "Source": "ai/ai_bge/ai_compiledscripts_global_managers.c",
+      "Line": 7769
+    },
+    {
+      "Operation": "Pause",
+      "Arguments": "v4, 0x20",
+      "ArgumentSources": [
+        "v4 = AI_EvalFunc_WORCurIndexGet_C"
+      ],
+      "Source": "ai/ai_bge/ai_compiledscripts_global_managers.c",
+      "Line": 7780
+    }
+  ],
+  "helper_text_hlptxt_exec_fin_ou_abort": [
+    {
+      "Operation": "UnPause",
+      "Arguments": "a1, 0x20",
+      "ArgumentSources": [
+        "a1 = AI_EvalFunc_WORCurIndexGet_C"
+      ],
+      "Source": "ai/ai_bge/ai_compiledscripts_helper_text.c",
+      "Line": 337
+    }
+  ],
+  "helper_text_hlptxt_tests_wait": [
+    {
+      "Operation": "Pause",
+      "Arguments": "v31, 32",
+      "ArgumentSources": [
+        "v31 = AI_EvalFunc_WORCurIndexGet_C"
+      ],
+      "Source": "ai/ai_bge/ai_compiledscripts_helper_text.c",
+      "Line": 935
+    }
+  ],
+  "MDisk_MD_avi": [
+    {
+      "Operation": "Pause",
+      "Arguments": "0, -1",
+      "ArgumentSources": [],
+      "Source": "ai/ai_bge/ai_compiledscripts_global_mapmanager.c",
+      "Line": 5518
+    },
+    {
+      "Operation": "Pause",
+      "Arguments": "0, -1",
+      "ArgumentSources": [],
+      "Source": "ai/ai_bge/ai_compiledscripts_global_mapmanager.c",
+      "Line": 5588
+    },
+    {
+      "Operation": "Pause",
+      "Arguments": "0, -1",
+      "ArgumentSources": [],
+      "Source": "ai/ai_bge/ai_compiledscripts_global_mapmanager.c",
+      "Line": 5642
+    },
+    {
+      "Operation": "Pause",
+      "Arguments": "0, -1",
+      "ArgumentSources": [],
+      "Source": "ai/ai_bge/ai_compiledscripts_global_mapmanager.c",
+      "Line": 5717
+    },
+    {
+      "Operation": "Pause",
+      "Arguments": "0, -1",
+      "ArgumentSources": [],
+      "Source": "ai/ai_bge/ai_compiledscripts_global_mapmanager.c",
+      "Line": 5818
+    },
+    {
+      "Operation": "PlayAbsTime",
+      "Arguments": "v53->f_abstime, 0.16666667f",
+      "ArgumentSources": [],
+      "Source": "ai/ai_bge/ai_compiledscripts_global_mapmanager.c",
+      "Line": 5581
+    },
+    {
+      "Operation": "PlayAbsTime",
+      "Arguments": "v53->f_abstime, 0.16666667f",
+      "ArgumentSources": [],
+      "Source": "ai/ai_bge/ai_compiledscripts_global_mapmanager.c",
+      "Line": 5634
+    },
+    {
+      "Operation": "PlayAbsTime",
+      "Arguments": "v53->f_abstime, 0.16666667f",
+      "ArgumentSources": [],
+      "Source": "ai/ai_bge/ai_compiledscripts_global_mapmanager.c",
+      "Line": 5722
+    },
+    {
+      "Operation": "UnPause",
+      "Arguments": "0, -1",
+      "ArgumentSources": [],
+      "Source": "ai/ai_bge/ai_compiledscripts_global_mapmanager.c",
+      "Line": 5679
+    },
+    {
+      "Operation": "UnPause",
+      "Arguments": "0, -1",
+      "ArgumentSources": [],
+      "Source": "ai/ai_bge/ai_compiledscripts_global_mapmanager.c",
+      "Line": 5787
+    }
+  ],
+  "MDisk_MD_init": [
+    {
+      "Operation": "Pause",
+      "Arguments": "0, -1",
+      "ArgumentSources": [],
+      "Source": "ai/ai_bge/ai_compiledscripts_global_mapmanager.c",
+      "Line": 4079
+    }
+  ]
+}

@@ -1332,6 +1332,8 @@ public sealed partial class SceneRenderer : IDisposable
             }
         }
 
+        DrawCinematicFlashes();
+
         // Подсветка выбранного объекта: Bounding Box и Selection Wireframe
         foreach (var selectedPart in SelectedObject?.Actor is { } selectedActor && SelectedObject == selectedActor.Root
             ? selectedActor.Members : SelectedObject != null ? new List<SceneObject> { SelectedObject } : [])
@@ -1367,7 +1369,6 @@ public sealed partial class SceneRenderer : IDisposable
 
         Rlgl.EnableBackfaceCulling();
         Raylib.EndMode3D();
-        DrawCinematicFlashes();
         DrawCinematicFade(width, height);
         DrawCinematicShutter(width, height);
         // Destination alpha is used between Jade material passes, but the editor

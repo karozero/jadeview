@@ -8,6 +8,7 @@ internal sealed partial class PcSceneLoader
         if (ReadText(record.Offset, 4) != ".gao")
             throw new InvalidDataException($"Expected GAO {record.Key:X8} at {record.Offset:X8}.");
         record.Flags = ReadUInt32(record.Offset + 8);
+        record.SerializedStateFlags = ReadUInt32(record.Offset + 12);
         bool hasOrientedBounds = (record.Flags & 0x80000) != 0;
         int position = record.Offset + 90 + (hasOrientedBounds ? 48 : 24);
         ReadBaseObject(record, ref position);
@@ -100,7 +101,12 @@ internal sealed partial class PcSceneLoader
 
         if ((flags & 0x2000000) != 0) record.SceneEvents = ReadUInt32(position);
         ReadOptionalReference(ref position, flags, 0x2000000, 'i');
-        ReadOptionalReference(ref position, flags, 0x8000000, 'u');
+        if ((flags & 0x8000000) != 0)
+        {
+            record.SoundBank = ReadUInt32(position);
+            EnqueueRequest(record.SoundBank, 'u');
+            position += 4;
+        }
         ReadOptionalReference(ref position, flags, 0x40000, 'w');
         ReadOptionalReference(ref position, flags, 0x10, 'm');
         if ((flags & 0x40) != 0)

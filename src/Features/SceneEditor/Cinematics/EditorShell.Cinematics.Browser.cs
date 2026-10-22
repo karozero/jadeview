@@ -63,7 +63,7 @@ public sealed partial class EditorShell
         Renderer.ActiveWorld = _cinematicWorld;
         Renderer.Document = Document;
         SelectedObject = _cinematicWorld.Objects.FirstOrDefault();
-        _cinematicPlayers = CinematicPlayback.Discover(Document, _cinematicWorld, Resolver);
+        _cinematicPlayers = CinematicPlayback.Discover(Document, _cinematicWorld, Resolver, Archive?.Entries);
         _cinematicPlayback = _cinematicPlayers.FirstOrDefault();
         _cinematicPlayback?.Activate();
         Renderer.ShowGameHidden = false;

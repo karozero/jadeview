@@ -16,6 +16,30 @@ internal static class CinematicFrameAudit
         resolver.LoadFixContainer(archive);
         resolver.LoadSceneContainer(archive, entry);
         resolver.ResolveSceneDocument(document);
+        foreach (uint materialRootKey in new uint[] { 0x62000F8C, 0x62000F8F })
+        {
+            if (!resolver.Materials.TryGetValue(materialRootKey, out var materialRoot))
+            {
+                Console.WriteLine($"FLASH MATERIAL: root={materialRootKey:X8} missing");
+                continue;
+            }
+
+            Console.WriteLine($"FLASH MATERIAL: root={materialRootKey:X8} type={materialRoot.Type} "
+                + $"children={string.Join(",", materialRoot.SubMaterialKeys.Select(key => key.ToString("X8")))}");
+            if (materialRoot.SubMaterialKeys.Count <= 11) continue;
+            uint materialKey = materialRoot.SubMaterialKeys[11];
+            var material = resolver.Materials.GetValueOrDefault(materialKey);
+            var layers = JadeMaterialLayer.Read(material?.SourceBytes);
+            Console.WriteLine($"FLASH MATERIAL: sub11={materialKey:X8} type={material?.Type} "
+                + string.Join(" | ", layers.Select(layer =>
+                {
+                    bool found = resolver.TryResolveTexture(layer.Texture, out var texture);
+                    if (found && materialRootKey == 0x62000F8C && layer.Texture == 0x490198CF)
+                        File.WriteAllBytes(Path.Combine(output, $"flash-texture-{layer.Texture:X8}.tga"), texture.TgaData);
+                    return $"tex={layer.Texture:X8} flags={layer.Flags:X8} blend={layer.Blend} disabled={layer.Disabled} "
+                        + (found ? $"resolved={texture.Id} {texture.Width}x{texture.Height} fallback={texture.IsFallback}" : "missing");
+                })));
+        }
         var playback = CinematicPlayback.Discover(document, world, resolver).Single(item => item.Key == clipKey);
         playback.Activate();
         try
@@ -26,6 +50,8 @@ internal static class CinematicFrameAudit
                 + string.Join(" | ", document.CinematicFlashControllers.Values.Select(controller =>
                     $"{controller.OwnerKey:X8} rays={controller.RayCount} caps={controller.InitialCapabilities:X4} "
                     + $"alpha={controller.BigAlpha:F2}/{controller.SmallAlpha:F2} lengths={controller.BigLengthMin:F1}-{controller.BigLengthMax:F1} "
+                    + $"widths={controller.BigWidthMin:F1}-{controller.BigWidthMax:F1}/{controller.SmallWidthMin:F1}-{controller.SmallWidthMax:F1} "
+                    + $"ratio={controller.LengthRatio:F2} extrude={controller.ExtrudeDistance:F1} "
                     + $"appear={controller.AppearDelay:F3} disappear={controller.DisappearDelay:F3} color={controller.Color:X8}")));
             Console.WriteLine($"LIGHTNING AUDIT: controllers={document.CinematicLightningControllers.Count}; "
                 + $"active={playback.Lightnings.Length}; "
