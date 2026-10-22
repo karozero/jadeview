@@ -5,10 +5,14 @@ public static class CinematicWorldAssembler
     public static WorldData Assemble(SceneDocument document, WorldData cinematicWorld)
     {
         const string cinematicSuffix = "_cine";
-        string environmentName = cinematicWorld.Name.EndsWith(cinematicSuffix, StringComparison.OrdinalIgnoreCase)
+        bool hasCinematicSuffix = cinematicWorld.Name.EndsWith(cinematicSuffix, StringComparison.OrdinalIgnoreCase);
+        string environmentName = hasCinematicSuffix
             ? cinematicWorld.Name[..^cinematicSuffix.Length] : cinematicWorld.Name;
         var sceneWorlds = new[] { cinematicWorld }.Concat(document.Worlds.Where(world => world != cinematicWorld
             && world.Name.Equals(environmentName, StringComparison.OrdinalIgnoreCase))).ToArray();
+        var environmentVariantWorlds = document.Worlds.Where(world => hasCinematicSuffix
+            && !sceneWorlds.Contains(world)
+            && world.Name.StartsWith(environmentName + "_", StringComparison.OrdinalIgnoreCase)).ToArray();
         var clips = CinematicSceneClips.ForWorld(document, cinematicWorld);
         var targetKeys = CinematicSceneClips.References(clips);
         var activeControllers = document.Worlds.SelectMany(world => world.Objects)
@@ -20,6 +24,8 @@ public static class CinematicWorldAssembler
         CinematicSceneClips.IncludeGroupMembers(targetKeys, sceneWorlds.SelectMany(world => world.Objects)
             .Concat(document.Worlds.SelectMany(world => world.Objects)));
         var sceneActors = sceneWorlds.SelectMany(world => world.Actors).ToHashSet();
+        foreach (var actor in document.Worlds.SelectMany(world => world.Actors))
+            actor.IsCinematicWorldResident = sceneActors.Contains(actor);
         var actors = sceneWorlds.SelectMany(world => world.Actors)
             .Concat(document.Worlds.SelectMany(world => world.Actors)).Distinct()
             .Where(actor => sceneActors.Contains(actor)
@@ -27,6 +33,8 @@ public static class CinematicWorldAssembler
             .DistinctBy(actor => actor.Root.GaoKey).ToArray();
         var includedActors = actors.ToHashSet();
         var objects = sceneWorlds.SelectMany(world => world.Objects)
+            .Concat(environmentVariantWorlds.SelectMany(world => world.Objects)
+                .Where(IsVisibleStaticGeometry))
             .Concat(actors.SelectMany(actor => actor.Members))
             .Concat(document.Worlds.SelectMany(world => world.Objects)
                 .Where(sceneObject => sceneObject.Actor == null && targetKeys.Contains(sceneObject.GaoKey)))
@@ -38,6 +46,11 @@ public static class CinematicWorldAssembler
         foreach (var clip in clips) assembled.CinematicClips.Add(clip.Key, clip);
         return assembled;
     }
+
+    private static bool IsVisibleStaticGeometry(SceneObject sceneObject) =>
+        sceneObject.Actor == null
+        && sceneObject.GeometryKey is not (0 or uint.MaxValue)
+        && (sceneObject.DrawFlags & 0x8) != 0;
 
     private static IEnumerable<SceneObject> UniqueObjects(IEnumerable<SceneObject> objects)
     {
