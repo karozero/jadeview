@@ -1978,10 +1978,10 @@ internal static class CinematicScriptInspectorChecks
             && finding.Contains("not proven", StringComparison.Ordinal));
         bool reportsClearEventTableFlag = missingEventTableFlagFindings.Any(finding =>
             finding.Contains("flag 0x02000000 is clear", StringComparison.Ordinal));
-        bool ignoresOwnersWithoutEvents = CinematicEventSchedulerAnalyzer.Analyze(
-            eventDispatchOwner with { EventsKey = uint.MaxValue, SceneEventsKey = uint.MaxValue }).Length == 0;
+        bool ignoresOwnersWithoutSceneEvents = CinematicEventSchedulerAnalyzer.Analyze(
+            eventDispatchOwner with { EventsKey = 0xD9005D68, SceneEventsKey = uint.MaxValue }).Length == 0;
         Check(reportsEventTableMembership && reportsIndependentRuntimeGates
-                && reportsClearEventTableFlag && ignoresOwnersWithoutEvents,
+                && reportsClearEventTableFlag && ignoresOwnersWithoutSceneEvents,
             "EVE dispatch analysis should distinguish event-table eligibility from decoded event links and live execution");
         var configuredLipSyncOwner = new CinematicScriptOwner(0x801, 0, 0x902, 0x10,
             uint.MaxValue, 0x903, "lip-sync owner",

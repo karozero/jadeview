@@ -8,8 +8,7 @@ internal static class CinematicEventSchedulerAnalyzer
 
     internal static string[] Analyze(CinematicScriptOwner owner)
     {
-        bool hasEventList = HasResourceKey(owner.EventsKey) || HasResourceKey(owner.SceneEventsKey);
-        if (!hasEventList) return [];
+        if (!HasResourceKey(owner.SceneEventsKey)) return [];
 
         bool eventTableFlagSet = (owner.SerializedGaoFlags & EventTableFlag) != 0;
         string flagFinding = eventTableFlagSet
@@ -18,7 +17,7 @@ internal static class CinematicEventSchedulerAnalyzer
 
         return
         [
-            $"Linked event resources: Events {FormatKey(owner.EventsKey)}, SceneEvents {FormatKey(owner.SceneEventsKey)}.",
+            $"Linked SceneEvents EVE list: {owner.SceneEventsKey:X8}. Events {FormatKey(owner.EventsKey)} is an actor action/animation link and is not treated as a world EVE list here.",
             flagFinding,
             $"EVE_MainCall advances the attached list only for a valid world-table entry with an EVE component, runtime flags2 0x{PendingInactiveFlag:X8} clear, and nonzero distance when extraFlag 0x{DistanceCullExtraFlag:X} is set. World activation, table membership, distance, and actual track execution are not proven by this BF snapshot."
         ];
