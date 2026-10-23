@@ -1323,7 +1323,7 @@ public sealed partial class EditorShell
                 : CinematicEventActionLinkResolver.Describe(call, _cinematicWorld.Key,
                     Document.CinematicActionKitsByOwner) ?? "";
             string semantics = string.Join(" · ", new[]
-                    { description, embeddedTrack, soundBinding, actionLink }
+                    { description, DescribeCinematicWorldListBinding(call), embeddedTrack, soundBinding, actionLink }
                 .Where(text => !string.IsNullOrWhiteSpace(text)));
             if (semantics.Length > 0) semantics = $" · {semantics}";
             string label = $"{time,6:F2}s · {functionName} · {targetName} ({call.Target:X8}) · [{arguments}]{semantics}";
