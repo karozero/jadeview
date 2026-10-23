@@ -5,6 +5,8 @@ internal static class CinematicScriptOwnerResolver
     internal static CinematicScriptOwner? Resolve(uint ownerKey, uint preferredWorldKey,
         IEnumerable<CinematicScriptOwner> owners)
     {
+        if (!CinematicObjectKey.IsArchiveObject(ownerKey)) return null;
+
         CinematicScriptOwner[] candidates = owners.Where(owner => owner.OwnerKey == ownerKey).ToArray();
         CinematicScriptOwner[] localCandidates = candidates
             .Where(owner => owner.WorldKey == preferredWorldKey).ToArray();

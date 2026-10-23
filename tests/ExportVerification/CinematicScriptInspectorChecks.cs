@@ -1022,6 +1022,10 @@ internal static class CinematicScriptInspectorChecks
             && CinematicScriptReferenceNameResolver.Resolve(1, 0x100,
                 [new(0x100, 1, "not an archive object", IsObject: true)]) == null,
             "Archive reference labels should prefer the current world, use only unique external matches, and leave cross-world key collisions unresolved");
+        var specialSlotOwner = new CinematicScriptOwner(1, 0, 0, 0x600,
+            uint.MaxValue, uint.MaxValue, "not an archive owner", [], [], []);
+        Check(CinematicScriptOwnerResolver.Resolve(1, 0x600, [specialSlotOwner]) == null,
+            "Runtime AI_MainActor slots must not resolve to script owners whose numeric key happens to match");
         Check(CinematicObjectKey.SpecialActorSlotName(1) == "AI_MainActor slot 1"
                 && CinematicObjectKey.SpecialActorSlotName(2) == "AI_MainActor slot 2"
                 && CinematicObjectKey.SpecialActorSlotName(3) == null,
