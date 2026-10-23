@@ -2,22 +2,24 @@ namespace JadeView;
 
 internal static class CinematicActorClipDiscovery
 {
-    internal static PcSceneLoader.Record[] FindActorEventClips(
+    internal static PcSceneLoader.Record[] FindActorClips(
         IEnumerable<PcSceneLoader.Record> records,
         IReadOnlySet<uint> cinematicWorldKeys,
         IReadOnlySet<uint> actorMemberKeys)
     {
-        var eventClipKeys = records
+        var sourceRecords = records.ToArray();
+        var actorEventClipKeys = sourceRecords
             .Where(record => record.Kind == 'l'
-                && cinematicWorldKeys.Contains(record.LoadWorldKey)
                 && actorMemberKeys.Contains(record.Key)
                 && IsValidKey(record.Events))
             .Select(record => (record.LoadWorldKey, ClipKey: record.Events))
             .ToHashSet();
+        actorEventClipKeys.UnionWith(CinematicTimelineClipDiscovery.FindSceneTracks(
+            sourceRecords, cinematicWorldKeys));
 
-        return records
+        return sourceRecords
             .Where(record => record.Kind == 'i'
-                && eventClipKeys.Contains((record.LoadWorldKey, record.Key)))
+                && actorEventClipKeys.Contains((record.LoadWorldKey, record.Key)))
             .ToArray();
     }
 

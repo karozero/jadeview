@@ -26,6 +26,11 @@ internal static class CinematicTimelineClipChecks
             LoadWorldKey = cinematicWorld,
             SceneEvents = uint.MaxValue
         };
+        var pairedWorldActorOwner = new PcSceneLoader.Record(actorAnimationOwner.Key, 'l', 0, 0)
+        {
+            LoadWorldKey = cinematicWorld + 1,
+            Events = 0x205
+        };
 
         var sceneTracks = CinematicTimelineClipDiscovery.FindSceneTracks(
             [sceneSequenceOwner, actorAnimationOwner, otherWorldOwner, invalidLinkOwner],
@@ -33,14 +38,17 @@ internal static class CinematicTimelineClipChecks
         if (!sceneTracks.SetEquals([(cinematicWorld, 0x200u)]))
             throw new InvalidDataException("The cutscene picker included ordinary Events or a track from another world.");
 
-        var actorTracks = CinematicActorClipDiscovery.FindActorEventClips(
+        var actorTracks = CinematicActorClipDiscovery.FindActorClips(
             [sceneSequenceOwner, actorAnimationOwner, otherWorldOwner, invalidLinkOwner,
+             new PcSceneLoader.Record(0x200, 'i', 0, 0) { LoadWorldKey = cinematicWorld },
              new PcSceneLoader.Record(0x202, 'i', 0, 0) { LoadWorldKey = cinematicWorld },
              new PcSceneLoader.Record(0x203, 'i', 0, 0) { LoadWorldKey = cinematicWorld },
-             new PcSceneLoader.Record(0x204, 'i', 0, 0) { LoadWorldKey = cinematicWorld }],
+             new PcSceneLoader.Record(0x204, 'i', 0, 0) { LoadWorldKey = cinematicWorld },
+             pairedWorldActorOwner,
+             new PcSceneLoader.Record(0x205, 'i', 0, 0) { LoadWorldKey = cinematicWorld + 1 }],
             new HashSet<uint> { cinematicWorld }, new HashSet<uint> { actorAnimationOwner.Key });
-        if (actorTracks is not [{ Key: 0x202 }])
-            throw new InvalidDataException("Actor clip discovery included unlinked cinematic i-records or a scene-level SceneEvents clip.");
+        if (!actorTracks.Select(record => record.Key).ToHashSet().SetEquals([0x200u, 0x202u, 0x205u]))
+            throw new InvalidDataException("Actor clip discovery must combine owner Events and root SceneEvents while excluding unlinked cinematic i-records.");
 
         Console.WriteLine("PASS: cinematic and actor clip discovery follows SceneEvents and owner Events links");
     }

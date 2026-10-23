@@ -54,18 +54,27 @@ two-second `BF00229A` track under its own owner. To repeat the inventory on
 another container, run
 `dotnet run --project tests/ExportVerification -- --cinematic-timeline-inventory <sally_clean.bf> <FF-container-key>`.
 
-Actor clip discovery has a separate owner-scoped rule: short clips shown for a
-rig must be reached from that actor's member `Events` links in the same world.
-The former scan over every cinematic-world `i` record could attach unrelated
-short tracks to a rig merely because their target key happened to overlap. The
-loader now joins member owners to their serialized `Events` key before decoding
-actor clips; root `SceneEvents` remain the cutscene timeline source. In the
+Actor clip discovery combines two legitimate sources: root `SceneEvents` in the
+cinematic world and member `Events` linked by that actor's root/bone owners. The
+former scan over every cinematic-world `i` record could attach unrelated short
+tracks to a rig merely because their target key happened to overlap. The loader
+now joins `i` records to those serialized owner links before adding actor clips;
+actor-owned `Events` are resolved in their own source world so a paired gameplay
+world is not discarded. In the
 `3500B8EA` script graph, `Part_Fight.gao` is referenced by the
 `SFX_colpag_cam_scp_loop` callback through its `des_o_pag1` / `des_o_pag2`
-instance fields. That is evidence of a callback-controlled object target, not a
-standalone cutscene or proof that its local animation track should appear on
-every actor. The actor-clip inventory still needs an archive-level audit to
-identify which `Events` owners actually link each short track.
+instance fields. That callback toggles the objects' visibility, changes PAG
+generator frequency, and positions them using camera horizon/banking data. This
+is evidence of callback-controlled effect objects, not a standalone cutscene or
+proof that their local tracks should appear on every actor. The retail
+`FF0045A2` actor-clip audit compared the former broad
+scan with owner-linked candidates: 44 actor/clip assignments matched, all 44
+were retained by root `SceneEvents` or actor-member `Events`, and no extra
+unlinked clip was attached to an actor. The independent root timeline inventory
+contains 13 sequences, rather than the 155 cinematic-world `i` records exposed
+by the former global scan. Short root setup/event tracks remain valid and are
+not filtered by duration. This audit does not assert that every retained track
+actually ran in-game.
 
 ## Evidence from the retail PC archive
 

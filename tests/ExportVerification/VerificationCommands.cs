@@ -145,6 +145,9 @@ internal static class VerificationCommands
             case ["--cinematic-timeline-inventory", var archive, var container]:
                 CinematicTimelineInventoryAudit.Write(archive, container, output);
                 break;
+            case ["--cinematic-actor-clip-inventory", var archive, var container]:
+                CinematicActorClipInventoryAudit.Write(archive, container, output);
+                break;
             default:
                 return false;
         }

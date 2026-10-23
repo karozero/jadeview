@@ -9,7 +9,7 @@ internal static partial class ActorLoader
     {
         var memberKeys = actor.Members.Select(member => member.GaoKey).ToHashSet();
 
-        var eventRecords = CinematicActorClipDiscovery.FindActorEventClips(replay.Records,
+        var eventRecords = CinematicActorClipDiscovery.FindActorClips(replay.Records,
             cinematicWorlds.Keys.ToHashSet(), memberKeys);
         foreach (var eventRecord in eventRecords)
         {
