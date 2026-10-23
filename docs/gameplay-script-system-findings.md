@@ -967,7 +967,12 @@ calls by their implementation and required pre-existing objects; only
 `WORUniverseAdd` / `WORLoadList` provide confirmed world-loading paths in the
 examined PC source. Runtime PAG generator creation is not yet simulated by the
 cinematic preview, which currently handles the source-confirmed
-`PAG_SetGeneratorFreq` behavior for the camera-following storm controller.
+`PAG_SetGeneratorFreq` behavior for the camera-following storm controller. A
+lexical census of the supplied Iris BGE compiled-script modules finds no direct
+`PAG_AddGenerator` call sites and 26 `PAG_SetGeneratorFreq` call sites using
+generator ID `1`. These are source call-site counts, not runtime invocation
+counts; they support the static-generator path used by current scenes but do
+not prove that dynamic generator creation is impossible elsewhere.
 
 ### Special AI actor slots are not archive keys
 
