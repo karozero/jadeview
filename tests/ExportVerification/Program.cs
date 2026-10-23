@@ -11,6 +11,8 @@ string output = Path.GetFullPath(Environment.GetEnvironmentVariable("JADEVIEW_EX
     ?? "artifacts/export-verification");
 Directory.CreateDirectory(output);
 if (VerificationCommands.TryRun(args, output)) return;
+GameWorldUniverseReducerChecks.Verify();
+GameScriptObjectFlagsChecks.Verify();
 CinematicActionLibraryChecks.Verify();
 CinematicEngineFunctionCatalogChecks.Verify();
 CinematicAfterEffectChecks.Verify();
