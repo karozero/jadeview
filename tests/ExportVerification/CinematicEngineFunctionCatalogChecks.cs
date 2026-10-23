@@ -24,6 +24,11 @@ internal static class CinematicEngineFunctionCatalogChecks
         Check(0x1F48, [3], "rebuild visibility tables for loaded universe world slot 3");
         Check(0x1F51, [], "return 1 (PC Iris stub");
         Check(0x1F52, [], "current execution object's world");
+        if (!CinematicWorldCommandResolver.IsWorldManagementOperation("WORLoadList")
+            || !CinematicWorldCommandResolver.DescribeSourceOperation("WORLoadList")
+                .Contains("clears the current universe", StringComparison.Ordinal)
+            || CinematicWorldCommandResolver.IsWorldManagementOperation("OBJDestroy"))
+            throw new InvalidOperationException("Source callback API summaries must classify and describe only known world-management calls.");
         Check(0x3CF4, [1], "Iris stub consumes value 1 and emits a debug trace");
         Check(0x1FD7, [0x200], "rotate target to face object 00000200 while preserving target position");
         Check(0x1FAA, [0x41400000], "rotate target around the local Y axis by 12 radians");

@@ -164,10 +164,12 @@ public sealed partial class EditorShell
         CinematicScriptNamedReference[] archiveReferences)
     {
         string example = $"{call.FunctionName}({string.Join(", ", call.Arguments)}) ({call.Source}:{call.Line})";
+        string? worldOperation = CinematicWorldCommandResolver.IsWorldManagementOperation(call.Api)
+            ? CinematicWorldCommandResolver.DescribeSourceOperation(call.Api) : null;
         var referencedObjects = CinematicScriptArgumentBindingResolver.ResolveSourceObjectReferences(call,
             sourceReferences);
         var ownerFields = CinematicScriptArgumentBindingResolver.ResolveOwnerFields(call, owner);
-        if (referencedObjects.Length == 0 && ownerFields.Length == 0
+        if (worldOperation == null && referencedObjects.Length == 0 && ownerFields.Length == 0
             && call.ArgumentAssignments.Length == 0 && call.MessageFields.Length == 0
             && call.BranchConditions.Length == 0)
             return example;
@@ -190,6 +192,8 @@ public sealed partial class EditorShell
             return $"{field.VariableName}={field.TargetName ?? field.Value} [{field.Source}{alias}]";
         }).ToArray();
         var annotations = new List<string>();
+        if (worldOperation != null)
+            annotations.Add($"world operation: {worldOperation}");
         if (objectBindings.Length > 0)
             annotations.Add($"source object variable: {string.Join(", ", objectBindings)}");
         if (ovaBindings.Length > 0)

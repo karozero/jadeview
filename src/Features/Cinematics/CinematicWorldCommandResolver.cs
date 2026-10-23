@@ -2,8 +2,12 @@ namespace JadeView;
 
 internal static class CinematicWorldCommandResolver
 {
-    internal static string DescribeSourceOperation(string operation) => operation switch
+    internal static string DescribeSourceOperation(string operation)
     {
+        string normalizedOperation = operation.StartsWith("WOR", StringComparison.Ordinal)
+            ? operation[3..] : operation;
+        return normalizedOperation switch
+        {
         "Pause" => "Iris pauses matching active world objects by GAO identity flags and rebuilds world visibility tables",
         "UnPause" => "Iris resumes matching world objects, restores activation when permitted, and rebuilds world visibility tables",
         "PlayAbsTime" => "Iris reinitializes loaded worlds and advances them in special-time steps",
@@ -16,8 +20,12 @@ internal static class CinematicWorldCommandResolver
         "RefreshVisible" => "Iris rebuilds visibility tables for a loaded universe world",
         "RefreshVisibleOfActor" => "Iris rebuilds visibility tables for the current object's world",
         "Loaded" => "Iris implementation returns constant 1; it does not check whether a world is loaded",
-        _ => "Iris source invokes a world-scheduler operation"
-    };
+            _ => ""
+        };
+    }
+
+    internal static bool IsWorldManagementOperation(string operation) => operation.StartsWith("WOR",
+        StringComparison.Ordinal) && DescribeSourceOperation(operation).Length > 0;
 
     internal static string Describe(CinematicLiteralCall call) =>
         CinematicEngineFunctionCatalog.NameFor(call.Selector) switch
