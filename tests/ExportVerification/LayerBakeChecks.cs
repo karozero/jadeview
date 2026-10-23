@@ -64,6 +64,18 @@ internal static class LayerBakeChecks
         Check(pixel.R == 255 && pixel.G == 132 && pixel.B == 132 && pixel.A == 255,
             $"Source alpha overlay or its constant alpha override was not applied: {pixel}");
         Console.WriteLine("PASS: two-pass source alpha overlay, independent UVs and alpha override");
+
+        world.Objects[0].RliColors = [0x800000FF, 0x800000FF, 0x800000FF];
+        string instancePath = Path.Combine(output, "alpha-overlay-instance.glb");
+        SceneExporter.Export(instancePath, world, resolver, new() { Textures = true });
+        using var instance = new GlbReader(instancePath);
+        using var instanceStream = new MemoryStream(instance.Image(0));
+        using var instanceImage = new Bitmap(instanceStream);
+        var instancePixel = instanceImage.GetPixel(5, 5);
+        Check(instancePixel.R == 255 && instancePixel.G == 0 && instancePixel.B == 0 && instancePixel.A == 255,
+            $"Instance RLI tint was dropped from the source-alpha overlay: {instancePixel}");
+        Console.WriteLine("PASS: source-alpha overlays bake per-instance RLI color and alpha");
+        world.Objects[0].RliColors = [];
     }
 
     private static void VerifyReflectionDetail(WorldData world, ResourceResolver resolver, Geometry geometry, string output)

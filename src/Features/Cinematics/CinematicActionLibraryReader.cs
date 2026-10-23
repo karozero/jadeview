@@ -19,21 +19,38 @@ internal static class CinematicActionLibraryReader
         {
             var table = resources.Resolve(owner.Skeleton, owner.LoadWorldKey);
             if (table?.Kind != 'b' || !origins.TryGetValue(table, out byte[]? tableBytes)) continue;
-            var actions = new Dictionary<int, CinematicAction>();
-            int slot = 0;
-            for (int offset = table.Offset; offset <= table.Offset + table.Size - 4; offset += 4, slot++)
-            {
-                uint key = Preview.U32(tableBytes, offset);
-                if (key == 1) { offset += 4; continue; }
-                if (ResolveIdenticalResource(key, 'a', owner.LoadWorldKey, resources, recordsByKey,
-                        origins) is not { } action)
-                    continue;
-                actions[slot] = ReadAction(action, owner.LoadWorldKey, resources, recordsByKey,
-                    origins, clips);
-            }
+            var standardEntries = ReadEntries(table, tableBytes, PcActionKitFormat.EntrySize,
+                owner.LoadWorldKey, resources, recordsByKey, origins);
+            var speedModeEntries = ReadEntries(table, tableBytes, PcActionKitFormat.ActionKeySize,
+                owner.LoadWorldKey, resources, recordsByKey, origins);
+            var selectedEntries = speedModeEntries.Length > standardEntries.Length
+                ? speedModeEntries : standardEntries;
+            var actions = selectedEntries.ToDictionary(entry => entry.Slot, entry =>
+                ReadAction(entry.Record, owner.LoadWorldKey, resources, recordsByKey, origins, clips));
             document.CinematicActionKitsByOwner[(owner.LoadWorldKey, owner.Key)] = actions;
             document.CinematicActionKits[owner.Key] = actions;
         }
+    }
+
+    private static (int Slot, PcSceneLoader.Record Record)[] ReadEntries(PcSceneLoader.Record table,
+        byte[] tableBytes, int entrySize, uint ownerWorldKey, PcSceneResourceIndex resources,
+        IReadOnlyDictionary<uint, PcSceneLoader.Record[]> recordsByKey,
+        IReadOnlyDictionary<PcSceneLoader.Record, byte[]> origins)
+    {
+        var entries = new List<(int Slot, PcSceneLoader.Record Record)>();
+        int tableEnd = table.Offset + table.Size;
+        int slot = 0;
+        for (int offset = table.Offset;
+             offset <= tableEnd - entrySize;
+             offset += entrySize, slot++)
+        {
+            uint key = Preview.U32(tableBytes, offset);
+            if (key == 1) break;
+            if (ResolveIdenticalResource(key, 'a', ownerWorldKey, resources, recordsByKey,
+                    origins) is { } action)
+                entries.Add((slot, action));
+        }
+        return entries.ToArray();
     }
 
     private static CinematicAction ReadAction(PcSceneLoader.Record action,

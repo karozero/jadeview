@@ -5,6 +5,7 @@ namespace JadeView;
 public sealed partial class SceneActor
 {
     private CinematicBodyPoseSampler? bodyPoseSampler;
+    internal int CinematicBodyBaselineRefreshCount => bodyPoseSampler?.BaselineRefreshCount ?? 0;
 
     internal void CompensateBodyRoot(SceneObject target, AnimationKey key, Matrix4x4? rootInverse,
         ref Vector3 position, ref Quaternion rotation)
@@ -18,6 +19,11 @@ public sealed partial class SceneActor
             rotation = compensated;
     }
 
-    internal SceneObject PoseParent(SceneObject target) =>
-        Members.FirstOrDefault(member => member != target && member.GaoKey == target.ActorNode?.Parent) ?? Root;
+    internal SceneObject PoseParent(SceneObject target)
+    {
+        uint parentKey = target.ActorNode?.Parent ?? uint.MaxValue;
+        foreach (var member in Members)
+            if (member != target && member.GaoKey == parentKey) return member;
+        return Root;
+    }
 }

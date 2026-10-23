@@ -20,7 +20,7 @@ internal static class CinematicEmbeddedEventTrackResolver
                 : "target embedded EVE track list is not present in the loaded archive scope";
         }
 
-        if (function.EndsWith("All", StringComparison.Ordinal))
+        if (function.EndsWith("All", StringComparison.Ordinal) || function == "TRASetTime")
         {
             int count = lists.Sum(list => list.Tracks.Length);
             string links = string.Join(", ", lists.Select(list =>
@@ -95,5 +95,5 @@ internal static class CinematicEmbeddedEventTrackResolver
     private static bool IsEventTrackFunction(string function) => function is
         "TRAPlay" or "TRAStop" or "TRAPause" or "TRAUnPause" or "TRAReinit" or "TRAIsStop"
         or "TRAPlayAll" or "TRAStopAll" or "TRAPauseAll" or "TRAUnPauseAll"
-        or "TRAReinitAll" or "TRAIsStopAll";
+        or "TRAReinitAll" or "TRAIsStopAll" or "TRASetTime";
 }

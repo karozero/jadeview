@@ -97,6 +97,7 @@ public sealed partial class EditorShell
         Resolver = resolver;
         Renderer.Document = document;
         Renderer.Resolver = resolver;
+        Renderer.VideoArchive = archive;
         Renderer.ActiveWorld = ActiveWorld;
         SelectedObject = ActiveWorld?.Objects.FirstOrDefault();
         BuildCatalogFolders();

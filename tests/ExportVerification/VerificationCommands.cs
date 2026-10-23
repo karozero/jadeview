@@ -4,6 +4,22 @@ internal static class VerificationCommands
     {
         switch (arguments)
         {
+            case ["--cinematic-audio-stream-clock-audit"]:
+                CinematicAudioStreamClockAudit.Run();
+                break;
+            case ["--cinematic-realtime-audio-render-audit", var archive, var container, var clipKey, var startTime, var duration]:
+                CinematicRealtimeAudioRenderAudit.Run(archive, container, Convert.ToUInt32(clipKey, 16),
+                    float.Parse(startTime, System.Globalization.CultureInfo.InvariantCulture),
+                    float.Parse(duration, System.Globalization.CultureInfo.InvariantCulture));
+                break;
+            case ["--cinematic-realtime-audio-render-audit", var archive, var container, var clipKey,
+                var startTime, var duration, var width, var height]:
+                CinematicRealtimeAudioRenderAudit.Run(archive, container, Convert.ToUInt32(clipKey, 16),
+                    float.Parse(startTime, System.Globalization.CultureInfo.InvariantCulture),
+                    float.Parse(duration, System.Globalization.CultureInfo.InvariantCulture),
+                    int.Parse(width, System.Globalization.CultureInfo.InvariantCulture),
+                    int.Parse(height, System.Globalization.CultureInfo.InvariantCulture));
+                break;
             case ["--cinematic-material-render-check"]:
                 CinematicMaterialRenderChecks.Verify();
                 break;
@@ -16,6 +32,11 @@ internal static class VerificationCommands
             case ["--cinematic-frame-audit", var archive, var container, var clipKey, var time]:
                 CinematicFrameAudit.Write(archive, container, Convert.ToUInt32(clipKey, 16),
                     float.Parse(time, System.Globalization.CultureInfo.InvariantCulture), output);
+                break;
+            case ["--cinematic-playback-performance-audit", var archive, var container, var clipKey, .. var sampleTimes]:
+                CinematicPlaybackPerformanceAudit.Write(archive, container, Convert.ToUInt32(clipKey, 16),
+                    sampleTimes.Select(time => float.Parse(time,
+                        System.Globalization.CultureInfo.InvariantCulture)).ToArray());
                 break;
             case ["--shutter-render-check", var archive, var container, var clipKey]:
                 CinematicShutterRenderChecks.Verify(output, archive, container, Convert.ToUInt32(clipKey, 16));
@@ -34,6 +55,27 @@ internal static class VerificationCommands
                 break;
             case ["--cinematic-audio-audit", var archive, var container, var clipKey, ..]:
                 CinematicAudioAudit.Write(archive, container, Convert.ToUInt32(clipKey, 16), output);
+                break;
+            case ["--world-text-resource-audit", var archive, var container, var outputPath]:
+                WorldTextResourceAudit.Write(archive, container, outputPath);
+                break;
+            case ["--cinematic-sound-resource-audit", var archive, ..]:
+                foreach (string soundKey in arguments.Skip(2))
+                    CinematicSoundResourceAudit.Write(archive, Convert.ToUInt32(soundKey, 16));
+                break;
+            case ["--cinematic-sound-fade-audit", var archive, var container]:
+                CinematicSoundFadeAudit.Write(archive, container);
+                break;
+            case ["--cinematic-video-trigger-audit", var archive, var container, var clipKey, ..]:
+                CinematicVideoTriggerAudit.Write(archive, container, Convert.ToUInt32(clipKey, 16), output);
+                break;
+            case ["--bink-frame-audit", var dllPath, var videoPath, var frameIndex, ..]:
+                BinkFrameAudit.Write(dllPath, videoPath, int.Parse(frameIndex,
+                    System.Globalization.CultureInfo.InvariantCulture), output);
+                break;
+            case ["--nested-eve-transform-audit", var archive, var container, var clipKey, ..]:
+                CinematicNestedEventTransformAudit.Write(archive, container,
+                    Convert.ToUInt32(clipKey, 16), output);
                 break;
             case ["--cinematic-state-audit", var archive, var container, ..]:
                 CinematicSceneStateAudit.Write(archive, container, output);
@@ -99,6 +141,9 @@ internal static class VerificationCommands
                 break;
             case ["--cinematic-playback-audit", var archive, var container]:
                 CinematicSceneAudit.Write(archive, container, output);
+                break;
+            case ["--cinematic-timeline-inventory", var archive, var container]:
+                CinematicTimelineInventoryAudit.Write(archive, container, output);
                 break;
             default:
                 return false;

@@ -9,4 +9,6 @@ public sealed class AnimationTrack
     public int ChannelFlags;
     public uint HeaderWord;
     public List<AnimationKey> Keys = [];
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal CinematicTrackPlaybackClock? CinematicPlaybackClock { get; set; }
 }

@@ -65,13 +65,79 @@ public sealed partial class SceneExporter
             empties++;
             return;
         }
+        bool hasParticleSnapshot = TryCreateParticleSnapshot(sceneObject, geometry, out var exportGeometry);
         int node = Node(sceneObject, matrix, animatedCinematicObjects.Contains(sceneObject));
         Add(node, children);
-        if (KeepGeometryCarrier(node, geometry)) return;
-        if (geometry.Billboards.Count > 0) warnings.Add("SPG vegetation exports as fixed-facing quads; camera billboarding and wind are viewport effects.");
-        var posed = sceneObject.Actor?.Skin(sceneObject, geometry) ?? geometry.Positions;
-        nodes[node]["mesh"] = Mesh(sceneObject, geometry, posed, null);
+        if (hasParticleSnapshot)
+        {
+            var extras = (Obj)nodes[node]["extras"];
+            extras["particleSnapshot"] = true;
+            if (sceneObject.PreviewParticleTime is { } snapshotTime)
+                extras["particleSnapshotTimeSeconds"] = snapshotTime;
+            warnings.Add("PAG particles are exported as a static snapshot of the current viewport frame; emitter behavior and particle motion are not animated in GLB.");
+        }
+        if (KeepGeometryCarrier(node, exportGeometry)) return;
+        if (exportGeometry.Billboards.Count > 0) warnings.Add("SPG vegetation exports as fixed-facing quads; camera billboarding and wind are viewport effects.");
+        var posed = sceneObject.Actor?.Skin(sceneObject, exportGeometry) ?? exportGeometry.Positions;
+        nodes[node]["mesh"] = Mesh(sceneObject, exportGeometry, posed, null);
     }
+
+    private static bool TryCreateParticleSnapshot(SceneObject sceneObject, Geometry source, out Geometry snapshot)
+    {
+        snapshot = source;
+        if (source.Particles == null || sceneObject.PreviewParticlePositions is not { } positions
+            || sceneObject.PreviewParticleColors is not { } colors
+            || positions.Length != source.Positions.Length || colors.Length != source.VertexColors.Length
+            || source.ParticleStart < 0 || source.ParticleStart > positions.Length
+            || source.ParticlePart < 0 || source.ParticlePart > source.Parts.Count)
+            return false;
+
+        var parts = source.Parts.Take(source.ParticlePart).ToList();
+        foreach (var sourcePart in source.Parts.Skip(source.ParticlePart))
+        {
+            var indices = new List<int>();
+            var uvIndices = new List<int>();
+            if (sourcePart.VertexIndices.Length % 6 != 0
+                || sourcePart.UvIndices.Length != sourcePart.VertexIndices.Length) continue;
+
+            for (int triangleStart = 0; triangleStart < sourcePart.VertexIndices.Length; triangleStart += 6)
+            {
+                if (!HasVisibleParticleVertex(sourcePart.VertexIndices, triangleStart, source.ParticleStart, colors)) continue;
+                indices.AddRange(sourcePart.VertexIndices.Skip(triangleStart).Take(6));
+                uvIndices.AddRange(sourcePart.UvIndices.Skip(triangleStart).Take(6));
+            }
+            if (indices.Count > 0)
+                parts.Add(new(sourcePart.MaterialId, indices.ToArray(), uvIndices.ToArray()));
+        }
+
+        snapshot = new Geometry
+        {
+            Key = source.Key,
+            Offset = source.Offset,
+            Size = source.Size,
+            MaterialKey = source.MaterialKey,
+            Objects = source.Objects,
+            Positions = positions,
+            Uvs = source.Uvs,
+            VertexColors = colors,
+            Skin = source.Skin,
+            Parts = parts,
+            Billboards = source.Billboards
+        };
+        return true;
+    }
+
+    private static bool HasVisibleParticleVertex(int[] vertices, int start, int particleStart, uint[] colors)
+    {
+        for (int corner = 0; corner < 6; corner++)
+        {
+            int vertex = vertices[start + corner];
+            if (vertex >= particleStart && vertex < colors.Length && (colors[vertex] >> 24) != 0)
+                return true;
+        }
+        return false;
+    }
+
     private void Add(int node, List<int>? children)
     {
         if (children == null) roots.Add(node);

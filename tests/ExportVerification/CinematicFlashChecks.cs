@@ -29,21 +29,32 @@ internal static class CinematicFlashChecks
         };
         var timeline = new CinematicFlashTimeline(source, world, new Dictionary<uint, CinematicFlashController>
         { [99] = controller });
-        if (timeline.Evaluate(.9f).Length != 0)
+        if (timeline.Evaluate(.9f).Count != 0)
             throw new InvalidDataException("Inactive flash controller rendered outside its capability window.");
-        var appear = timeline.Evaluate(1.5f).Single();
+        var activeStates = timeline.Evaluate(1.5f);
+        var appear = activeStates.Single();
         if (Math.Abs(appear.Opacity - .5f) > .001f || Vector3.Distance(appear.Position, new(11, 3, -2)) > .001f
             || appear.RayCount != 8 || appear.Color != controller.Color
-            || appear.Seed != controller.OwnerKey || Math.Abs(appear.CameraPullDistance - controller.ExtrudeDistance) > .001f
+            || appear.Seed != controller.OwnerKey
             || Math.Abs(appear.LengthRatio - .5f) > .001f)
-            throw new InvalidDataException("Flash activation, fade-in, snap position or authored parameters were lost.");
-        var disappearing = timeline.Evaluate(3.5f).Single();
-        if (Math.Abs(disappearing.Opacity - .5f) > .001f || Math.Abs(disappearing.CameraPullDistance - 1) > .001f)
-            throw new InvalidDataException("Flash fade-out did not follow its authored delay.");
+            throw new InvalidDataException("Flash activation, fade-in, source world position or authored parameters were lost.");
+        var disappearingStates = timeline.Evaluate(3.5f);
+        var disappearing = disappearingStates.Single();
+        if (!ReferenceEquals(activeStates, disappearingStates))
+            throw new InvalidDataException("Flash evaluation allocated a new state collection instead of reusing it.");
+        if (Math.Abs(disappearing.Opacity - .5f) > .001f
+            || Vector3.Distance(disappearing.Position, appear.Position) > .001f)
+            throw new InvalidDataException("Flash fade-out moved the native depth-sized GFX_Sun from its source position.");
         if (Math.Abs(timeline.Evaluate(4.5f).Single().Opacity - .5f) > .001f)
             throw new InvalidDataException("Flash reactivation did not start a new source-time fade-in.");
+        for (int iteration = 0; iteration < 32; iteration++) _ = timeline.Evaluate(1.5f);
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int iteration = 0; iteration < 1024; iteration++) _ = timeline.Evaluate(1.5f);
+        long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        if (allocatedBytes != 0)
+            throw new InvalidDataException($"Warmed flash playback allocated {allocatedBytes} bytes for 1024 updates.");
         VerifyNativeSunRayLayout();
-        Console.WriteLine("PASS: cinematic flash activation, deterministic fades, snap position and ray parameters");
+        Console.WriteLine("PASS: cinematic flash activation, fades, allocation-free updates, snap position and ray parameters");
     }
 
     private static void VerifyNativeSunRayLayout()

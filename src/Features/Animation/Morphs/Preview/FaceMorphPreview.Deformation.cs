@@ -4,10 +4,14 @@ namespace JadeView;
 
 public sealed partial class FaceMorphPreview
 {
+    private Vector3[]? deformedPositionBuffer;
+
     public Vector3[] Positions()
     {
         if (Data == null || !weights.Any(weight => weight != 0)) return Geometry.Positions;
-        var positions = (Vector3[])Geometry.Positions.Clone();
+        deformedPositionBuffer ??= new Vector3[Geometry.Positions.Length];
+        var positions = deformedPositionBuffer!;
+        Geometry.Positions.CopyTo(positions, 0);
         foreach (var group in Data.Groups)
         {
             float weight = weights[group.Index];

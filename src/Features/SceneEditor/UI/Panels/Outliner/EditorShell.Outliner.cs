@@ -6,6 +6,10 @@ namespace JadeView;
 
 public sealed partial class EditorShell
 {
+    private readonly List<OutlinerRow> _outlinerRows = new(512);
+    private readonly HashSet<SceneObject> _outlinerMatches = [];
+    private readonly HashSet<SceneObject> _expandedOutlinerActors = [];
+
     private void DrawOutliner()
     {
         DrawPanelTitle("OUTLINER", "Objects placed in the current world, grouped by actor. Search and select objects here; right-click for scene actions. Double-click to frame an object.");
@@ -30,14 +34,61 @@ public sealed partial class EditorShell
             return;
         }
 
-        var filtered = ActiveWorld.Objects.Where(MatchesOutlinerFilter).ToList();
-        var shown = filtered.ToHashSet();
+        BuildOutlinerRows(ActiveWorld);
         ImGui.BeginChild("OutlinerList", Vector2.Zero, ImGuiChildFlags.None);
-        foreach (var actor in ActiveWorld.Actors.Where(actor => actor.Members.Any(shown.Contains)))
-            DrawOutlinerActor(actor);
-        foreach (var sceneObject in filtered.Where(sceneObject => sceneObject.Actor == null))
-            DrawOutlinerObject(sceneObject);
+        int revealIndex = FindRevealedOutlinerRow();
+        int revealActorIndex = FindRevealedActorHeader();
+        unsafe
+        {
+            var clipper = new ImGuiListClipperPtr(ImGuiNative.ImGuiListClipper_ImGuiListClipper());
+            clipper.Begin(_outlinerRows.Count);
+            if (revealActorIndex >= 0) clipper.IncludeItemByIndex(revealActorIndex);
+            if (revealIndex >= 0) clipper.IncludeItemByIndex(revealIndex);
+            while (clipper.Step())
+            {
+                for (int rowIndex = clipper.DisplayStart; rowIndex < clipper.DisplayEnd; rowIndex++)
+                    DrawOutlinerRow(_outlinerRows[rowIndex]);
+            }
+            clipper.End();
+            clipper.Destroy();
+        }
         ImGui.EndChild();
+    }
+
+    private void BuildOutlinerRows(WorldData world)
+    {
+        OutlinerRowBuilder.Build(world, MatchesOutlinerFilter, _expandedOutlinerActors,
+            _revealOutliner, _outlinerRows, _outlinerMatches);
+    }
+
+    private int FindRevealedOutlinerRow()
+    {
+        return FindOutlinerRow(_revealOutliner);
+    }
+
+    private int FindRevealedActorHeader()
+    {
+        SceneObject? actorRoot = _revealOutliner?.Actor?.Root;
+        return actorRoot == null ? -1 : FindOutlinerRow(actorRoot);
+    }
+
+    private int FindOutlinerRow(SceneObject? sceneObject)
+    {
+        if (sceneObject == null) return -1;
+        for (int rowIndex = 0; rowIndex < _outlinerRows.Count; rowIndex++)
+            if (_outlinerRows[rowIndex].Object == sceneObject)
+                return rowIndex;
+        return -1;
+    }
+
+    private void DrawOutlinerRow(OutlinerRow row)
+    {
+        if (row.Kind == OutlinerRowKind.Actor && row.Actor is { } actor)
+            DrawOutlinerActor(actor);
+        else if (row.Kind == OutlinerRowKind.ActorComponent)
+            DrawOutlinerActorComponent(row.Object);
+        else
+            DrawOutlinerObject(row.Object);
     }
 
     private void DrawOutlinerSearch()
@@ -72,32 +123,35 @@ public sealed partial class EditorShell
     private void DrawOutlinerActor(SceneActor actor)
     {
         ImGui.PushID(actor.Root.Id);
-        var flags = ImGuiTreeNodeFlags.OpenOnArrow | ImGuiTreeNodeFlags.SpanAvailWidth;
+        var flags = ImGuiTreeNodeFlags.OpenOnArrow | ImGuiTreeNodeFlags.SpanAvailWidth
+            | ImGuiTreeNodeFlags.NoTreePushOnOpen;
         if (SelectedObject == actor.Root)
             flags |= ImGuiTreeNodeFlags.Selected;
         bool revealChild = _revealOutliner?.Actor == actor && _revealOutliner != actor.Root;
         if (revealChild)
             ImGui.SetNextItemOpen(true);
         bool open = ImGui.TreeNodeEx($"[Actor] {actor.Root.Name} ({actor.Members.Count - 1})", flags);
+        if (open) _expandedOutlinerActors.Add(actor.Root);
+        else _expandedOutlinerActors.Remove(actor.Root);
         DrawObjectContextMenu(actor.Root);
         RevealOutlinerObject(actor.Root);
         if (ImGui.IsItemClicked() && !ImGui.IsItemToggledOpen())
             SelectedObject = actor.Root;
         FrameOutlinerObjectOnDoubleClick(actor.Root);
-        if (open)
-        {
-            foreach (var component in actor.Members.Where(component => component != actor.Root))
-            {
-                if (ImGui.Selectable($"{component.Name}##{component.Id}", SelectedObject == component))
-                    SelectedObject = component;
-                DrawObjectContextMenu(component);
-                RevealOutlinerObject(component);
-            }
-
-            ImGui.TreePop();
-        }
-
         ImGui.PopID();
+    }
+
+    private void DrawOutlinerActorComponent(SceneObject component)
+    {
+        ImGui.Indent();
+        ImGui.PushID(component.Id);
+        if (ImGui.Selectable($"{component.Name}##{component.Id}", SelectedObject == component))
+            SelectedObject = component;
+        DrawObjectContextMenu(component);
+        RevealOutlinerObject(component);
+        FrameOutlinerObjectOnDoubleClick(component);
+        ImGui.PopID();
+        ImGui.Unindent();
     }
 
     private void DrawOutlinerObject(SceneObject sceneObject)

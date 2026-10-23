@@ -5,7 +5,9 @@ internal static class AnimationExportSampling
     private const int SamplesPerSecond = 60;
     private const int MaximumSamples = 200000;
 
-    internal static float[] Times(AnimationClip clip)
+    internal static float[] Times(AnimationClip clip) => Times(clip, clip.Tracks);
+
+    internal static float[] Times(AnimationClip clip, IEnumerable<AnimationTrack> sourceTracks)
     {
         if (!float.IsFinite(clip.Duration) || clip.Duration < 0)
             throw new InvalidDataException($"Animation '{clip.Name}' has an invalid duration.");
@@ -23,8 +25,51 @@ internal static class AnimationExportSampling
                 AddBoundary(times, boundary, clip.Duration);
                 if (boundary > 0 && boundary <= clip.Duration) times.Add(MathF.BitDecrement(boundary));
             }
-        foreach (var track in clip.Tracks)
+        foreach (var track in sourceTracks)
         {
+            if (track.CinematicPlaybackClock is { } playbackClock)
+            {
+                foreach (float changeTime in playbackClock.ChangeTimes)
+                {
+                    AddBoundary(times, changeTime, clip.Duration);
+                    if (changeTime > 0 && changeTime <= clip.Duration)
+                        times.Add(MathF.BitDecrement(changeTime));
+                }
+
+                foreach (var key in track.Keys)
+                {
+                    if (!float.IsFinite(key.Duration) || key.Duration < 0)
+                        throw new InvalidDataException("Invalid source animation key duration.");
+                    AddMappedBoundary(key.Time);
+                    if (key.TimeCurve != null)
+                    {
+                        foreach (var point in key.TimeCurve.Points)
+                        {
+                            if (float.IsFinite(point.Time)) AddMappedBoundary(key.Time + point.Time);
+                        }
+                    }
+
+                    float mappedEnd = key.Time + key.Duration;
+                    AddMappedBoundary(mappedEnd);
+                    if ((key.Flags & 2048) != 0)
+                    {
+                        foreach (float timelineEnd in playbackClock.TimelineTimesForLocal(mappedEnd))
+                        {
+                            if (timelineEnd > 0 && timelineEnd <= clip.Duration)
+                                times.Add(MathF.BitDecrement(timelineEnd));
+                        }
+                    }
+                }
+
+                continue;
+
+                void AddMappedBoundary(float localTime)
+                {
+                    foreach (float timelineTime in playbackClock.TimelineTimesForLocal(localTime))
+                        AddBoundary(times, timelineTime, clip.Duration);
+                }
+            }
+
             foreach (var key in track.Keys)
             {
                 if (!float.IsFinite(key.Duration) || key.Duration < 0)

@@ -25,6 +25,7 @@
     <EmbeddedResource Include="src/Features/Cinematics/Data/script-ova-field-accesses.json.gz" LogicalName="JadeView.CinematicScriptOvaFieldAccesses" />
     <EmbeddedResource Include="src/Features/Cinematics/Data/script-function-source-references.json.gz" LogicalName="JadeView.CinematicScriptSourceReferences" />
     <EmbeddedResource Include="src/Features/Cinematics/Data/engine-function-selectors.json" LogicalName="JadeView.EngineFunctionSelectors" />
+    <EmbeddedResource Include="src/Features/AssetBrowser/Formats/Pc/BinkFrameServer.ps1" LogicalName="JadeView.BinkFrameServer.ps1" />
     <PackageReference Include="Raylib-cs" Version="7.0.1" />
     <PackageReference Include="ImGui.NET" Version="1.91.6.1" />
     <PackageReference Include="rlImgui-cs" Version="3.2.0" />

@@ -37,12 +37,44 @@ internal static class AnimationTimeCurveChecks
         actor.Evaluate(0);
         Near(bone.PreviewMatrix!.Value.Translation.X, 6.25f);
         Near(CinematicTransformSampler.Evaluate(new(), [track], .75f).Translation.X, 6.25f);
+        VerifyValueBasedPoseSampling();
         key.Flags |= AnimationInterpolation.NoInterpolation;
         Near(AnimationInterpolation.Amount(key, .75f), 0);
         Reject([0, 0, 0, 0]);
         Reject(CurveBytes(float.NaN, .5f));
         Reject(CurveBytes(1, -.1f));
         Console.WriteLine("PASS: native piecewise time-factor integration, duplicate and +infinity control points, shared actor/camera interpolation, retained bytes, STEP and malformed curves");
+    }
+
+    private static void VerifyValueBasedPoseSampling()
+    {
+        var baseline = new TransformData
+        {
+            Translation = new(2, 3, 4),
+            Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, .3f),
+            Scale = new(1.1f, .9f, 1.2f)
+        };
+        var track = new AnimationTrack
+        {
+            Keys = [new() { Time = 0, Duration = 1, Position = Vector3.Zero },
+                new() { Time = 1, Position = new(5, 0, 0) }]
+        };
+        Matrix4x4 expectedPose = CinematicTransformSampler.Evaluate(baseline, track, .25f);
+        Matrix4x4 sampledPose = CinematicTransformSampler.Evaluate(baseline.Translation,
+            baseline.Rotation, baseline.Scale, track, .25f);
+        if (sampledPose != expectedPose)
+            throw new InvalidDataException("Value-based cinematic bone sampling changed the transform result.");
+
+        for (int iteration = 0; iteration < 32; iteration++)
+            _ = CinematicTransformSampler.Evaluate(baseline.Translation,
+                baseline.Rotation, baseline.Scale, track, .25f);
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int iteration = 0; iteration < 1024; iteration++)
+            _ = CinematicTransformSampler.Evaluate(baseline.Translation,
+                baseline.Rotation, baseline.Scale, track, .25f);
+        long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        if (allocatedBytes != 0)
+            throw new InvalidDataException($"Value-based cinematic pose sampling allocated {allocatedBytes} bytes for 1024 bone samples.");
     }
 
     private static byte[] ClipBytes()

@@ -29,17 +29,52 @@ public static class AnimationMath
         return b * jade * Matrix4x4.Transpose(b);
     }
     public static Vector3[] Normals(Vector3[] positions, List<Geometry.Part> parts)
+        => Normals(positions, parts, positions.Length, parts.Count);
+
+    public static Vector3[] Normals(Vector3[] positions, List<Geometry.Part> parts,
+        int vertexCount, int partCount)
     {
-        var values = new Vector3[positions.Length]; var counts = new int[positions.Length];
-        foreach (var part in parts) for (int i = 0; i < part.VertexIndices.Length; i += 3)
-        {
-            int a=part.VertexIndices[i],b=part.VertexIndices[i+1],c=part.VertexIndices[i+2];
-            var n=Vector3.Cross(positions[b]-positions[a],positions[c]-positions[a]);
-            if(n.LengthSquared()>1e-20f) n=Vector3.Normalize(n); else n=Vector3.Zero;
-            values[a]+=n; values[b]+=n; values[c]+=n; counts[a]++;counts[b]++;counts[c]++;
-        }
-        for(int i=0;i<values.Length;i++)if(counts[i]>0)values[i]/=counts[i];
+        vertexCount = Math.Clamp(vertexCount, 0, positions.Length);
+        partCount = Math.Clamp(partCount, 0, parts.Count);
+        var values = new Vector3[vertexCount]; var counts = new int[vertexCount];
+        FillNormals(positions, parts, vertexCount, partCount, values, counts);
         return values;
+    }
+
+    internal static void FillNormals(Vector3[] positions, List<Geometry.Part> parts,
+        int vertexCount, int partCount, Span<Vector3> values, Span<int> counts)
+    {
+        vertexCount = Math.Clamp(vertexCount, 0, positions.Length);
+        partCount = Math.Clamp(partCount, 0, parts.Count);
+        if (values.Length < vertexCount || counts.Length < vertexCount)
+            throw new ArgumentException("Normal scratch buffers are smaller than the vertex range.");
+        values = values[..vertexCount];
+        counts = counts[..vertexCount];
+        values.Clear();
+        counts.Clear();
+        for (int partIndex = 0; partIndex < partCount; partIndex++)
+        {
+            var part = parts[partIndex];
+            for (int index = 0; index < part.VertexIndices.Length; index += 3)
+            {
+                int first = part.VertexIndices[index];
+                int second = part.VertexIndices[index + 1];
+                int third = part.VertexIndices[index + 2];
+                if (first >= vertexCount || second >= vertexCount || third >= vertexCount) continue;
+                var normal = Vector3.Cross(positions[second] - positions[first],
+                    positions[third] - positions[first]);
+                if (normal.LengthSquared() > 1e-20f) normal = Vector3.Normalize(normal);
+                else normal = Vector3.Zero;
+                values[first] += normal;
+                values[second] += normal;
+                values[third] += normal;
+                counts[first]++;
+                counts[second]++;
+                counts[third]++;
+            }
+        }
+        for (int vertexIndex = 0; vertexIndex < values.Length; vertexIndex++)
+            if (counts[vertexIndex] > 0) values[vertexIndex] /= counts[vertexIndex];
     }
 }
 

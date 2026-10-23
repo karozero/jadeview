@@ -23,3 +23,7 @@ JadeView_Backup/
 *.dmp
 Thumbs.db
 Desktop.ini
+
+# Python bytecode caches
+__pycache__/
+*.py[cod]

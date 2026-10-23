@@ -61,13 +61,16 @@ internal static class ArchiveCinematicBodyCoverageAudit
                     clipCount++;
                     clipIndex.Add(ReadClipIndex(entry.Id, sourceWorld.Name, sourceWorld.Key, clip,
                         document, replay.Records, sourceBytes));
+                    var nestedCommands = CinematicNestedEventTransformTracks
+                        .ReadTimeline(clip, world, document).Commands;
                     var sourceTracks = clip.Tracks.Concat(CinematicScriptTransformTracks.Read(clip)).ToArray();
                     foreach (var actor in world.Actors)
                     {
                         CinematicBodyTimeline timeline;
                         try
                         {
-                            timeline = CinematicBodyTimeline.Create(clip, actor, document.CinematicActionKits);
+                            timeline = CinematicBodyTimeline.Create(clip, actor, sourceWorld.Key,
+                                document.CinematicActionKitsByOwner, nestedCommands);
                         }
                         catch (Exception error) when (error is InvalidDataException or ArgumentException
                             or OverflowException or IndexOutOfRangeException)
@@ -96,8 +99,10 @@ internal static class ArchiveCinematicBodyCoverageAudit
                         bool hasUnresolvedRequests = timeline.Diagnostics.Any(message =>
                             message.StartsWith("Missing body action", StringComparison.Ordinal)
                             || message.StartsWith("No cinematic skeletal action resolved", StringComparison.Ordinal));
-                        document.CinematicActionKits.TryGetValue(actor.Root.GaoKey, out var baseKit);
-                        var actionRequests = ReadActionRequests(clip, actor);
+                        var baseKitResolution = CinematicActionKitScopeResolver.Resolve(actor.Root.GaoKey,
+                            sourceWorld.Key, document.CinematicActionKitsByOwner);
+                        var baseKit = baseKitResolution.Actions;
+                        var actionRequests = ReadActionRequests(clip, actor, nestedCommands);
                         var requestedSlotsAbsentFromBaseKit = actionRequests
                             .Where(request => request.Selector == 0x3391 && request.Action >= 0
                                 && (baseKit == null || !baseKit.ContainsKey(request.Action)))
@@ -109,7 +114,8 @@ internal static class ArchiveCinematicBodyCoverageAudit
                             clip.CinematicOwnerKey.ToString("X8"), actor.Root.Name, actor.Root.GaoKey.ToString("X8"), actor.Bones.Count,
                             timeline.ActionCount, boneTrackCount, hasRootTrack, hasUnresolvedRequests,
                             baseKit?.Count, requestedSlotsAbsentFromBaseKit,
-                            actionRequests.Select(request => DescribeActionRequest(request, document.CinematicActionKits))
+                            actionRequests.Select(request => DescribeActionRequest(request, sourceWorld.Key,
+                                    document.CinematicActionKitsByOwner))
                                 .Distinct(StringComparer.Ordinal).ToArray(),
                             timeline.Diagnostics.ToArray()));
                     }
@@ -166,22 +172,28 @@ internal static class ArchiveCinematicBodyCoverageAudit
         return "no-decoded-motion";
     }
 
-    private static CinematicActionEvent[] ReadActionRequests(AnimationClip clip, SceneActor actor) =>
+    private static CinematicActionEvent[] ReadActionRequests(AnimationClip clip, SceneActor actor,
+        IEnumerable<(float Time, CinematicLiteralCall Call)> nestedCommands) =>
         clip.Tracks.Where(track => track.Bone < 0)
             .SelectMany(track => track.Keys.SelectMany(key => key.OpaquePayloads
                 .Select(payload => CinematicActionEvent.Decode(key,
                     track.Target == 0 ? clip.CinematicOwnerKey : track.Target, payload))))
             .Where(request => request?.Target == actor.Root.GaoKey && !request.FrequencyOnly && !request.Release)
             .Cast<CinematicActionEvent>()
+            .Concat(nestedCommands.Select(item => CinematicActionEvent.FromLiteralCall(item.Time, item.Call))
+                .Where(request => request is { Target: var target,
+                    Selector: 0x3391 or 0x3398 or 0x3399 } && target == actor.Root.GaoKey)
+                .Cast<CinematicActionEvent>())
             .ToArray();
 
-    private static string DescribeActionRequest(CinematicActionEvent request,
-        IReadOnlyDictionary<uint, Dictionary<int, CinematicAction>> kits)
+    private static string DescribeActionRequest(CinematicActionEvent request, uint preferredWorldKey,
+        IReadOnlyDictionary<(uint WorldKey, uint OwnerKey), Dictionary<int, CinematicAction>> kits)
     {
         string providerStatus = "";
         if (request.Selector is 0x3398 or 0x3399)
         {
-            if (!kits.TryGetValue(request.KitOwner, out var provider))
+            var resolution = CinematicActionKitScopeResolver.Resolve(request.KitOwner, preferredWorldKey, kits);
+            if (resolution.Actions is not { } provider)
                 providerStatus = " provider=missing";
             else
             {

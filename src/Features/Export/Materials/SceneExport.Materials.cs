@@ -35,7 +35,7 @@ public sealed partial class SceneExporter
         if (SceneRenderer.IsCollision(sceneObject))
             pbr["baseColorFactor"] = new[] { .25f, .6f, 1f, 1f };
         else if (options.Textures && layer != null)
-            WriteMaterialTexture(pbr, sceneObject, layer, inverseMask);
+            WriteMaterialTexture(pbr, material, sceneObject, layer, inverseMask);
         WriteMaterialAlpha(material, layer, inverseMask);
         if (inverseMask) material["extras"] = D("bakedInverseAlphaTest", true);
         WarnUnsupportedBlending(sceneObject, layer, inverseMask);

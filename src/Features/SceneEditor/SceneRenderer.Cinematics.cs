@@ -6,11 +6,18 @@ namespace JadeView;
 
 public sealed partial class SceneRenderer
 {
+    private RenderTexture2D cinematicAfterEffectsTarget;
+    private Shader cinematicColorBalanceShader;
+    private int cinematicOffsetEffectLocation = -1;
+    private int cinematicColorBalanceLocation = -1;
+    private bool cinematicColorBalanceShaderInitialized;
+    internal float CinematicOffsetEffect { get; set; } = .5f;
+    internal float CinematicColorBalance { get; set; } = .5f;
     public CinematicShutterState? CinematicShutter { get; set; }
     public Vector4? CinematicScreenFade { get; set; }
     public float? CinematicHorizontalFov { get; set; }
-    internal CinematicFlashState[] CinematicFlashes { get; set; } = [];
-    internal CinematicLightningState[] CinematicLightnings { get; set; } = [];
+    internal IReadOnlyList<CinematicFlashState> CinematicFlashes { get; set; } = Array.Empty<CinematicFlashState>();
+    internal IReadOnlyList<CinematicLightningState> CinematicLightnings { get; set; } = Array.Empty<CinematicLightningState>();
     internal CinematicMaterialState? CinematicMaterials { get; set; }
     private JadeMaterialLayer EffectiveLayer(SceneObject sceneObject, GpuMaterialPass pass)
     {
@@ -20,7 +27,95 @@ public sealed partial class SceneRenderer
     }
     private Vector4 CinematicRliColor => CinematicMaterials?.RliColor ?? Vector4.Zero;
     private float CinematicRliFactor => CinematicMaterials?.RliFactor ?? 0;
+    private Vector4 CinematicFogColor => CinematicMaterials?.FogColor ?? Vector4.Zero;
+    private float CinematicFogNear => CinematicMaterials?.FogNear ?? 0;
+    private float CinematicFogFar => CinematicMaterials?.FogFar ?? 0;
     private float? previousCameraFov;
+
+    internal unsafe RenderTexture2D RenderCinematicAfterEffects()
+    {
+        bool hasOffsetEffect = float.IsFinite(CinematicOffsetEffect)
+            && Math.Abs(CinematicOffsetEffect - .5f) >= .0001f;
+        bool hasColorBalance = float.IsFinite(CinematicColorBalance)
+            && Math.Abs(CinematicColorBalance - .5f) >= .0001f;
+        if (!hasOffsetEffect && !hasColorBalance)
+            return _sceneTarget;
+
+        if (!cinematicColorBalanceShaderInitialized)
+        {
+            cinematicColorBalanceShaderInitialized = true;
+            cinematicColorBalanceShader = Raylib.LoadShaderFromMemory(null, """
+                #version 330
+                in vec2 fragTexCoord;
+                in vec4 fragColor;
+                uniform sampler2D texture0;
+                uniform float offsetEffect;
+                uniform float colorBalance;
+                out vec4 finalColor;
+                void main() {
+                    vec4 source = texture(texture0, fragTexCoord) * fragColor;
+                    float offsetAmount = floor(abs(offsetEffect - 0.5) * 255.0) / 255.0;
+                    vec3 color = offsetEffect >= 0.5
+                        ? clamp(source.rgb + vec3(offsetAmount), 0.0, 1.0)
+                        : clamp(source.rgb - vec3(offsetAmount), 0.0, 1.0);
+                    float balance = clamp(colorBalance, 0.0, 1.0);
+                    if (balance < 0.5) {
+                        float diffuseAlpha = floor(balance * 510.0) / 255.0;
+                        color = mix(color, vec3(128.0 / 255.0), 1.0 - diffuseAlpha);
+                    } else {
+                        float amount = balance * 2.0 - 1.0;
+                        float modulation = floor(amount * 255.0) / 255.0;
+                        float centerOffset = floor(amount * 128.0) / 255.0;
+                        color = clamp(color + color * modulation - vec3(centerOffset), 0.0, 1.0);
+                    }
+                    finalColor = vec4(color, source.a);
+                }
+                """);
+            cinematicOffsetEffectLocation = Raylib.GetShaderLocation(cinematicColorBalanceShader, "offsetEffect");
+            cinematicColorBalanceLocation = Raylib.GetShaderLocation(cinematicColorBalanceShader, "colorBalance");
+        }
+
+        if (cinematicColorBalanceShader.Id == 0 || cinematicOffsetEffectLocation < 0
+            || cinematicColorBalanceLocation < 0) return _sceneTarget;
+        int width = _sceneTarget.Texture.Width;
+        int height = _sceneTarget.Texture.Height;
+        if (cinematicAfterEffectsTarget.Id == 0
+            || cinematicAfterEffectsTarget.Texture.Width != width
+            || cinematicAfterEffectsTarget.Texture.Height != height)
+        {
+            if (cinematicAfterEffectsTarget.Id != 0) Raylib.UnloadRenderTexture(cinematicAfterEffectsTarget);
+            cinematicAfterEffectsTarget = Raylib.LoadRenderTexture(width, height);
+        }
+        if (cinematicAfterEffectsTarget.Id == 0) return _sceneTarget;
+
+        float offsetEffect = float.IsFinite(CinematicOffsetEffect) ? CinematicOffsetEffect : .5f;
+        Raylib.SetShaderValue(cinematicColorBalanceShader, cinematicOffsetEffectLocation,
+            &offsetEffect, ShaderUniformDataType.Float);
+        float colorBalance = float.IsFinite(CinematicColorBalance) ? CinematicColorBalance : .5f;
+        Raylib.SetShaderValue(cinematicColorBalanceShader, cinematicColorBalanceLocation, &colorBalance,
+            ShaderUniformDataType.Float);
+        Raylib.BeginTextureMode(cinematicAfterEffectsTarget);
+        Raylib.ClearBackground(Color.Black);
+        Raylib.BeginShaderMode(cinematicColorBalanceShader);
+        Raylib.DrawTexturePro(_sceneTarget.Texture,
+            new Raylib_cs.Rectangle(0, 0, width, -height),
+            new Raylib_cs.Rectangle(0, 0, width, height),
+            Vector2.Zero, 0, Color.White);
+        Raylib.EndShaderMode();
+        Raylib.EndTextureMode();
+        return cinematicAfterEffectsTarget;
+    }
+
+    private void DisposeCinematicAfterEffects()
+    {
+        if (cinematicAfterEffectsTarget.Id != 0) Raylib.UnloadRenderTexture(cinematicAfterEffectsTarget);
+        if (cinematicColorBalanceShader.Id != 0) Raylib.UnloadShader(cinematicColorBalanceShader);
+        cinematicAfterEffectsTarget = default;
+        cinematicColorBalanceShader = default;
+        cinematicColorBalanceShaderInitialized = false;
+        cinematicOffsetEffectLocation = -1;
+        cinematicColorBalanceLocation = -1;
+    }
 
     private void ApplyCinematicProjection(int width, int height)
     {
@@ -78,7 +173,7 @@ public sealed partial class SceneRenderer
 
     private void DrawCinematicFlashes()
     {
-        if (CinematicFlashes.Length == 0) return;
+        if (CinematicFlashes.Count == 0) return;
         var materialTexture = ResolveCinematicFlashTexture();
         Rlgl.EnableDepthTest();
         SetDepthFunction(515);
@@ -90,16 +185,14 @@ public sealed partial class SceneRenderer
             var cameraToFlash = flash.Position - Camera.Position;
             float cameraDistance = cameraToFlash.Length();
             if (cameraDistance <= 0 || Vector3.Dot(cameraToFlash, viewDirection) <= 0) continue;
-            var adjustedPosition = flash.Position - cameraToFlash / cameraDistance
-                * Math.Min(flash.CameraPullDistance, Math.Max(0, cameraDistance - .01f));
-            var center = Raylib.GetWorldToScreen(adjustedPosition, Camera);
+            var center = Raylib.GetWorldToScreen(flash.Position, Camera);
             if (!float.IsFinite(center.X + center.Y)) continue;
             var cameraRight = Vector3.Normalize(Vector3.Cross(viewDirection, Camera.Up));
             var cameraUp = Vector3.Normalize(Vector3.Cross(cameraRight, viewDirection));
             float pixelsPerWorldUnit = Vector2.Distance(center,
-                Raylib.GetWorldToScreen(adjustedPosition + cameraRight, Camera));
+                Raylib.GetWorldToScreen(flash.Position + cameraRight, Camera));
             float verticalPixelsPerWorldUnit = Vector2.Distance(center,
-                Raylib.GetWorldToScreen(adjustedPosition + cameraUp, Camera));
+                Raylib.GetWorldToScreen(flash.Position + cameraUp, Camera));
             float maximumRayRadius = Math.Min(Target.Texture.Width, Target.Texture.Height) * .22f;
             uint packed = flash.Color;
             var rays = CinematicSunRayLayout.Create(center, flash.RayCount, flash.Seed,
@@ -107,13 +200,10 @@ public sealed partial class SceneRenderer
                 flash.BigWidthMin, flash.BigWidthMax, flash.SmallAngleJitter,
                 flash.SmallLengthMin, flash.SmallLengthMax, flash.SmallWidthMin, flash.SmallWidthMax,
                 flash.LengthRatio, pixelsPerWorldUnit, verticalPixelsPerWorldUnit, maximumRayRadius);
-            foreach (var ray in rays)
-            {
-                var color = new Color((byte)(packed >> 16), (byte)(packed >> 8), (byte)packed,
-                    (byte)Math.Clamp((int)(255 * flash.Opacity), 0, 255));
-                DrawSunRay(ray, center, adjustedPosition, cameraRight, cameraUp,
-                    pixelsPerWorldUnit, verticalPixelsPerWorldUnit, color, materialTexture);
-            }
+            var color = new Color((byte)(packed >> 16), (byte)(packed >> 8), (byte)packed,
+                (byte)Math.Clamp((int)(255 * flash.Opacity), 0, 255));
+            DrawSunRays(rays, center, flash.Position, cameraRight, cameraUp,
+                pixelsPerWorldUnit, verticalPixelsPerWorldUnit, color, materialTexture);
         }
         Rlgl.EnableDepthMask();
         Raylib.EndBlendMode();
@@ -141,19 +231,22 @@ public sealed partial class SceneRenderer
         return GetOrUploadTexture(texture.ToTextureAsset());
     }
 
-    private static void DrawSunRay(CinematicSunRay ray, Vector2 screenCenter, Vector3 planeCenter,
+    private static void DrawSunRays(CinematicSunRay[] rays, Vector2 screenCenter, Vector3 planeCenter,
         Vector3 cameraRight, Vector3 cameraUp, float horizontalScale, float verticalScale,
         Color color, Texture2D? texture)
     {
         Rlgl.Begin((int)Raylib_cs.DrawMode.Triangles);
         Rlgl.SetTexture(texture is { Id: > 0 } rayTexture ? rayTexture.Id : 0);
         Rlgl.Color4ub(color.R, color.G, color.B, color.A);
-        Rlgl.TexCoord2f(.5f, 0);
-        Vertex(ray.Rear);
-        Rlgl.TexCoord2f(0, 1);
-        Vertex(ray.ForwardLeft);
-        Rlgl.TexCoord2f(1, 1);
-        Vertex(ray.ForwardRight);
+        foreach (var ray in rays)
+        {
+            Rlgl.TexCoord2f(.5f, 0);
+            Vertex(ray.Rear);
+            Rlgl.TexCoord2f(0, 1);
+            Vertex(ray.ForwardLeft);
+            Rlgl.TexCoord2f(1, 1);
+            Vertex(ray.ForwardRight);
+        }
         Rlgl.End();
         Rlgl.SetTexture(0);
 
@@ -173,7 +266,7 @@ public sealed partial class SceneRenderer
 
     private void DrawCinematicLightnings()
     {
-        if (CinematicLightnings.Length == 0) return;
+        if (CinematicLightnings.Count == 0) return;
         Raylib.BeginBlendMode(BlendMode.Additive);
         foreach (var lightning in CinematicLightnings)
         {

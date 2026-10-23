@@ -16,24 +16,29 @@ public sealed partial class CinematicBodyTimeline
         .Distinct();
 
     internal static CinematicBodyTimeline Create(AnimationClip source, SceneActor actor,
-        IReadOnlyDictionary<uint, Dictionary<int, CinematicAction>> libraries)
+        IReadOnlyDictionary<uint, Dictionary<int, CinematicAction>> libraries,
+        IEnumerable<(float Time, CinematicLiteralCall Call)>? additionalCalls = null)
         => Create(source, actor, ownerKey => libraries.TryGetValue(ownerKey, out var actions)
             ? new(actions, null, "")
-            : new(null, null, $"Missing body action kit {ownerKey:X8}."));
+            : new(null, null, $"Missing body action kit {ownerKey:X8}."), additionalCalls);
 
     internal static CinematicBodyTimeline Create(AnimationClip source, SceneActor actor,
         uint preferredWorldKey,
-        IReadOnlyDictionary<(uint WorldKey, uint OwnerKey), Dictionary<int, CinematicAction>> libraries)
+        IReadOnlyDictionary<(uint WorldKey, uint OwnerKey), Dictionary<int, CinematicAction>> libraries,
+        IEnumerable<(float Time, CinematicLiteralCall Call)>? additionalCalls = null)
         => Create(source, actor, ownerKey => CinematicActionKitScopeResolver.Resolve(ownerKey,
-            preferredWorldKey, libraries));
+            preferredWorldKey, libraries), additionalCalls);
 
     private static CinematicBodyTimeline Create(AnimationClip source, SceneActor actor,
-        Func<uint, CinematicActionKitResolution> resolveKit)
+        Func<uint, CinematicActionKitResolution> resolveKit,
+        IEnumerable<(float Time, CinematicLiteralCall Call)>? additionalCalls)
     {
         var timeline = new CinematicBodyTimeline();
         var initialKit = resolveKit(actor.Root.GaoKey).Actions;
         var kit = initialKit != null ? new Dictionary<int, CinematicAction>(initialKit) : [];
-        var events = ReadActorEvents(source, actor).OrderBy(action => action.Time);
+        CinematicActionEvent[] events = ReadActorEvents(source, actor, additionalCalls)
+            .OrderBy(action => action.Time)
+            .ToArray();
         foreach (var action in events)
         {
             if (action.Selector is 0x3398 or 0x3399)
@@ -71,15 +76,16 @@ public sealed partial class CinematicBodyTimeline
             if (sameRunningAction) continue;
             timeline.QueueAction(action, definition, kit);
         }
-        timeline.DiagnoseUnresolvedBodyActions(source, actor);
+        timeline.DiagnoseUnresolvedBodyActions(source, actor, events);
         timeline.InitializeMotion(source, actor);
         return timeline;
     }
 
-    private void DiagnoseUnresolvedBodyActions(AnimationClip source, SceneActor actor)
+    private void DiagnoseUnresolvedBodyActions(AnimationClip source, SceneActor actor,
+        CinematicActionEvent[] resolvedEvents)
     {
         if (segments.Count > 0 || actor.Bones.Count == 0) return;
-        var actionRequests = ReadActorEvents(source, actor)
+        var actionRequests = resolvedEvents
             .Where(action => action.Selector == 0x3391 && !action.FrequencyOnly && !action.Release)
             .ToArray();
         if (actionRequests.Length == 0)
@@ -105,13 +111,24 @@ public sealed partial class CinematicBodyTimeline
             + "The preview holds its bind pose; gameplay brain/action state is not reconstructed.");
     }
 
-    private static IEnumerable<CinematicActionEvent> ReadActorEvents(AnimationClip source, SceneActor actor) =>
-        source.Tracks.Where(track => track.Bone < 0)
-            .SelectMany(track => track.Keys.SelectMany(key => key.OpaquePayloads
-                .SelectMany(payload => CinematicOwnerContext.ForTrack(source, track)
-                    .Select(context => CinematicActionEvent.Decode(key, context, payload)))))
-            .Where(action => action != null && IsActorTarget(action.Target, actor))
-            .Cast<CinematicActionEvent>();
+    private static IEnumerable<CinematicActionEvent> ReadActorEvents(AnimationClip source, SceneActor actor,
+        IEnumerable<(float Time, CinematicLiteralCall Call)>? additionalCalls)
+    {
+        foreach (var track in source.Tracks.Where(track => track.Bone < 0))
+        foreach (var key in track.Keys)
+        foreach (var payload in key.OpaquePayloads)
+        foreach (uint ownerContext in CinematicOwnerContext.ForTrack(source, track))
+        {
+            var action = CinematicActionEvent.Decode(key, ownerContext, payload);
+            if (action != null && IsActorTarget(action.Target, actor)) yield return action;
+        }
+
+        foreach (var (time, call) in additionalCalls ?? [])
+        {
+            var action = CinematicActionEvent.FromLiteralCall(time, call);
+            if (action != null && IsActorTarget(action.Target, actor)) yield return action;
+        }
+    }
 
     private static bool IsActorTarget(uint target, SceneActor actor) =>
         target == actor.Root.GaoKey || actor.Members.Any(member => member.GaoKey == target);
@@ -134,18 +151,38 @@ public sealed partial class CinematicBodyTimeline
         }
     }
 
-    internal IEnumerable<(AnimationTrack Track, float Time, Matrix4x4? RootInverse)> Sample(float time, int maxSegment = int.MaxValue)
+    internal bool TrySample(float time, int maxSegment, out AnimationClip clip,
+        out float sampleTime, out Matrix4x4? rootInverse)
     {
-        var segment = segments.Take(maxSegment == int.MaxValue ? segments.Count : maxSegment + 1)
-            .LastOrDefault(segment => segment.Start <= time);
-        if (segment?.SampleAt(time) is not { } sample) yield break;
-        if (sample.Clip.Error != null) yield break;
-        var rootTracks = sample.Clip.Tracks.Where(track => track.Bone < 0 && track.Target == 0);
-        var rootPose = CinematicTransformSampler.Evaluate(new TransformData(), rootTracks, sample.Time);
-        Matrix4x4? rootInverse = Matrix4x4.Invert(rootPose, out var inverse)
+        clip = null!;
+        sampleTime = 0;
+        rootInverse = null;
+        int lastSegment = maxSegment == int.MaxValue ? segments.Count - 1
+            : Math.Min(maxSegment, segments.Count - 1);
+        Segment? segment = null;
+        for (int index = lastSegment; index >= 0; index--)
+        {
+            if (segments[index].Start > time) continue;
+            segment = segments[index];
+            break;
+        }
+        if (segment?.SampleAt(time) is not { } sample || sample.Clip.Error != null) return false;
+
+        clip = sample.Clip;
+        sampleTime = sample.Time;
+        var rootPose = CinematicTransformSampler.EvaluateRoot(clip, sampleTime);
+        rootInverse = Matrix4x4.Invert(rootPose, out var inverse)
             ? inverse : null;
-        foreach (var track in sample.Clip.Tracks.Where(track => track.Bone >= 0))
-            yield return (track, sample.Time, rootInverse);
+        return true;
+    }
+
+    internal IEnumerable<(AnimationTrack Track, float Time, Matrix4x4? RootInverse)> Sample(
+        float time, int maxSegment = int.MaxValue)
+    {
+        if (!TrySample(time, maxSegment, out var clip, out float sampleTime,
+            out Matrix4x4? rootInverse)) yield break;
+        foreach (var track in clip.Tracks)
+            if (track.Bone >= 0) yield return (track, sampleTime, rootInverse);
     }
 
     internal uint? ShapeAt(float time)

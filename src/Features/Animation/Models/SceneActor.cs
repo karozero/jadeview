@@ -23,9 +23,42 @@ public sealed partial class SceneActor
     internal bool IsCinematicWorldResident;
     public int PoseRevision { get; private set; }
     private readonly Dictionary<SceneObject, Matrix4x4> world = [];
-    private Dictionary<SceneObject, Matrix4x4> evaluatedLocals = [];
+    private readonly Dictionary<SceneObject, Matrix4x4> evaluatedLocals = [];
+    private readonly HashSet<SceneObject> visitingWorldPoses = [];
+    private readonly Dictionary<AnimationTrack, SceneObject?> trackTargets = [];
+    private readonly Dictionary<AnimationTrack, List<AnimationKey>> filteredTrackKeys = [];
+    private AnimationClip? cachedTrackClip;
+    private int cachedMemberCount = -1;
+    private bool captureAllocationDiagnostics;
+    private readonly long[] allocationByPhase = new long[5];
+    private int allocationFrameCount;
+    internal bool CaptureAllocationDiagnostics
+    {
+        get => captureAllocationDiagnostics;
+        set => captureAllocationDiagnostics = value;
+    }
+    internal string AllocationDiagnostics
+    {
+        get
+        {
+            double frameCount = Math.Max(1, allocationFrameCount);
+            return $"advance={allocationByPhase[0] / frameCount:F0}, locals={allocationByPhase[1] / frameCount:F0}, "
+                + $"body={allocationByPhase[2] / frameCount:F0}, tracks={allocationByPhase[3] / frameCount:F0}, "
+                + $"world={allocationByPhase[4] / frameCount:F0}B/frame";
+        }
+    }
+    internal void ResetAllocationDiagnostics()
+    {
+        Array.Clear(allocationByPhase);
+        allocationFrameCount = 0;
+    }
     internal bool TryGetEvaluatedLocal(SceneObject member, out Matrix4x4 pose) =>
         evaluatedLocals.TryGetValue(member, out pose);
+
+    internal void InvalidatePose()
+    {
+        PoseRevision++;
+    }
     public void SelectClip(AnimationClip? clip)
     {
         if (clip?.SceneMotion == true) RootMotion = true;
@@ -34,25 +67,40 @@ public sealed partial class SceneActor
     }
     public void Evaluate(float delta)
     {
+        long allocationStart = CaptureAllocationDiagnostics ? GC.GetAllocatedBytesForCurrentThread() : 0;
         AdvancePlayback(delta);
         ApplyCurrentShape();
+        RecordAllocations(0, ref allocationStart);
 
         Matrix4x4 rootRotation = Matrix4x4.Identity;
         Vector3 rootOffset = Vector3.Zero;
         Matrix4x4? cinematicRootPose = GetCinematicRootPose();
         var localPoses = CreateLocalPoses();
+        RecordAllocations(1, ref allocationStart);
         ApplyCinematicBodyPose(localPoses);
+        RecordAllocations(2, ref allocationStart);
 
         if (Clip is { Error: null } activeClip)
         {
+            EnsureTrackCaches(activeClip);
             foreach (var track in activeClip.Tracks)
             {
                 ApplyTrack(track, localPoses, ref rootRotation, ref rootOffset, ref cinematicRootPose);
             }
         }
+        RecordAllocations(3, ref allocationStart);
 
-        evaluatedLocals = localPoses;
         EvaluateWorldPoses(localPoses, cinematicRootPose, rootRotation, rootOffset);
+        RecordAllocations(4, ref allocationStart);
+        if (CaptureAllocationDiagnostics) allocationFrameCount++;
+    }
+
+    private void RecordAllocations(int phase, ref long allocationStart)
+    {
+        if (!CaptureAllocationDiagnostics) return;
+        long current = GC.GetAllocatedBytesForCurrentThread();
+        allocationByPhase[phase] += current - allocationStart;
+        allocationStart = current;
     }
 
     private void AdvancePlayback(float delta)
@@ -83,9 +131,13 @@ public sealed partial class SceneActor
     private Matrix4x4? GetCinematicRootPose() =>
         Clip is { Cinematic: true, CinematicBody: { } body } ? body.RootPose(Time) : null;
 
-    private Dictionary<SceneObject, Matrix4x4> CreateLocalPoses() =>
-        Members.ToDictionary(member => member,
-            member => member.ActorNode?.Local ?? AnimationMath.Trs(member.Transform));
+    private Dictionary<SceneObject, Matrix4x4> CreateLocalPoses()
+    {
+        evaluatedLocals.Clear();
+        foreach (var member in Members)
+            evaluatedLocals[member] = member.ActorNode?.Local ?? AnimationMath.Trs(member.Transform);
+        return evaluatedLocals;
+    }
 
     private void ApplyCinematicBodyPose(Dictionary<SceneObject, Matrix4x4> localPoses)
     {
@@ -96,6 +148,7 @@ public sealed partial class SceneActor
 
         bodyPoseSampler ??= new(this);
         var sampledPoses = bodyPoseSampler.Evaluate(bodyTimeline, Time, localPoses);
+        if (ReferenceEquals(sampledPoses, localPoses)) return;
         foreach (var (member, pose) in sampledPoses)
         {
             localPoses[member] = pose;
@@ -117,17 +170,21 @@ public sealed partial class SceneActor
             return;
         }
 
-        AnimationKey currentKey = keys.LastOrDefault(key => key.Time <= Time) ?? keys[0];
-        if (Clip!.Cinematic && (currentKey.Time > Time || IsEmptyKey(currentKey)))
+        float trackTime = Time;
+        if (track.CinematicPlaybackClock is { } playbackClock
+            && !playbackClock.TryMap(Time, out trackTime)) return;
+
+        int currentIndex = Math.Max(AnimationKeySearch.LastAtOrBefore(keys, trackTime), 0);
+        AnimationKey currentKey = keys[currentIndex];
+        if (Clip!.Cinematic && (currentKey.Time > trackTime || IsEmptyKey(currentKey)))
         {
             return;
         }
 
-        int currentIndex = keys.IndexOf(currentKey);
         AnimationKey nextKey = currentIndex + 1 < keys.Count
             ? keys[currentIndex + 1]
             : Loop ? keys[0] : currentKey;
-        float amount = AnimationInterpolation.Amount(currentKey, Time);
+        float amount = AnimationInterpolation.Amount(currentKey, trackTime);
         Matrix4x4.Decompose(localPoses[target], out var scale, out var rotation, out var position);
 
         if (currentKey.Position is Vector3 startPosition)
@@ -165,12 +222,23 @@ public sealed partial class SceneActor
             return track.Keys;
         }
 
-        return track.Keys
-            .Where(key => key.Position != null || key.Rotation != null || key.Scale != null)
-            .ToList();
+        if (!filteredTrackKeys.TryGetValue(track, out var keys))
+            filteredTrackKeys[track] = keys = track.Keys
+                .Where(key => key.Position != null || key.Rotation != null || key.Scale != null)
+                .ToList();
+        return keys;
     }
 
     private SceneObject? ResolveTrackTarget(AnimationTrack track)
+    {
+        if (trackTargets.TryGetValue(track, out var cachedTarget)) return cachedTarget;
+
+        SceneObject? target = ResolveTrackTargetUncached(track);
+        trackTargets[track] = target;
+        return target;
+    }
+
+    private SceneObject? ResolveTrackTargetUncached(AnimationTrack track)
     {
         if (track.Bone >= 0)
         {
@@ -180,6 +248,16 @@ public sealed partial class SceneActor
         return track.Target is 0 or uint.MaxValue
             ? Root
             : Members.FirstOrDefault(member => member.GaoKey == track.Target);
+    }
+
+    private void EnsureTrackCaches(AnimationClip clip)
+    {
+        if (ReferenceEquals(cachedTrackClip, clip) && cachedMemberCount == Members.Count) return;
+
+        cachedTrackClip = clip;
+        cachedMemberCount = Members.Count;
+        trackTargets.Clear();
+        filteredTrackKeys.Clear();
     }
 
     private static bool IsEmptyKey(AnimationKey key) =>
@@ -222,11 +300,11 @@ public sealed partial class SceneActor
         Matrix4x4? cinematicRootPose, Matrix4x4 rootRotation, Vector3 rootOffset)
     {
         world.Clear();
-        var visiting = new HashSet<SceneObject>();
+        visitingWorldPoses.Clear();
         foreach (var member in Members)
         {
             member.PreviewMatrix = EvaluateWorldPose(member, localPoses, cinematicRootPose,
-                rootRotation, rootOffset, visiting);
+                rootRotation, rootOffset, visitingWorldPoses);
         }
     }
 
@@ -266,6 +344,8 @@ public sealed partial class SceneActor
             selectedShape = shapeKey;
         else if (Clip != null && ClipShapes.TryGetValue(Clip, out uint clipShape))
             selectedShape = clipShape;
+
+        if (appliedShapeKey == selectedShape) return;
 
         ApplyShape(DefaultShape);
         if (selectedShape != DefaultShape) ApplyShape(selectedShape);

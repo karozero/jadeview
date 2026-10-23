@@ -188,11 +188,11 @@ internal static class CinematicScriptEventTrackCallResolver
 
     private static bool TryGetOperation(string api, out string operation, out bool affectsAllTracks)
     {
-        affectsAllTracks = api.EndsWith("All", StringComparison.Ordinal);
+        affectsAllTracks = api.EndsWith("All", StringComparison.Ordinal) || api == "TRASetTime";
         string operationCore = affectsAllTracks ? api[..^3] : api;
         operation = api;
         return operationCore is "TRAPlay" or "TRAStop" or "TRAPause" or "TRAUnPause"
-            or "TRAReinit" or "TRAIsStop" or "TRASetEnd";
+            or "TRAReinit" or "TRAIsStop" or "TRASetEnd" or "TRASetTime";
     }
 
     private static string Normalize(string expression) =>

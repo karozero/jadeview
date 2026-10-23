@@ -68,7 +68,7 @@ public sealed record CinematicScriptOwner(
 
 public sealed record CinematicScriptCallbackSlot(int Index, uint FunctionKey, string? FunctionName);
 
-internal readonly record struct CinematicScriptOwnerId(uint WorldKey, uint OwnerKey);
+public readonly record struct CinematicScriptOwnerId(uint WorldKey, uint OwnerKey);
 
 public sealed record CinematicScriptObjectReference(string VariableName, uint TargetKey, string Source,
     string? TargetName, int? ArrayIndex = null);

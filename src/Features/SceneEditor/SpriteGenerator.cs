@@ -72,8 +72,20 @@ internal static class SpriteGenerator
 
     public static Vector3[] FaceCamera(Geometry geo, Vector3[]? posed, Matrix4x4 world, Vector3 cameraRight, Vector3 cameraUp, float time)
     {
-        var positions=(Vector3[])(posed??geo.Positions).Clone();
-        if(!Matrix4x4.Invert(world,out var inverse))return positions;
+        var positions=new Vector3[(posed??geo.Positions).Length];
+        FillFaceCamera(geo, posed, world, cameraRight, cameraUp, time, positions);
+        return positions;
+    }
+
+    internal static void FillFaceCamera(Geometry geo, Vector3[]? posed, Matrix4x4 world,
+        Vector3 cameraRight, Vector3 cameraUp, float time, Span<Vector3> positions)
+    {
+        Vector3[] sourcePositions = posed ?? geo.Positions;
+        if (positions.Length < sourcePositions.Length)
+            throw new ArgumentException("Billboard output buffer is smaller than its source geometry.", nameof(positions));
+        positions = positions[..sourcePositions.Length];
+        sourcePositions.AsSpan().CopyTo(positions);
+        if(!Matrix4x4.Invert(world,out var inverse))return;
         // Do not normalize local vectors: the inverse scale is required to keep world-space facing.
         var right=TransformData.FromRender(Vector3.TransformNormal(cameraRight,inverse));
         var up=TransformData.FromRender(Vector3.TransformNormal(cameraUp,inverse));
@@ -88,6 +100,5 @@ internal static class SpriteGenerator
             positions[sprite.Vertex]=center+r-u;positions[sprite.Vertex+1]=center-r-u;
             positions[sprite.Vertex+2]=center-r+u+wind;positions[sprite.Vertex+3]=center+r+u+wind;
         }
-        return positions;
     }
 }

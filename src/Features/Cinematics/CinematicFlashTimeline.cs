@@ -7,6 +7,7 @@ internal sealed class CinematicFlashTimeline
     private const int CapabilitySet = 8133;
     private const uint FlashCapability = 0x100;
     private readonly FlashTrack[] tracks;
+    private readonly List<CinematicFlashState> activeStates = [];
 
     internal CinematicFlashTimeline(AnimationClip source, WorldData world,
         IReadOnlyDictionary<uint, CinematicFlashController> controllers)
@@ -26,30 +27,31 @@ internal sealed class CinematicFlashTimeline
         }).OfType<FlashTrack>().ToArray();
     }
 
-    internal CinematicFlashState[] Evaluate(float time)
+    internal IReadOnlyList<CinematicFlashState> Evaluate(float time)
     {
-        var active = new List<CinematicFlashState>();
+        activeStates.Clear();
         foreach (var track in tracks)
         {
-            if (!TryGetOpacity(track, time, out float opacity, out float cameraPullDistance))
+            if (!TryGetOpacity(track, time, out float opacity))
             {
                 continue;
             }
 
-            active.Add(CreateFlashState(track, opacity, cameraPullDistance));
+            activeStates.Add(CreateFlashState(track, opacity));
         }
-        return active.ToArray();
+        return activeStates;
     }
 
-    private static bool TryGetOpacity(FlashTrack track, float time, out float opacity,
-        out float cameraPullDistance)
+    private static bool TryGetOpacity(FlashTrack track, float time, out float opacity)
     {
         bool enabled = (track.Controller.InitialCapabilities & FlashCapability) != 0;
         float? start = enabled ? 0 : null;
         float? stop = null;
 
-        foreach (var change in track.Changes.TakeWhile(change => change.Time <= time))
+        for (int changeIndex = 0; changeIndex < track.Changes.Length
+            && track.Changes[changeIndex].Time <= time; changeIndex++)
         {
+            var change = track.Changes[changeIndex];
             bool nextEnabled = change.SetMask != 0 || enabled && change.RemoveMask == 0;
             if (nextEnabled && !enabled)
             {
@@ -67,7 +69,6 @@ internal sealed class CinematicFlashTimeline
         if (start == null)
         {
             opacity = 0;
-            cameraPullDistance = 0;
             return false;
         }
 
@@ -78,9 +79,6 @@ internal sealed class CinematicFlashTimeline
         }
 
         opacity = Math.Clamp(opacity, 0, 1);
-        // SFX_Flash moves the GFX_Sun plane by the configured extrusion while
-        // enabled, then returns it to one world unit from its source while fading.
-        cameraPullDistance = enabled ? track.Controller.ExtrudeDistance : 1;
         return opacity > 0;
     }
 
@@ -114,8 +112,7 @@ internal sealed class CinematicFlashTimeline
         return 1 - (time - stop) / controller.DisappearDelay;
     }
 
-    private static CinematicFlashState CreateFlashState(FlashTrack track, float opacity,
-        float cameraPullDistance)
+    private static CinematicFlashState CreateFlashState(FlashTrack track, float opacity)
     {
         var controller = track.Controller;
         var sourcePosition = track.SnapActor.RenderMatrix.Translation;
@@ -126,7 +123,7 @@ internal sealed class CinematicFlashTimeline
         float zoom = track.SnapActor.CinematicZoom ?? 1;
         var position = sourcePosition + offset * zoom;
 
-        return new(position, controller.OwnerKey, cameraPullDistance, controller.LengthRatio,
+        return new(position, controller.OwnerKey, controller.LengthRatio,
             controller.Color, controller.RayCount, opacity,
             controller.BigAlpha,
             controller.BigLengthMin, controller.BigLengthMax,

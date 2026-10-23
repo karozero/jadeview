@@ -75,23 +75,25 @@ internal static class CinematicDialogueMessageResolver
         if (line.SoundId is >= 0 and var soundId)
         {
             string variation = line.SoundVariantMax is > 0
-                ? $" · variation field {line.SoundVariantMax}"
+                ? $" · ai_son_differents={line.SoundVariantMax}"
                 : "";
-            details.Add($"Configured global voice sound ID {soundId}{variation}; archive preview cannot map the runtime sound-table order.");
+            details.Add($"Associated sound parameter {soundId} (des_ai_son_associe){variation}; this is not a resolved WAVE key.");
         }
         else if (line.SoundId == -1)
         {
-            details.Add("Global voice sound ID -1 disables per-line audio. The selected text may still be voiced through another audio path.");
+            details.Add("Associated sound parameter -1; a separate text-bank voice may still be available.");
         }
         if (line.Volume is { } volume)
             details.Add(volume == 0
-                ? "Configured voice volume is zero; Iris substitutes 0.8."
-                : $"Configured voice volume {volume.ToString("0.###", CultureInfo.InvariantCulture)}.");
+                ? "Associated audio volume is zero; Iris substitutes 0.8."
+                : $"Associated audio volume {volume.ToString("0.###", CultureInfo.InvariantCulture)}.");
         if (line.Near is { } near && line.Far is { } far)
             details.Add(near == far
                 ? "Configured near/far distances are equal; Iris's text manager substitutes 0 and 50."
                 : $"Configured near/far distances {near.ToString("0.###", CultureInfo.InvariantCulture)} / {far.ToString("0.###", CultureInfo.InvariantCulture)}.");
 
+        if (line.TextBankKey is not (0 or uint.MaxValue))
+            details.Add("Jaded resolves dialogue voice separately: TEXT file key + text ID → TXL sound key. JadeView's current PC TXI/TXS reader does not expose that voice mapping.");
         details.Add("Static OVA/message mapping only: current queue competition, option gates, and audio playback state are not evaluated.");
         return details.ToArray();
     }

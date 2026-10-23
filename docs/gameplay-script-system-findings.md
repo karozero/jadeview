@@ -215,6 +215,15 @@ and collision activation distinct, inspectable state from render visibility.
 Jaded is an earlier engine source tree, so this corroborates the API mechanics
 but is not by itself proof that every retail BGE script follows the same path.
 
+IrisEngine's PC implementation provides the retail-side details for cinematic
+event preview: `OBJ_CapaSet` applies add/remove masks to `uw_Capacities`, while
+`OBJ_CapaNot` XORs its argument into that field. The serialized capacity field
+is 16-bit even though the wrapper arguments are read as signed 16-bit values;
+preview therefore truncates both operations to the low 16 bits and restores the
+initial mask on reverse seek. This models literal event commands only. It does
+not execute callback branches, collision tests, or saved-flag gates that might
+decide whether a command runs.
+
 ### Spatial trigger zones are stateful script owners
 
 The recovered `Detect_o_Zone` brain is a concrete generic trigger mechanism.

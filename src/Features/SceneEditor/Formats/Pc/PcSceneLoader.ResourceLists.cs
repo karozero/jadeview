@@ -48,11 +48,13 @@ internal sealed partial class PcSceneLoader
 
     private void ReadActionKeys(int offset, int end)
     {
-        for (int position = offset; position < end; position += 4)
+        // Keep discovery stride-wide: a BF may contain normal 8-byte records or
+        // the 4-byte references emitted by the engine's separate /BIN path.
+        for (int position = offset; position < end; position += PcActionKitFormat.ActionKeySize)
         {
             uint key = ReadUInt32(position);
             if (key == 1)
-                position += 4;
+                position += PcActionKitFormat.ActionKeySize;
             else
                 EnqueueRequest(key, 'a');
         }

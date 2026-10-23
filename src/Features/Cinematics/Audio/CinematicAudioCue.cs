@@ -2,12 +2,22 @@ namespace JadeView;
 
 public sealed record CinematicAudioCue(float Start, float End, uint OwnerKey, int ModifierId,
     uint SoundKey, float Volume, bool Loop, string? Label = null,
-    string? ChoiceGroup = null, int ChoiceIndex = 0, int ChoiceCount = 1);
+    string? ChoiceGroup = null, int ChoiceIndex = 0, int ChoiceCount = 1,
+    float StopTime = -1);
 
 internal sealed record CinematicAudioTimelineResult(CinematicAudioCue[] Cues, string[] Diagnostics);
 
 internal static class CinematicAudioCueSelection
 {
+    internal static HashSet<int> CreateDefaultIndices(CinematicAudioCue[] cues) =>
+        cues.Select((cue, index) => (cue, index))
+            .Where(item => item.cue.ChoiceGroup == null || item.cue.ChoiceIndex == 0)
+            .Select(item => item.index)
+            .ToHashSet();
+
+    internal static CinematicAudioCue[] SelectDefault(CinematicAudioCue[] cues) =>
+        Select(cues, CreateDefaultIndices(cues));
+
     internal static CinematicAudioCue[] Select(CinematicAudioCue[] cues, IReadOnlySet<int> selectedIndices) =>
         cues.Where((_, index) => selectedIndices.Contains(index)).ToArray();
 

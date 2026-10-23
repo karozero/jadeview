@@ -59,7 +59,7 @@ internal static partial class CinematicScriptBehaviorAnalyzer
             var details = new List<string>();
             if (line.TextBankKey != 0 || line.TextId != 0)
                 details.Add($"text {line.TextBankKey:X8}:{line.TextId}");
-            if (line.SoundId is > 0) details.Add($"sound modifier {line.SoundId}");
+            if (line.SoundId is > 0) details.Add($"associated sound parameter {line.SoundId}");
             if (line.TextBox is { } textBox) details.Add($"text box {textBox.ToString("R", CultureInfo.InvariantCulture)}");
             if (line.Volume is { } volume) details.Add($"stored volume {volume.ToString("R", CultureInfo.InvariantCulture)}");
             if (line.Near.HasValue || line.Far.HasValue)

@@ -38,7 +38,42 @@ internal static class MaterialExportChecks
             "Material color or alpha override was lost");
         Check(exported.GetProperty("alphaMode").GetString() == "BLEND", "Transparent material became opaque");
         Console.WriteLine("PASS: bone-projected UV, material tint and independent alpha override");
+        VerifyProceduralTextureMetadata(output);
         VerifyVertexColors(world, resolver, geometry, bytes, output);
+    }
+
+    private static void VerifyProceduralTextureMetadata(string output)
+    {
+        var resolver = new ResourceResolver();
+        var geometry = new Geometry { Key = 711, Positions = [Vector3.Zero, Vector3.UnitX, Vector3.UnitZ],
+            Parts = [new(0, [0, 1, 2], [])] };
+        byte[] materialBytes = new byte[36];
+        BitConverter.GetBytes(3).CopyTo(materialBytes, 0);
+        BitConverter.GetBytes(0xBF000F07u).CopyTo(materialBytes, 28);
+        Register(resolver, "_geometries", geometry.Key, geometry);
+        Register(resolver, "_materials", 712, new ResolvedMaterial { Type = 3, SourceBytes = materialBytes });
+        Register(resolver, "_proceduralTextures", 0xBF000F07u,
+            new ResolvedProceduralTexture(0xBF000F07, "FF805833", 0x2429, 96, 3, 128, 128,
+                0x61006334, "propaganda_01.bik"));
+        var world = new WorldData();
+        world.Objects.Add(new SceneObject { Name = "Video surface", GeometryKey = geometry.Key, MaterialKey = 712 });
+        string path = Path.Combine(output, "procedural-video-material.glb");
+        var result = SceneExporter.Export(path, world, resolver, new() { Textures = true });
+        using var glb = new GlbReader(path);
+        var material = glb.Root.GetProperty("materials")[0];
+        var video = material.GetProperty("extras").GetProperty("jadeProceduralTexture");
+        Check(video.GetProperty("key").GetString() == "BF000F07"
+            && video.GetProperty("kind").GetString() == "Video stream"
+            && video.GetProperty("mediaKey").GetString() == "61006334"
+            && video.GetProperty("mediaName").GetString() == "propaganda_01.bik"
+            && video.GetProperty("width").GetInt32() == 128
+            && video.GetProperty("height").GetInt32() == 128
+            && video.GetProperty("scope").GetString() == "FF805833",
+            "GLB material extras must preserve a procedural video's descriptor and linked media resource.");
+        Check(result.Warnings.Any(warning => warning.Contains("GLB stores source metadata", StringComparison.Ordinal))
+            && !result.Warnings.Any(warning => warning.Contains("unresolved texture BF000F07", StringComparison.Ordinal)),
+            "Procedural video exports should explain the playback limitation instead of calling the source texture unresolved.");
+        Console.WriteLine("PASS: GLB preserves procedural video descriptor and linked Bink resource metadata");
     }
 
     private static void VerifyVertexColors(WorldData world, ResourceResolver resolver, Geometry geometry,

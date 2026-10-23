@@ -28,15 +28,104 @@ public sealed partial class EditorShell
         }
 
         SelectCinematicClip();
+        if (_cinematicPlayback is { EventTrackTransformCount: > 0 } playbackWithEventTracks)
+            ImGui.TextWrapped($"{playbackWithEventTracks.EventTrackTransformCount} script-linked EVE transform channels are overlaid from the clip start. Callback gates and runtime activation are not simulated.");
         DrawPlaybackControls();
         DrawCinematicAudioControls();
         DrawCategoryTitle("Scene state");
         ImGui.Checkbox("Show hidden / conditional objects (debug)", ref Renderer.ShowGameHidden);
+        DrawCallbackSceneEventOwnerControls();
+        DrawManualSceneEventOwnerControls();
+        DrawCinematicScreenFadeStatus();
         DrawCinematicCameraControls();
         DrawParticipants();
         DrawCinematicScriptInspector();
         DrawCinematicSelectedObjectEventCommands();
         DrawCinematicEmbeddedEventTrackInventory();
+    }
+
+    private void DrawCallbackSceneEventOwnerControls()
+    {
+        if (Document == null || _cinematicPlayback is not { CallbackSceneEventOwners.Length: > 0 } playback)
+            return;
+
+        DrawCategoryTitle("Callback-linked EVE channels");
+        ImGui.TextWrapped("These source-reachable callback owners start this clip's SceneEvents list. Select an owner to inspect its callback and gate analysis below; disable it to omit its linked tracks from preview and GLB export. Runtime start gates are not executed.");
+        foreach (var ownerId in playback.CallbackSceneEventOwners)
+        {
+            Document.CinematicScriptOwners.TryGetValue(ownerId, out var owner);
+            string ownerName = owner?.Name ?? "Unknown callback owner";
+            string ownerLabel = $"{ownerName} · {ownerId.OwnerKey:X8}";
+            if (ImGui.Selectable($"{ownerLabel}##callback-scene-owner-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}",
+                    _selectedCinematicScriptOwnerId == ownerId))
+                _selectedCinematicScriptOwnerId = ownerId;
+            ImGui.SameLine();
+            bool enabled = !_disabledCinematicCallbackOwners.Contains(ownerId);
+            if (!ImGui.Checkbox($"Include##callback-scene-events-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}",
+                    ref enabled))
+                continue;
+
+            if (enabled) _disabledCinematicCallbackOwners.Remove(ownerId);
+            else _disabledCinematicCallbackOwners.Add(ownerId);
+            RebuildCinematicPlayersForScriptSelection(playback);
+            return;
+        }
+    }
+
+    private void DrawManualSceneEventOwnerControls()
+    {
+        if (Document == null || _cinematicPlayback is not { PreviewableSceneEventOwners.Length: > 0 } playback)
+            return;
+
+        DrawCategoryTitle("Script-owned EVE preview");
+        ImGui.TextWrapped("These owners have separate SceneEvents lists in the cinematic or paired gameplay world. Enable an owner to preview all its serialized channels from time zero; source callback gates are not executed. Enabled channels are included in synchronized export.");
+        foreach (var ownerId in playback.PreviewableSceneEventOwners)
+        {
+            Document.CinematicScriptOwners.TryGetValue(ownerId, out var owner);
+            string ownerName = owner?.Name ?? "Unknown script owner";
+            string ownerLabel = $"{ownerName} · {ownerId.OwnerKey:X8}";
+            if (ImGui.Selectable($"{ownerLabel}##script-eve-owner-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}",
+                    _selectedCinematicScriptOwnerId == ownerId))
+                _selectedCinematicScriptOwnerId = ownerId;
+            ImGui.SameLine();
+            bool enabled = _previewedCinematicSceneEventOwners.Contains(ownerId);
+            if (!ImGui.Checkbox($"Preview##script-eve-preview-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}",
+                    ref enabled))
+                continue;
+
+            if (enabled) _previewedCinematicSceneEventOwners.Add(ownerId);
+            else _previewedCinematicSceneEventOwners.Remove(ownerId);
+            RebuildCinematicPlayersForScriptSelection(playback);
+            return;
+        }
+    }
+
+    private void RebuildCinematicPlayersForScriptSelection(CinematicPlayback previousPlayback)
+    {
+        if (Document == null || _cinematicWorld == null) return;
+        uint clipKey = previousPlayback.Key;
+        float playhead = previousPlayback.Time;
+        bool resumePlayback = previousPlayback.Playing;
+        int cameraIndex = previousPlayback.CameraIndex;
+        previousPlayback.Deactivate();
+
+        _cinematicPlayers = CinematicPlayback.Discover(Document, _cinematicWorld, Resolver, Archive?.Entries,
+            _disabledCinematicCallbackOwners, _previewedCinematicSceneEventOwners);
+        _cinematicPlayback = _cinematicPlayers.FirstOrDefault(candidate => candidate.Key == clipKey)
+            ?? _cinematicPlayers.FirstOrDefault();
+        if (_cinematicPlayback == null) return;
+
+        _cinematicPlayback.CameraIndex = cameraIndex;
+        _cinematicPlayback.Activate();
+        _cinematicPlayback.Seek(playhead);
+        if (resumePlayback) _cinematicPlayback.Play();
+    }
+
+    private void DrawCinematicScreenFadeStatus()
+    {
+        if (_cinematicPlayback?.ScreenFade is not { } fade) return;
+        var clampedFade = Vector4.Clamp(fade, Vector4.Zero, Vector4.One);
+        ImGui.TextDisabled($"Source screen fade active · RGB {clampedFade.X:F2}, {clampedFade.Y:F2}, {clampedFade.Z:F2} · opacity {clampedFade.W:P0}");
     }
 
     private void SelectCinematicClip()
@@ -52,6 +141,9 @@ public sealed partial class EditorShell
         {
             _cinematicPlayback?.Deactivate();
             ResetCinematicAudio();
+            _cinematicVideoPostRollActive = false;
+            _cinematicVideoPostRollCompleted = false;
+            _cinematicVideoPostRollSeconds = 0;
             _cinematicPlayback = _cinematicPlayers[selectedIndex];
             _cinematicPlayback.Activate();
         }
@@ -67,12 +159,21 @@ public sealed partial class EditorShell
         {
             if (_cinematicPlayback.Playing) _cinematicPlayback.Pause();
             else _cinematicPlayback.Play();
+            _cinematicVideoPostRollActive = false;
+            _cinematicVideoPostRollCompleted = false;
+            _cinematicVideoPostRollSeconds = 0;
         }
         ImGui.EndDisabled();
         ImGui.SameLine();
-        if (ImGui.Button("Restart")) _cinematicPlayback.Restart();
+        if (ImGui.Button("Restart"))
+        {
+            _cinematicPlayback.Restart();
+            _cinematicVideoPostRollActive = false;
+            _cinematicVideoPostRollCompleted = false;
+            _cinematicVideoPostRollSeconds = 0;
+        }
         ImGui.SameLine();
-        if (ImGui.Button("Export synchronized actors")) OpenCinematicExport();
+        if (ImGui.Button("Export synchronized scene")) OpenCinematicExport();
 
         float playhead = _cinematicPlayback.Time;
         ImGui.SetNextItemWidth(-1);
@@ -83,12 +184,18 @@ public sealed partial class EditorShell
         {
             _cinematicPlayback.Pause();
             _cinematicPlayback.Seek(playhead);
+            _cinematicVideoPostRollActive = false;
+            _cinematicVideoPostRollCompleted = false;
+            _cinematicVideoPostRollSeconds = 0;
         }
+        if (_cinematicVideoPostRollActive)
+            ImGui.TextDisabled($"Script-triggered video post-roll{(_cinematicVideoPostRollCompleted ? " complete" : " active")} · {_cinematicVideoPostRollSeconds:F2}s");
     }
 
     private void OpenCinematicExport()
     {
         _exportTarget = null;
+        _exportOptions.Actors = true;
         _exportOptions.Animations = true;
         _exportOptions.AllClips = false;
         _exportOptions.ExperimentalMouthCycle = false;
@@ -110,7 +217,9 @@ public sealed partial class EditorShell
         DrawCategoryTitle("Facial animation bindings");
         foreach (string diagnostic in _cinematicPlayback.FacialDiagnostics)
             ImGui.TextWrapped(diagnostic);
-        ImGui.TextWrapped("Actors, source camera, supported sound modifiers and facial controls follow one source clock. Mouth forms use authored controls; phoneme-level lip sync and the full script VM are not reconstructed.");
+        foreach (string diagnostic in _cinematicPlayback.TransformDiagnostics)
+            ImGui.TextWrapped(diagnostic);
+        ImGui.TextWrapped("Actors, camera, video and effects follow the application playback clock. Audio is streamed from the same source timeline; device-buffer timing is not used to drive scene updates. Mouth forms use authored controls; phoneme-level lip sync and the full script VM are not reconstructed.");
     }
 
     private void DrawCinematicScriptInspector()
@@ -184,7 +293,7 @@ public sealed partial class EditorShell
                 : "This script owner belongs to the cinematic world. The archive does not prove that it runs during the selected track.");
         }
         string[] behavior = CinematicScriptBehaviorAnalyzer.Analyze(selected,
-            Document.CinematicScriptOwners.Values);
+            Document.CinematicScriptOwners.Values, _cinematicWorld?.Objects);
         if (behavior.Length > 0)
         {
             DrawCategoryTitle("Static trigger analysis");
@@ -350,21 +459,21 @@ public sealed partial class EditorShell
     {
         if (_cinematicPlayback == null) return;
         var gates = CinematicTimelineFlagAnalyzer.Analyze(owner,
-            _cinematicPlayback.ScriptCalls, _cinematicPlayback.Time);
+            _cinematicPlayback.ScriptStateCalls, _cinematicPlayback.Time);
         if (gates.Length == 0) return;
 
         DrawCategoryTitle("Saved-flag gates at playhead");
-        ImGui.TextDisabled("State is inferred only from literal set/clear commands in the selected cinematic track. Flags without a prior write remain unknown; other start conditions and runtime scheduling are not evaluated.");
+        ImGui.TextDisabled("State is inferred from literal writes in the selected clip and its resolved SceneEvents routes. Flags without a prior write remain unknown; conditional callbacks, other worlds and live save state are not evaluated.");
         foreach (var gate in gates)
         {
             string required = gate.RequiredSet ? "set" : "clear";
             string state = gate.CurrentSet switch
             {
-                true => "currently set by this track",
-                false => "currently clear by this track",
+                true => "set by resolved timeline writes",
+                false => "clear by resolved timeline writes",
                 _ => gate.NextWriteTime is { } nextTime
-                    ? $"unknown so far; next track write at {nextTime:F2}s"
-                    : "unknown (no track write observed)"
+                    ? $"unknown so far; next resolved write at {nextTime:F2}s"
+                    : "unknown (no resolved write observed)"
             };
             string result = gate.Satisfied switch
             {
@@ -749,6 +858,7 @@ public sealed partial class EditorShell
                     ImGuiCond.FirstUseEver);
             if (ImGui.TreeNode($"{channelLabel}##eve-channel{list.WorldKey:X8}{list.OwnerKey:X8}{list.EventKey:X8}{track.Index}"))
             {
+                DrawCinematicEventTrackPreviewControl(list, track);
                 foreach (var (time, call) in track.Calls.Take(32))
                 {
                     string function = CinematicEngineFunctionCatalog.NameFor(call.Selector);
@@ -858,6 +968,33 @@ public sealed partial class EditorShell
         ImGui.TreePop();
     }
 
+    private void DrawCinematicEventTrackPreviewControl(CinematicEmbeddedEventTrackList list,
+        CinematicEmbeddedEventTrack eventTrack)
+    {
+        if (_cinematicPlayback == null || _cinematicWorld == null
+            || list.WorldKey != _cinematicWorld.Key
+            || eventTrack.SourceTrack is not { } sourceTrack
+            || !CinematicEventTrackPreview.HasTransformData(sourceTrack))
+            return;
+
+        uint targetKey = eventTrack.TargetKey == 0 ? list.OwnerKey : eventTrack.TargetKey;
+        var target = _cinematicWorld.Objects.FirstOrDefault(sceneObject => sceneObject.GaoKey == targetKey);
+        if (target == null)
+        {
+            ImGui.TextDisabled($"Transform preview unavailable: target {targetKey:X8} is not loaded in this cinematic world.");
+            return;
+        }
+
+        bool isActive = _cinematicPlayback.IsPreviewingEventTrack(target, sourceTrack);
+        string buttonLabel = isActive ? "Stop manual EVE transform preview" : "Preview EVE transform from playhead";
+        if (ImGui.SmallButton($"{buttonLabel}##eve-transform{list.WorldKey:X8}{list.OwnerKey:X8}{list.EventKey:X8}{eventTrack.Index}"))
+        {
+            if (isActive) _cinematicPlayback.ClearEventTrackPreview();
+            else _cinematicPlayback.PreviewEventTrack(target, sourceTrack);
+        }
+        ImGui.TextWrapped("Manual transform-only preview. It follows this cinematic playhead from the moment you start it; it does not imply the game's callback or activation gate ran.");
+    }
+
     private void DrawCinematicDialogueMessageLookup(CinematicTimelineMessage message, uint preferredWorldKey)
     {
         if (Document == null) return;
@@ -924,8 +1061,8 @@ public sealed partial class EditorShell
             details.Add($"text {line.TextBankKey:X8}:{line.TextId}");
         if (line.SoundId is > 0)
             details.Add(line.SoundVariantMax is > 0
-                ? $"voice {line.SoundId} (variant limit {line.SoundVariantMax})"
-                : $"voice {line.SoundId}");
+                ? $"associated sound {line.SoundId} (ai_son_differents {line.SoundVariantMax})"
+                : $"associated sound {line.SoundId}");
         if (line.TextBox is { } textBox && textBox != 0) details.Add($"box {textBox:G}");
         if (line.Volume is { } volume && volume != 0) details.Add($"volume {volume:G}");
         if (line.Near is { } near && near != 0) details.Add($"near {near:G}");
@@ -1116,7 +1253,10 @@ public sealed partial class EditorShell
                     string media = procedural.MediaKey is { } mediaKey
                         ? $" · media {procedural.MediaName ?? "unresolved"} ({mediaKey:X8})"
                         : " · no media key decoded";
-                    ImGui.TextWrapped($"  {binding} · procedural subtype {procedural.Subtype} · {procedural.Width}×{procedural.Height}{media}");
+                    ImGui.TextWrapped($"  {binding} · {ProceduralTextureKind.Name(procedural.Subtype)} · {procedural.Width}×{procedural.Height}{media}");
+                    ImGui.TextDisabled($"    Preview: {ProceduralTextureKind.PreviewStatus(procedural.Subtype)}");
+                    if (procedural.Subtype == 3)
+                        ImGui.TextDisabled($"    Runtime: {Renderer.ProceduralVideoStatus(procedural.Key)}");
                 }
                 else if (Resolver.Textures.TryGetValue(textureKey, out var texture))
                 {
@@ -1181,20 +1321,75 @@ public sealed partial class EditorShell
 
     private void UpdateCinematicPlayback()
     {
+        long startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            UpdateCinematicPlaybackCore();
+        }
+        finally
+        {
+            Renderer.StatCinematicUpdateMilliseconds = (float)
+                System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
+        }
+    }
+
+    private void UpdateCinematicPlaybackCore()
+    {
+        Renderer.StatCinematicAudioMilliseconds = 0;
         Renderer.CinematicShutter = null;
         Renderer.CinematicFlashes = [];
         Renderer.CinematicLightnings = [];
         Renderer.CinematicScreenFade = null;
+        Renderer.CinematicOffsetEffect = .5f;
+        Renderer.CinematicColorBalance = .5f;
         Renderer.CinematicHorizontalFov = null;
         Renderer.CinematicMaterials = null;
-        if (!_cutsceneMode || _cinematicPlayback == null) return;
-        _cinematicPlayback.Advance(Raylib_cs.Raylib.GetFrameTime());
+        Renderer.CinematicVideoTime = null;
+        Renderer.CinematicVideoPlayback = null;
+        if (!_cutsceneMode || _cinematicPlayback == null)
+        {
+            Renderer.CinematicMaterials = ResolveEnvironmentPreview(ActiveWorld);
+            return;
+        }
+        double audioClockTime = 0;
+        bool audioClockAvailable = _cinematicAudio?.TryGetTimelineClock(out audioClockTime) == true;
+        float frameDelta = CinematicAudioPlaybackClock.Delta(_cinematicPlayback.Time,
+            audioClockTime, audioClockAvailable, Raylib_cs.Raylib.GetFrameTime());
+        bool wasPlaying = _cinematicPlayback.Playing;
+        _cinematicPlayback.Advance(frameDelta);
+        bool sourceTimelineJustEnded = wasPlaying && !_cinematicPlayback.Playing
+            && _cinematicPlayback.Time >= _cinematicPlayback.Duration;
+        if (_cinematicPlayback.Time < _cinematicPlayback.Duration)
+        {
+            _cinematicVideoPostRollActive = false;
+            _cinematicVideoPostRollCompleted = false;
+            _cinematicVideoPostRollSeconds = 0;
+        }
+        Renderer.CinematicVideoPlayback = _cinematicPlayback.VideoPlayback;
+        if (sourceTimelineJustEnded && Renderer.HasContinuingCinematicVideo(_cinematicPlayback.Time))
+        {
+            _cinematicVideoPostRollActive = true;
+            _cinematicVideoPostRollCompleted = false;
+            _cinematicVideoPostRollSeconds = 0;
+        }
+        else if (_cinematicVideoPostRollActive && !_cinematicVideoPostRollCompleted)
+        {
+            _cinematicVideoPostRollSeconds += frameDelta;
+            _cinematicVideoPostRollCompleted = !Renderer.HasContinuingCinematicVideo(
+                _cinematicPlayback.Time + _cinematicVideoPostRollSeconds);
+        }
+        Renderer.CinematicVideoTime = _cinematicPlayback.Time + _cinematicVideoPostRollSeconds;
         Renderer.CinematicShutter = _cinematicPlayback.Shutter;
         Renderer.CinematicFlashes = _cinematicPlayback.Flashes;
         Renderer.CinematicLightnings = _cinematicPlayback.Lightnings;
         Renderer.CinematicScreenFade = _cinematicPlayback.ScreenFade;
         Renderer.CinematicMaterials = _cinematicPlayback.MaterialState;
+        Renderer.CinematicOffsetEffect = _cinematicPlayback.OffsetEffect;
+        Renderer.CinematicColorBalance = _cinematicPlayback.ColorBalance;
+        long audioUpdateStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
         _cinematicAudio?.Update(_cinematicPlayback.Time, _cinematicPlayback.Playing);
+        Renderer.StatCinematicAudioMilliseconds = (float)
+            System.Diagnostics.Stopwatch.GetElapsedTime(audioUpdateStartedAt).TotalMilliseconds;
         if (_cinematicPlayback.Playing && _soundPlaying)
         {
             Raylib_cs.Raylib.StopSound(_sound);

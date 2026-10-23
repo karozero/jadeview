@@ -246,7 +246,7 @@ internal static class PcTextureLoader
                 int first = Count(start + 8);
                 return checked(16 + first + Count(checked(start + 12 + first)));
             case 18: // Particle generator serialized versions (Iris BFModifierParticleGenerator).
-                return Count(start + 4) switch { 0 => 75, 9 => 152, 11 => 158,
+                return Count(start + 4) switch { 0 => 75, 8 => 144, 9 => 152, 10 => 156, 11 => 158,
                     var particleVersion => throw new InvalidDataException($"Unsupported particle generator version {particleVersion}.") };
             case 19: return 120; // 0048D580
             case 20: return 60; // 00489AC0

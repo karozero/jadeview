@@ -37,6 +37,7 @@ public sealed partial class EditorShell
     {
         _cinematicPlayback?.Deactivate();
         ResetCinematicAudio();
+        _previewedCinematicSceneEventOwners.Clear();
         _assetWorldBeforeCinematic = ActiveWorld;
         _loadedCinematicEntry = scene.Entry.Id;
         OpenSceneContainer(scene.Entry, () =>
@@ -63,7 +64,8 @@ public sealed partial class EditorShell
         Renderer.ActiveWorld = _cinematicWorld;
         Renderer.Document = Document;
         SelectedObject = _cinematicWorld.Objects.FirstOrDefault();
-        _cinematicPlayers = CinematicPlayback.Discover(Document, _cinematicWorld, Resolver, Archive?.Entries);
+        _cinematicPlayers = CinematicPlayback.Discover(Document, _cinematicWorld, Resolver, Archive?.Entries,
+            _disabledCinematicCallbackOwners, _previewedCinematicSceneEventOwners);
         _cinematicPlayback = _cinematicPlayers.FirstOrDefault();
         _cinematicPlayback?.Activate();
         Renderer.ShowGameHidden = false;

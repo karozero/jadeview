@@ -23,9 +23,26 @@ public sealed class GpuGeometry : IDisposable
     public Vector3 ProceduralCameraPosition,ProceduralCameraTarget;
     public Matrix4x4 ProceduralMatrix;
     public List<Mesh> PartMeshes { get; } = [];
+    public List<BoundingBox> PartLocalBounds { get; } = [];
+    internal Vector3[] NormalBuffer { get; private set; } = [];
+    internal int[] NormalCountsBuffer { get; private set; } = [];
+    internal Vector3[] DeformedPositionBuffer { get; private set; } = [];
     public BoundingBox LocalBounds { get; set; }
     public Vector3 LocalCenter { get; set; }
     public float BoundingRadius { get; set; }
+
+    internal void EnsureNormalBuffers(int vertexCount)
+    {
+        if (NormalBuffer.Length == vertexCount && NormalCountsBuffer.Length == vertexCount) return;
+        NormalBuffer = new Vector3[vertexCount];
+        NormalCountsBuffer = new int[vertexCount];
+    }
+
+    internal void EnsureDeformedPositionBuffer(int vertexCount)
+    {
+        if (DeformedPositionBuffer.Length == vertexCount) return;
+        DeformedPositionBuffer = new Vector3[vertexCount];
+    }
 
     public void Dispose()
     {
@@ -34,6 +51,10 @@ public sealed class GpuGeometry : IDisposable
             Raylib.UnloadMesh(m);
         }
         PartMeshes.Clear();
+        PartLocalBounds.Clear();
+        NormalBuffer = [];
+        NormalCountsBuffer = [];
+        DeformedPositionBuffer = [];
     }
 }
 

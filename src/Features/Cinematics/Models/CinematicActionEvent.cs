@@ -4,6 +4,8 @@ internal sealed record CinematicActionEvent(float Time, uint Target, int Selecto
     int Action, uint KitOwner = 0, int LastAction = 0, int? Frequency = null, int StartFrame = 0,
     bool Force = false, bool Release = false, bool FrequencyOnly = false)
 {
+    private const uint ForcedActionBit = 0x80000000;
+
     internal static CinematicActionEvent? Decode(AnimationKey key, uint trackTarget, AnimationOpaquePayload payload)
     {
         if (!CinematicWordPairList.TryRead(payload, out var rows) || rows.Length < 4) return null;
@@ -13,24 +15,36 @@ internal sealed record CinematicActionEvent(float Time, uint Target, int Selecto
         uint target = rows[0].Value == 0 ? trackTarget : rows[0].Value;
         if (CinematicFacialEvent.TryDecodeMessage(payload, out var message, allowLiteralFlags: true)
             && BitConverter.ToUInt32(message, 48) == 47)
-            return new(key.Time, target, 0x3391, BitConverter.ToInt32(message, 40),
+        {
+            int action = DecodeAction(BitConverter.ToUInt32(message, 40), out bool force);
+            return new(key.Time, target, 0x3391, action, Force: force,
                 Release: BitConverter.ToInt32(message, 44) == 0);
+        }
 
         bool hasTerminator = CinematicWordPairList.IsEnd(rows[^1]);
         if (!hasTerminator) return null;
         if (rows.Length == 5 && CinematicWordPairList.IsLiteral(rows[2], 0x21)
             && CinematicWordPairList.HasSelector(rows[3], 3, 0x3391))
-            return new(key.Time, target, 0x3391, unchecked((int)rows[2].Value));
+        {
+            int action = DecodeAction(rows[2].Value, out bool force);
+            return new(key.Time, target, 0x3391, action, Force: force);
+        }
         bool hasTwoIntegers = rows.Length == 6 && CinematicWordPairList.IsLiteral(rows[2], 0x21)
             && CinematicWordPairList.IsLiteral(rows[3], 0x21);
         if (hasTwoIntegers && rows[2].Value == 0 && CinematicWordPairList.HasSelector(rows[4], 3, 0x32c9))
             return new(key.Time, target, 0x32c9, -1, Frequency: unchecked((int)rows[3].Value), FrequencyOnly: true);
         if (hasTwoIntegers && CinematicWordPairList.HasSelector(rows[4], 3, 0x339c))
-            return new(key.Time, target, 0x3391, unchecked((int)rows[2].Value),
+        {
+            int action = DecodeAction(rows[2].Value, out _);
+            return new(key.Time, target, 0x3391, action,
                 Frequency: unchecked((int)rows[3].Value), Force: true);
+        }
         if (hasTwoIntegers && CinematicWordPairList.HasSelector(rows[4], 3, 0x339b))
-            return new(key.Time, target, 0x3391, unchecked((int)rows[2].Value),
+        {
+            int action = DecodeAction(rows[2].Value, out _);
+            return new(key.Time, target, 0x3391, action,
                 StartFrame: (ushort)rows[3].Value, Force: true);
+        }
         bool isMerge = rows.Length == 7 && CinematicWordPairList.IsLiteral(rows[2], 0x28)
             && CinematicWordPairList.IsLiteral(rows[3], 0x21) && CinematicWordPairList.IsLiteral(rows[4], 0x21)
             && (CinematicWordPairList.HasSelector(rows[5], 3, 0x3398)
@@ -38,5 +52,42 @@ internal sealed record CinematicActionEvent(float Time, uint Target, int Selecto
         if (!isMerge) return null;
         return new(key.Time, target, (int)(rows[5].Tag & 0xffff),
             unchecked((int)rows[3].Value), rows[2].Value, unchecked((int)rows[4].Value));
+    }
+
+    private static int DecodeAction(uint encodedAction, out bool force)
+    {
+        if (encodedAction == uint.MaxValue)
+        {
+            force = false;
+            return -1;
+        }
+        force = (encodedAction & ForcedActionBit) != 0;
+        return unchecked((int)(encodedAction & ~ForcedActionBit));
+    }
+
+    internal static CinematicActionEvent? FromLiteralCall(float time, CinematicLiteralCall call)
+    {
+        string function = CinematicEngineFunctionCatalog.NameFor(call.Selector);
+        if (function is "ACTActionSet" or "ACTActionFrameSet" or "ACTActionFrequencySet")
+        {
+            if (call.Arguments.Length == 0) return null;
+            int action = DecodeAction(call.Arguments[0], out bool force);
+            return function switch
+            {
+                "ACTActionSet" => new(time, call.Target, 0x3391, action, Force: force),
+                "ACTActionFrameSet" when call.Arguments.Length >= 2 =>
+                    new(time, call.Target, 0x3391, action, StartFrame: (ushort)call.Arguments[1], Force: true),
+                "ACTActionFrequencySet" when call.Arguments.Length >= 2 =>
+                    new(time, call.Target, 0x3391, action,
+                        Frequency: unchecked((int)call.Arguments[1]), Force: true),
+                _ => null
+            };
+        }
+
+        if (function is not ("ACTKitMerge" or "ACTKitMergeOver") || call.Arguments.Length < 3)
+            return null;
+        return new(time, call.Target, function == "ACTKitMerge" ? 0x3398 : 0x3399,
+            unchecked((int)call.Arguments[1]), call.Arguments[0],
+            unchecked((int)call.Arguments[2]));
     }
 }

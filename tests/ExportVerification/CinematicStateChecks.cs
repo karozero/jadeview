@@ -121,6 +121,23 @@ internal static class CinematicStateChecks
         Require(firstOwner.PreviewCapabilities == null && secondOwner.PreviewCapabilities == null
             && firstOwner.InitialCapabilities == 0x03 && secondOwner.InitialCapabilities == 0x08,
             "Clearing shared-owner playback must discard previews without changing serialized capabilities.");
+
+        var toggleOwner = new SceneObject { GaoKey = 46, InitialCapabilities = 0x8001 };
+        var toggleWorld = new WorldData();
+        toggleWorld.Objects.Add(toggleOwner);
+        var toggleClip = new AnimationClip
+        {
+            Tracks = [new() { Bone = -1, Target = 0, Keys =
+                [CinematicTestEvents.Call(1, toggleOwner.GaoKey, 8145, 0x10001)] }]
+        };
+        var toggleState = new CinematicObjectState(toggleClip, toggleWorld, []);
+        toggleState.Evaluate(1);
+        Require(toggleOwner.PreviewCapabilities == 0x8000,
+            "OBJ_CapaNot must toggle the low 16-bit capability mask, matching the retail field width.");
+        toggleState.Evaluate(0);
+        Require(toggleOwner.PreviewCapabilities == 0x8001,
+            "Reverse seeking before OBJ_CapaNot must restore the serialized capability state.");
+        toggleState.Clear();
         var form = CinematicChannelFormEvent.Decode(CinematicTestEvents.Call(1, 99, 8263, 0, 2, 1, 11));
         Require(form?.TargetKey == 99 && form.Channel == 2 && form.Group == 11,
             "Facial channel events must preserve their explicit recipient on shared tracks");

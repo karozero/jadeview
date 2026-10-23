@@ -2,8 +2,11 @@ namespace JadeView;
 
 public sealed partial class SceneActor
 {
+    private uint? appliedShapeKey;
+
     public void ApplyShape(uint key)
     {
+        appliedShapeKey = key;
         if (!Shapes.TryGetValue(key, out var shape)) return;
         UpdateModuleMap(shape);
         for (int entry = 0; entry < shape[0]; entry++)

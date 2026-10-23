@@ -5,6 +5,14 @@ internal static class CinematicMotionChecks
 {
     internal static void Verify()
     {
+        AnimationKey[] orderedKeys =
+            [new() { Time = 0 }, new() { Time = .5f }, new() { Time = .5f }, new() { Time = 1 }];
+        if (AnimationKeySearch.LastAtOrBefore(orderedKeys, -.1f) != -1
+            || AnimationKeySearch.LastAtOrBefore(orderedKeys, 0) != 0
+            || AnimationKeySearch.LastAtOrBefore(orderedKeys, .5f) != 2
+            || AnimationKeySearch.LastAtOrBefore(orderedKeys, 2) != 3)
+            throw new InvalidDataException("Binary animation-key search changed boundary or duplicate-time behavior.");
+
         var root = new SceneObject
         {
             GaoKey = 1,

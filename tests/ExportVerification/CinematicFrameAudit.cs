@@ -12,6 +12,35 @@ internal static class CinematicFrameAudit
         var source = document.CinematicClips[clipKey];
         var world = CinematicWorldAssembler.Assemble(document,
             document.Worlds.Single(item => item.Key == source.CinematicWorldKey));
+        Console.WriteLine($"ENVIRONMENT AUDIT: sourceWorld={source.CinematicWorldKey:X8} "
+            + $"controllers={document.CinematicEnvironmentControllers.Count} assembledObjects={world.Objects.Count}");
+        foreach (var controller in document.CinematicEnvironmentControllers.Values)
+        {
+            var owner = world.Objects.FirstOrDefault(item => item.GaoKey == controller.OwnerKey);
+            var sun = world.Objects.FirstOrDefault(item => item.GaoKey == controller.SunKey);
+            string paletteSkyColors = string.Join(",", controller.NormalPalettes
+                .Where(palette => palette.Length > 4).Select(palette => $"{palette[4]:X8}"));
+            Console.WriteLine($"ENVIRONMENT AUDIT: owner={controller.OwnerKey:X8} ownerPresent={owner != null} "
+                + $"ownerControl={owner?.ControlFlags:X8} env={controller.EnvironmentKey:X8} "
+                + $"sky={controller.SkyKey:X8} sun={controller.SunKey:X8} "
+                + $"sunPos={sun?.Transform.Translation} preview={sun?.PreviewMatrix?.M43} "
+                + $"thresholds={controller.NightHeight:F2}/{controller.DawnHeight:F2}/{controller.SunriseHeight:F2}/{controller.DayHeight:F2} "
+                + $"skyColors={paletteSkyColors}");
+            foreach (uint key in new[] { controller.EnvironmentKey, controller.SkyKey, controller.SunKey })
+                foreach (var sceneObject in world.Objects.Where(item => item.GaoKey == key))
+                    Console.WriteLine($"ENVIRONMENT OBJECT: {key:X8} {sceneObject.Name} flags={sceneObject.DrawFlags:X8} "
+                        + $"control={sceneObject.ControlFlags:X8} geo={sceneObject.RenderGeometryKey:X8} mat={sceneObject.MaterialKey:X8}");
+        }
+        foreach (var (sourceWorld, sceneObject) in document.Worlds.SelectMany(sourceWorld =>
+            sourceWorld.Objects.Select(sceneObject => (sourceWorld, sceneObject)))
+            .Where(pair => pair.sceneObject.Name.Contains("sky", StringComparison.OrdinalIgnoreCase)
+                || pair.sceneObject.Name.Contains("ciel", StringComparison.OrdinalIgnoreCase)
+                || pair.sceneObject.Name.Contains("soleil", StringComparison.OrdinalIgnoreCase)
+                || pair.sceneObject.Name.Contains("sun", StringComparison.OrdinalIgnoreCase)
+                || pair.sceneObject.Name.Contains("env", StringComparison.OrdinalIgnoreCase)))
+            Console.WriteLine($"ENVIRONMENT CANDIDATE: world={sourceWorld.Key:X8} key={sceneObject.GaoKey:X8} "
+                + $"{sceneObject.Name} flags={sceneObject.DrawFlags:X8} control={sceneObject.ControlFlags:X8} "
+                + $"geo={sceneObject.RenderGeometryKey:X8} mat={sceneObject.MaterialKey:X8}");
         var resolver = new ResourceResolver();
         resolver.LoadFixContainer(archive);
         resolver.LoadSceneContainer(archive, entry);
@@ -44,9 +73,21 @@ internal static class CinematicFrameAudit
         playback.Activate();
         try
         {
+            foreach (string fadeEvent in playback.ScreenFadeEvents)
+                Console.WriteLine($"SCREEN FADE EVENT: {fadeEvent}");
             playback.Seek(time);
+            var activeEnvironment = document.CinematicEnvironmentControllers.Values.FirstOrDefault(controller =>
+                world.Objects.Any(item => item.GaoKey == controller.OwnerKey
+                    && (item.ControlFlags & CinematicObjectState.Inactive) == 0)
+                && world.Objects.Any(item => item.GaoKey == controller.SkyKey));
+            uint skyKey = activeEnvironment?.SkyKey ?? 0;
+            var skyObject = world.Objects.FirstOrDefault(item => item.GaoKey == skyKey);
+            if (skyObject != null)
+                Console.WriteLine($"SKY STATE: hidden={skyObject.PreviewHidden} controlHidden={skyObject.IsControlHidden} "
+                    + $"excluded={skyObject.CinematicExcluded} position={skyObject.Transform.Translation} "
+                    + $"preview={skyObject.PreviewMatrix} paletteColor={playback.MaterialState.ApplyConstant(skyObject.GaoKey, 0, Vector4.One)}");
             Console.WriteLine($"FLASH AUDIT: controllers={document.CinematicFlashControllers.Count}; "
-                + $"active={playback.Flashes.Length}; "
+                + $"active={playback.Flashes.Count}; "
                 + string.Join(" | ", document.CinematicFlashControllers.Values.Select(controller =>
                     $"{controller.OwnerKey:X8} rays={controller.RayCount} caps={controller.InitialCapabilities:X4} "
                     + $"alpha={controller.BigAlpha:F2}/{controller.SmallAlpha:F2} lengths={controller.BigLengthMin:F1}-{controller.BigLengthMax:F1} "
@@ -54,7 +95,7 @@ internal static class CinematicFrameAudit
                     + $"ratio={controller.LengthRatio:F2} extrude={controller.ExtrudeDistance:F1} "
                     + $"appear={controller.AppearDelay:F3} disappear={controller.DisappearDelay:F3} color={controller.Color:X8}")));
             Console.WriteLine($"LIGHTNING AUDIT: controllers={document.CinematicLightningControllers.Count}; "
-                + $"active={playback.Lightnings.Length}; "
+                + $"active={playback.Lightnings.Count}; "
                 + string.Join(" | ", document.CinematicLightningControllers.Values.Select(controller =>
                     $"{controller.OwnerKey:X8} -> {controller.DestinationKey:X8} mode={controller.Mode} "
                     + $"capa={controller.CapabilityActorKey:X8}/{controller.CapabilityMask:X} "
@@ -89,10 +130,18 @@ internal static class CinematicFrameAudit
             renderer.CinematicFlashes = playback.Flashes;
             renderer.CinematicLightnings = playback.Lightnings;
             renderer.CinematicScreenFade = playback.ScreenFade;
+            renderer.CinematicOffsetEffect = playback.OffsetEffect;
+            renderer.CinematicColorBalance = playback.ColorBalance;
             renderer.CinematicMaterials = playback.MaterialState;
+            renderer.VideoArchive = archive;
+            renderer.CinematicVideoPlayback = playback.VideoPlayback;
+            renderer.CinematicVideoTime = time;
             renderer.CinematicHorizontalFov = playback.Camera?.Lens?.Evaluate(time);
             renderer.Render(960, 540, document, world, null, resolver);
-            var image = Raylib.LoadImageFromTexture(renderer.Target.Texture);
+            var displayTarget = (RenderTexture2D)(typeof(SceneRenderer)
+                .GetMethod("RenderCinematicAfterEffects", System.Reflection.BindingFlags.Instance
+                    | System.Reflection.BindingFlags.NonPublic)!.Invoke(renderer, null)!);
+            var image = Raylib.LoadImageFromTexture(displayTarget.Texture);
             string timestamp = time.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
             string path = Path.Combine(output, $"{container}-{clipKey:X8}-{timestamp}-frame.png");
             try
@@ -101,7 +150,9 @@ internal static class CinematicFrameAudit
                 if (!Raylib.ExportImage(image, path)) throw new IOException("Could not save cinematic frame.");
             }
             finally { Raylib.UnloadImage(image); }
-            Console.WriteLine($"CINEMATIC FRAME: {path}; shutter={playback.Shutter?.Closure}; objects={renderer.StatVisibleObjects}");
+            Console.WriteLine($"CINEMATIC FRAME: {path}; shutter={playback.Shutter?.Closure}; "
+                + $"screenFade={playback.ScreenFade?.ToString() ?? "none"}; "
+                + $"colorBalance={playback.ColorBalance:F3}; objects={renderer.StatVisibleObjects}");
         }
     }
 }

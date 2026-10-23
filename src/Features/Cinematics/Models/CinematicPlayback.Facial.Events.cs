@@ -4,6 +4,9 @@ namespace JadeView;
 
 public sealed partial class CinematicPlayback
 {
+    private const int SetMorphChannelFactorSelector = 8253;
+    private const int SetMorphChannelProgressionSelector = 8255;
+
     private static FacialPlayback? CreateFacialPlayback(SceneActor actor, AnimationClip clip,
         IReadOnlyCollection<SceneObject> sceneObjects)
     {
@@ -13,7 +16,7 @@ public sealed partial class CinematicPlayback
                     .SelectMany(context => DecodeFacialEvents(actor, track, key, sceneObjects, clip, context))))
             .Where(item => item.ChannelForm != null
                 ? item.TrackTarget == actor.Root.GaoKey
-                : item.Mouth != null || item.MorphFactor != null)
+                : item.Mouth != null || item.MorphFactor != null || item.ChannelState != null)
             .OrderBy(item => item.Time)
             .ThenBy(GetFacialEventPriority)
             .ToArray();
@@ -24,6 +27,14 @@ public sealed partial class CinematicPlayback
         AnimationTrack track, AnimationKey key, IReadOnlyCollection<SceneObject> sceneObjects,
         AnimationClip clip, uint trackTarget)
     {
+        foreach (var payload in key.OpaquePayloads)
+        {
+            var call = CinematicLiteralCall.Decode(payload, track.Target, trackTarget);
+            var channelChange = DecodeChannelStateChange(actor, call);
+            if (channelChange != null)
+                yield return new(key.Time, channelChange.Member.GaoKey, null, null, null, channelChange);
+        }
+
         var mouthEvent = CinematicFacialEvent.Decode(key);
         if (mouthEvent != null && TargetsFacialActor(trackTarget, mouthEvent.ActorTargetKey, actor))
             yield return new(key.Time, trackTarget, mouthEvent, null, null);
@@ -52,6 +63,23 @@ public sealed partial class CinematicPlayback
     private static bool TargetsActor(SceneActor actor, uint targetKey) =>
         targetKey == actor.Root.GaoKey || actor.Members.Any(member => member.GaoKey == targetKey);
 
+    private static CinematicChannelStateChange? DecodeChannelStateChange(SceneActor actor,
+        CinematicLiteralCall? call)
+    {
+        if (call is not { Arguments.Length: 2 }
+            || call.Selector is not (SetMorphChannelFactorSelector or SetMorphChannelProgressionSelector)
+            || call.Arguments[0] > int.MaxValue) return null;
+
+        var member = actor.Members.FirstOrDefault(candidate => candidate.GaoKey == call.Target);
+        float value = BitConverter.UInt32BitsToSingle(call.Arguments[1]);
+        if (member == null || !float.IsFinite(value)) return null;
+        if (call.Selector == SetMorphChannelProgressionSelector
+            && (value < 0 || value >= 2147483648f)) return null;
+
+        return new(member, (int)call.Arguments[0],
+            call.Selector == SetMorphChannelFactorSelector, value);
+    }
+
     private static bool TargetsFacialActor(uint trackTarget, uint messageTarget, SceneActor actor)
     {
         if (messageTarget is 0 or uint.MaxValue) return trackTarget == actor.Root.GaoKey;
@@ -69,11 +97,26 @@ public sealed partial class CinematicPlayback
         if (facialEvent.MorphFactor is { } morphFactor)
             ApplyMorphFactor(playback, morphFactor, facialEvent.Time);
 
+        if (facialEvent.ChannelState is { } channelState)
+            ApplyChannelStateChange(playback, channelState);
+
         if (facialEvent.Mouth is { } mouthEvent)
         {
             ApplyMouthEvent(playback, mouthEvent);
             ApplyChannelCommands(playback, mouthEvent);
         }
+    }
+
+    private static void ApplyChannelStateChange(FacialPlayback playback,
+        CinematicChannelStateChange change)
+    {
+        var snapshot = playback.Previews.FirstOrDefault(item => item.Target == change.Member);
+        if (snapshot == null || (uint)change.Channel >= (uint)snapshot.Preview.ChannelCount) return;
+
+        var current = snapshot.Preview.GetChannel(change.Channel);
+        float weight = change.IsWeight ? change.Value : current.Weight;
+        float progression = change.IsWeight ? current.Progression : change.Value;
+        snapshot.Preview.ApplyCinematicChannelState(change.Channel, weight, progression);
     }
 
     private static void ApplyChannelFormEvent(FacialPlayback playback, CinematicChannelFormEvent formEvent)

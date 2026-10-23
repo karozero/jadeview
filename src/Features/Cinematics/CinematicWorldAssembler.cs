@@ -15,6 +15,14 @@ public static class CinematicWorldAssembler
             && world.Name.StartsWith(environmentName + "_", StringComparison.OrdinalIgnoreCase)).ToArray();
         var clips = CinematicSceneClips.ForWorld(document, cinematicWorld);
         var targetKeys = CinematicSceneClips.References(clips);
+        var nestedTimelines = clips.Select(clip =>
+            CinematicNestedEventTransformTracks.ReadTimeline(clip, cinematicWorld, document)).ToArray();
+        foreach (var timeline in nestedTimelines)
+        {
+            targetKeys.UnionWith(timeline.TransformTracks.Select(track => track.Target));
+            targetKeys.UnionWith(timeline.Commands.Select(command => command.Call.Target));
+        }
+        IncludeScriptReferencedObjects(targetKeys, clips, cinematicWorld.Key, document);
         var activeControllers = document.Worlds.SelectMany(world => world.Objects)
             .Where(item => (item.ControlFlags & CinematicObjectState.Inactive) == 0)
             .Select(item => item.GaoKey).ToHashSet();
@@ -46,6 +54,67 @@ public static class CinematicWorldAssembler
         foreach (var clip in clips) assembled.CinematicClips.Add(clip.Key, clip);
         return assembled;
     }
+
+    private static void IncludeScriptReferencedObjects(HashSet<uint> targetKeys,
+        IReadOnlyCollection<AnimationClip> clips, uint preferredWorldKey, SceneDocument document)
+    {
+        var owners = document.CinematicScriptOwners.Values.ToArray();
+        var ownerIds = new HashSet<CinematicScriptOwnerId>();
+        var pendingKeys = new Queue<(uint Key, uint WorldKey)>(targetKeys
+            .Where(IsValidObjectKey).Select(key => (key, preferredWorldKey)));
+        var pendingOwners = new Queue<CinematicScriptOwner>();
+        var clipKeys = clips.Select(clip => clip.Key).ToHashSet();
+
+        foreach (var clip in clips)
+        {
+            if (IsValidObjectKey(clip.CinematicOwnerKey))
+                EnqueueOwnerKey(clip.CinematicOwnerKey, preferredWorldKey);
+            foreach (uint ownerKey in clip.CinematicOwnerKeys)
+                EnqueueOwnerKey(ownerKey, preferredWorldKey);
+        }
+
+        foreach (var owner in owners.Where(owner => owner.WorldKey == preferredWorldKey
+            && (clipKeys.Contains(owner.EventsKey) || clipKeys.Contains(owner.SceneEventsKey))))
+            EnqueueOwnerRecord(owner);
+
+        while (pendingOwners.Count > 0 || pendingKeys.Count > 0)
+        {
+            while (pendingKeys.TryDequeue(out var pendingKey))
+                EnqueueOwnerKey(pendingKey.Key, pendingKey.WorldKey);
+            if (!pendingOwners.TryDequeue(out var owner)) continue;
+
+            foreach (var reference in EffectiveObjectReferences(owner))
+            {
+                if (!IsValidObjectKey(reference.TargetKey)) continue;
+                if (targetKeys.Add(reference.TargetKey))
+                    pendingKeys.Enqueue((reference.TargetKey, owner.WorldKey));
+            }
+        }
+
+        void EnqueueOwnerKey(uint ownerKey, uint worldKey)
+        {
+            var owner = CinematicScriptOwnerResolver.Resolve(ownerKey, worldKey, owners);
+            if (owner != null) EnqueueOwnerRecord(owner);
+        }
+
+        void EnqueueOwnerRecord(CinematicScriptOwner owner)
+        {
+            if (ownerIds.Add(owner.Id)) pendingOwners.Enqueue(owner);
+        }
+    }
+
+    private static IEnumerable<CinematicScriptObjectReference> EffectiveObjectReferences(
+        CinematicScriptOwner owner) => owner.ObjectReferences
+        .GroupBy(reference => reference.VariableName, StringComparer.OrdinalIgnoreCase)
+        .SelectMany(references =>
+        {
+            var instanceReferences = references.Where(reference => reference.Source == "instance").ToArray();
+            return instanceReferences.Length > 0
+                ? instanceReferences
+                : references.Where(reference => reference.Source == "model");
+        });
+
+    private static bool IsValidObjectKey(uint key) => key is > 2 and < uint.MaxValue;
 
     private static bool IsVisibleStaticGeometry(SceneObject sceneObject) =>
         sceneObject.Actor == null

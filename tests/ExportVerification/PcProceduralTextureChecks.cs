@@ -27,6 +27,21 @@ internal static class PcProceduralTextureChecks
             && JadeView.PcProceduralTextureReader.Read(container,
                 new("pixels", 0, 96, 0xBF000F07, 5)) == null,
             "Procedural descriptor parsing should ignore truncated and non-header texture reads");
+        Check(JadeView.ProceduralTextureKind.Name(3) == "Video stream"
+            && JadeView.ProceduralTextureKind.PreviewStatus(3).Contains("capability triggers", StringComparison.Ordinal)
+            && JadeView.ProceduralTextureKind.Name(4) == "Photo capture"
+            && JadeView.ProceduralTextureKind.PreviewStatus(4).Contains("camera capture", StringComparison.Ordinal)
+            && JadeView.ProceduralTextureKind.PreviewStatus(1).Contains("disturbance impulses", StringComparison.Ordinal)
+            && JadeView.ProceduralTextureKind.PreviewStatus(5).Contains("randomized noise", StringComparison.Ordinal),
+            "Procedural texture diagnostics should explain video, photo, water and plasma runtime dependencies");
+        Check(JadeView.BinkFrameDecoder.FrameIndexAt(10, 1836, 30, 1) == 300
+            && JadeView.BinkFrameDecoder.FrameIndexAt(-1, 1836, 30, 1) == 0
+            && JadeView.BinkFrameDecoder.FrameIndexAt(61.3, 1836, 30, 1) == 3
+            && JadeView.BinkFrameDecoder.FrameIndexAt(1000, 1836, 30, 1) == 624,
+            "Bink preview time must map to looping source frames for forward play and seeking.");
+        Check(JadeView.BinkFrameDecoder.BgraToRgba([10, 20, 30, 0])
+                .SequenceEqual(new byte[] { 30, 20, 10, 255 }),
+            "Bink surface32 frames must convert from BGRX to opaque RGBA for JadeView GPU textures.");
         Console.WriteLine("PASS: PC procedural texture descriptors preserve video resource links without inventing unknown subtype semantics");
     }
 

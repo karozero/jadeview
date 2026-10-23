@@ -94,7 +94,10 @@ public sealed partial class CinematicPlayback
                     ApplyMorphFactor(playback, signal, targetTime);
             AdvanceFacialState(playback, targetTime - playback.LastTime);
             playback.LastTime = targetTime;
-            if (playback.Events.Length > 0) playback.Actor.Evaluate(0);
+            // Facial signals update the mesh preview directly. Invalidate the
+            // renderer's skinned-geometry cache without evaluating the full rig
+            // a second time in the same cinematic frame.
+            if (playback.Events.Length > 0) playback.Actor.InvalidatePose();
         }
     }
 
@@ -111,7 +114,10 @@ public sealed partial class CinematicPlayback
 
     private static void AdvanceTransitions(PreviewSnapshot snapshot, int steps, float step)
     {
-        foreach (int channel in snapshot.Transitions.Keys.ToArray())
+        snapshot.TransitionChannels.Clear();
+        foreach (int channel in snapshot.Transitions.Keys)
+            snapshot.TransitionChannels.Add(channel);
+        foreach (int channel in snapshot.TransitionChannels)
         {
             var transition = snapshot.Transitions[channel];
             for (int index = 0; index < steps && transition.Phase != PcMorphTransitionPhase.Settled; index++)
@@ -153,13 +159,18 @@ public sealed partial class CinematicPlayback
         float[] Weights, FaceMorphChannelState[]? Channels)
     {
         internal Dictionary<int, PcMorphTransitionState> Transitions { get; } = [];
+        internal List<int> TransitionChannels { get; } = [];
     }
 
     private sealed record FacialEvent(float Time, uint TrackTarget, CinematicFacialEvent? Mouth,
-        CinematicChannelFormEvent? ChannelForm, CinematicMorphFactorChange? MorphFactor);
+        CinematicChannelFormEvent? ChannelForm, CinematicMorphFactorChange? MorphFactor,
+        CinematicChannelStateChange? ChannelState = null);
 
     private sealed record CinematicMorphFactorChange(SceneObject Member, int Channel,
         TransformData Baseline, AnimationTrack[] Tracks, float Start, float End);
+
+    private sealed record CinematicChannelStateChange(SceneObject Member, int Channel,
+        bool IsWeight, float Value);
 
     private sealed class FacialPlayback(SceneActor actor, FacialEvent[] events)
     {

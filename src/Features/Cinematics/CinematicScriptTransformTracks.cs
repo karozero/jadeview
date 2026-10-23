@@ -5,28 +5,31 @@ namespace JadeView;
 internal static class CinematicScriptTransformTracks
 {
     private const int ScaleSetSelector = 0x1fbe;
-    private const int VectorConstructorSelector = 0x1770;
+    private const int ZoomSetSelector = 0x1fc0;
 
     internal static IEnumerable<AnimationTrack> Read(AnimationClip source)
     {
-        var commands = source.Tracks.Where(track => track.Bone < 0)
-            .SelectMany(track => track.Keys.SelectMany(key => key.OpaquePayloads.SelectMany(payload =>
-                CinematicOwnerContext.ForTrack(source, track)
-                    .Select(context => Decode(key.Time, payload, context)))))
-            .OfType<ScaleCommand>().Distinct()
+        var commands = CinematicLiteralCall.ReadTimeline(source)
+            .Select(item => Decode(item.Time, item.Call))
+            .OfType<ScaleCommand>()
             .GroupBy(command => command.Target);
+
         foreach (var group in commands)
         {
             var commandsByTime = group.OrderBy(command => command.Time).ToArray();
+            var stateChanges = commandsByTime.GroupBy(command => command.Time)
+                .Select(timeGroup => timeGroup.Last()).ToArray();
             var track = new AnimationTrack { Bone = -1, Target = group.Key };
-            for (int index = 0; index < commandsByTime.Length; index++)
+            for (int index = 0; index < stateChanges.Length; index++)
             {
-                var command = commandsByTime[index];
-                float end = index + 1 < commandsByTime.Length ? commandsByTime[index + 1].Time : source.Duration;
+                var command = stateChanges[index];
+                float nextTime = index + 1 < stateChanges.Length
+                    ? stateChanges[index + 1].Time
+                    : source.Duration;
                 track.Keys.Add(new()
                 {
                     Time = command.Time,
-                    Duration = Math.Max(0, end - command.Time),
+                    Duration = Math.Max(0, nextTime - command.Time),
                     Flags = 0x880,
                     Scale = command.Scale
                 });
@@ -35,21 +38,26 @@ internal static class CinematicScriptTransformTracks
         }
     }
 
-    private static ScaleCommand? Decode(float time, AnimationOpaquePayload payload, uint inheritedTarget)
+    private static ScaleCommand? Decode(float time, CinematicLiteralCall call)
     {
-        if (!CinematicWordPairList.TryRead(payload, out var rows) || rows.Length != 8) return null;
-        bool supported = CinematicWordPairList.IsLiteral(rows[0], 0x28)
-            && CinematicWordPairList.HasSelector(rows[1], 2, 2054)
-            && rows[2..5].All(row => CinematicWordPairList.IsLiteral(row, 0x22))
-            && CinematicWordPairList.HasSelector(rows[5], 3, VectorConstructorSelector)
-            && CinematicWordPairList.HasSelector(rows[6], 3, ScaleSetSelector)
-            && CinematicWordPairList.IsEnd(rows[7]);
-        if (!supported) return null;
-        uint target = rows[0].Value == 0 ? inheritedTarget : rows[0].Value;
-        var scale = new Vector3(BitConverter.UInt32BitsToSingle(rows[2].Value),
-            BitConverter.UInt32BitsToSingle(rows[3].Value), BitConverter.UInt32BitsToSingle(rows[4].Value));
-        if (target is 0 or uint.MaxValue || !float.IsFinite(scale.LengthSquared())) return null;
-        return new(time, target, scale);
+        if (call.Target is 0 or uint.MaxValue) return null;
+
+        if (call.Selector == ScaleSetSelector && call.Arguments.Length == 3)
+        {
+            var scale = new Vector3(
+                BitConverter.UInt32BitsToSingle(call.Arguments[0]),
+                BitConverter.UInt32BitsToSingle(call.Arguments[1]),
+                BitConverter.UInt32BitsToSingle(call.Arguments[2]));
+            return float.IsFinite(scale.LengthSquared()) ? new(time, call.Target, scale) : null;
+        }
+
+        if (call.Selector == ZoomSetSelector && call.Arguments.Length == 1)
+        {
+            float zoom = BitConverter.UInt32BitsToSingle(call.Arguments[0]);
+            return float.IsFinite(zoom) ? new(time, call.Target, new(zoom)) : null;
+        }
+
+        return null;
     }
 
     private sealed record ScaleCommand(float Time, uint Target, Vector3 Scale);

@@ -8,6 +8,9 @@ public sealed class SceneExportOptions
     public bool ExperimentalMouthCycle;
     public float MouthCycleDuration = 2;
     public IReadOnlyDictionary<SceneObject, FaceMorphKeyframe[]>? CinematicMorphTimelines;
+    public SceneDocument? CinematicDocument;
     public uint? CinematicClipKey;
+    public IReadOnlySet<CinematicScriptOwnerId>? DisabledCinematicCallbackOwners;
+    public IReadOnlySet<CinematicScriptOwnerId>? PreviewedCinematicSceneEventOwners;
 }
 

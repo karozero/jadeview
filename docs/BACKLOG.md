@@ -44,6 +44,9 @@
     loaded non-generated objects made inactive/invisible by `OBJDestroy` from
     generated objects detached and removed from engine registries. Preserve
     those semantics as separate lifecycle states.
+  - Cinematic literal-state preview now models `OBJ_CapaNot` as a 16-bit XOR
+    alongside add/remove `OBJ_CapaSet`, matching IrisEngine's `uw_Capacities`.
+    This does not evaluate callback branches or collision/saved-flag gates.
   - Preserve provenance and unresolved edges; do not infer callback behavior
     from asset or scene names.
   - Research notes: [`gameplay-script-system-findings.md`](gameplay-script-system-findings.md).
@@ -71,12 +74,54 @@
 
 - [ ] Reconstruct gameplay-to-cinematic actor animation state and discover
   scripted prop motion generically.
-  - The archive-wide body-coverage audit now scans 91 containers, 38 cinematic
-    worlds and 1,232 clips. It found 439 skeletal actor/clip bindings; 296 have
-    resolved body-action segments and 143 do not. Among the missing cases, 114
-    have only root-transform motion, 26 have direct bone tracks, and 5 contain
-    unresolved action requests. These are coverage classes, not necessarily
-    playback bugs: the serialized BF does not include live AI track state.
+  - Cinematic assembly now closes over effective OVA object references from
+    owners linked to the selected clip, recursively follows uniquely resolved
+    script owners on referenced targets, and includes nested `SceneEvents`
+    command/transform targets. This is an asset-discovery step only; it does
+    not infer callback execution or activation from object names. The audit of
+    `FF001FBE / 35009F74` now confirms `_PJ_Militaire.gao` (`7100596B`) is in
+    the assembled participant set through `CINE_PIEGE_PORTE_LOBO_EVENTS.gao`.
+    Its base action table still lacks slot 201, but a separate same-world
+    startup owner, `CINE_INIT_MILI_EVENTS.gao` (`35009652`), has a serialized
+    `SceneEvents=35009655` channel that merges slots 200–230 from
+    `CINE_01_04_ACK_Mili.gao` (`3500965A`) and then sends companion message 49
+    with status 3/action 201 to Militaire. The source action kit does contain
+    slot 201 (`35009636`). Iris's shared `Cine_Events` lifecycle can start this
+    event list immediately, but the owner has start-gate mask `0x104`, including
+    actor activity and saved special flag 2007; the BF archive does not reveal
+    whether that gate passed in the user's playthrough. This is a concrete
+    candidate for the missing T-pose action, not proof it ran. A generic preview
+    of independently gated script-owned SceneEvents is still needed; do not
+    inject this action into every playback or hardcode the owner/character.
+    A cross-report scan found 14 EVE channels in four representative containers
+    that combine an action-kit merge with companion message 49 in the same
+    channel. This is a repeated event-track pattern, not a Militaire-specific
+    exception. The corresponding action merge must be applied before the
+    callback-scoped companion message, while the owner-level `Cine_Events`
+    gate determines whether that EVE list actually starts.
+  - Generic `OBJRotateLocalY` playback is now implemented for direct and
+    nested EVE calls. The authored radians are distributed over the key's
+    active duration using the same pause/stop/restart/loop clock as transforms;
+    uniquely resolved targets are included in playback and synchronized GLB
+    export. Synthetic checks cover seeking, EVE time mapping, playback, and GLB
+    output. The retail audit for `FF006B96 / 35009EF6` resolves 27 rotation
+    segments for `1_1_obj_verin_axe.gao` (`A9001DBB`) from 2–22 seconds. Other
+    recurring scripted prop patterns still need archive-wide validation.
+  - Saved-flag gate state at the playhead now combines direct clip writes with
+    literal commands from resolved nested `SceneEvents` routes. It remains a
+    static route preview: callback branches, world transitions, and the retail
+    save's initial flag values are not evaluated.
+  - The latest world-scoped archive audit scans 91 containers, 38 cinematic
+    worlds and 1,232 clips. It found 441 skeletal actor/clip bindings; 296 have
+    decoded body-action segments and 145 do not. Those 145 have root-transform
+    data in 117 cases and direct bone tracks in 28. Ten bindings contain an
+    unresolved action request: seven still resolve other body-action segments,
+    while three have no resolved segment. The report now uses the same
+    world-scoped action-kit resolver as playback; the previous audit used a
+    legacy global map and undercounted segments (1,281 vs. 1,429). These are
+    coverage results, not necessarily playback bugs: serialized BF data does
+    not include live AI track state. The current report is
+    `artifacts/export-verification/archive-cinematic-body-coverage.json`.
   - The script-graph audit now builds cinematic participants through
     `CinematicWorldAssembler` and includes serialized transform-track targets
     in the linked owner scope. On `FF00791B / BF003BD1` this recovers Peyj's
@@ -89,6 +134,28 @@
   - The live cinematic script-owner list now also follows the selected clip's
     serialized transform-track targets, so brain-bearing props reached by a
     transform track can be inspected beside actor and command-linked owners.
+  - Nested EVE transforms now use a source-time playback clock for `TRAStop`,
+    `TRAPause`, `TRAUnPause`, and restart `TRAPlay`. A stop holds the sampled
+    pose; pause freezes local time; unpause resumes it; play while running is a
+    no-op; play after stop/completion restarts at local time zero. Nested event
+    calls are remapped through the parent clock. `TRAReinit` resets the cursor
+    and restores the `RunningInit` state; `TRAReinitAll` applies this per track.
+    GLB sampling adds lifecycle and mapped source-key boundaries. Playback and
+    export share this clock.
+    Tests cover delayed child starts, interpolation at stop, pause/resume,
+    post-completion replay, per-track and all-track reinitialization, and GLB
+    pose hold. Current-source archive audits produced 33 nested transforms for
+    `FF005833 / BF00218E` and 56 for `FF0045A2 / 3500B8EA`. Iris evidence is in
+    `external/irisEng/ai/ai_eventtrackfunctions.c` and `external/irisEng/events.c`.
+    `TRASetTime` now seeks every selected EVE channel without changing its
+    running/paused state; seeking past the list matches the engine by clamping
+    to the last event's start. Tests cover running, stopped and paused channels,
+    all-channel selection, invalid values, preview and GLB. Requests beyond
+    65535/60 seconds are unresolved because the source uses a 16-bit frame
+    cursor and wrap behavior is not reconstructed. Callback gates, exact VM
+    scheduling and live gameplay AI state remain
+    unresolved; this does not claim exact runtime scheduling or native initial
+    track flags.
   - `01_00_entrepot_sas_entree_cine` / `BF003BD1`: `_PJ_Peyj_le_petit_cochon.gao`
     (`9E001C75`) has scene tracks/events but no resolved body-action timeline,
     so playback leaves him in a T-pose. The clip is in archive container
@@ -150,7 +217,7 @@
   - Compare the corrected result against retail capture. Native display-format
     constraints and positional camera smoothing still need verification.
 
-- [ ] Decode and display source video textures on in-scene screens.
+- [ ] Complete native trigger-timed playback for source video textures on in-scene screens.
   - Confirmed reproduction: `FF005833`, worlds `00_02_home_decryptage_cine`
     / `00_02_home_decryptage`, object `Cine_ecran_explik_invent.gao` (`BF000DA6`).
   - Material `BF000DA8` has two RGB layers referencing `BF000F07`.
@@ -159,23 +226,59 @@
   - That archive entry is `propaganda_01.bik`, with verified `BIKi` signature.
     The PC registry reader consumes the descriptor but produces no image for
     procedural textures; the renderer consequently shows its missing-texture checker.
-  - Add generic video-descriptor resolution, decoding, frame upload, source
-    timing/control and seeking. Preserve source-video references in exports;
-    ordinary glTF materials do not encode video playback.
+  - The installed game's x86 `binkw32.dll` successfully decodes `128x128` Bink
+    frames through a persistent x86 PowerShell bridge; JadeView's x64 renderer
+    uploads frames and samples them against cinematic playhead time. The bridge
+    is runtime-only and does not ship or copy the game's DLL.
+  - Bink frame decoding now runs off the renderer thread. GPU texture uploads
+    remain on the render thread; seeks coalesce behind the one in-flight decode
+    per media resource, so a slow frame decode cannot block scene drawing.
+  - Preview now links subtype-3 materials to `mpegplayer_init` owners, reads
+    `i_Play` and the linked switch's initial `0x100` capability through
+    `des_o_Interrupteur`, and evaluates literal `OBJ_CapaSet` requests from the
+    selected clip and nested scene-event data. Controlled textures stay black
+    before their first start; Bink time is relative to that trigger, and reverse
+    seeking recomputes the event state. Use
+    `--cinematic-video-trigger-audit <archive.bf> <container> <clip-key>` to
+    inspect texture-to-owner links and sampled states.
+  - This is source-event preview, not AI VM execution. Live switch state,
+    saved-game gates, callback branch eligibility and callback-frame latency
+    still need recovery and representative in-game verification.
+  - In the audited `FF005833/BF00218E` clip, the monitor's `OBJ_CapaSet`
+    toggle is at `44.783333s`, exactly the clip endpoint. The static event
+    model starts the Bink timeline there, but this clip alone ends before a
+    later frame can be shown. Determine whether the game continues the screen
+    callback after the cinematic, or whether a linked event/script starts it
+    in the following gameplay state, before claiming full monitor playback.
+  - GLB export now preserves the procedural descriptor in material
+    `extras.jadeProceduralTexture` (key, subtype, dimensions, archive media key,
+    media name, and source scope). The export warning explicitly states that
+    glTF retains source metadata but cannot play the video; no fake image is
+    substituted for a decoded frame.
+  - Validate the live monitor material in `BF00218E`, including whether its
+    material layers use the same procedural texture descriptor.
+  - Preserve source-video references in exports; ordinary glTF materials do
+    not encode video playback.
   - Audit command: `--texture-descriptor-audit <archive.bf> FF005833 BF000F07`.
-    This identifies the source; video playback is not implemented yet.
+    Use it with the trigger audit to compare the descriptor with the inferred
+    controller timeline.
 
 ## Asset export
 
-- [ ] Bake source-alpha material overlays with instance RLI colors.
+- [x] Bake source-alpha material overlays with instance RLI colors.
   - Reproduction: export `DEC_04_00_ilotphare.gao` from
     `04_00_vaisseau_hyllis_planete` in container `FF000988`, then import into Blender.
-  - Confirmed: grass texture `620020F3` is a second material layer. The object
-    has 508 RLI colors; the current bake guard rejects ordinary alpha-overlay
-    compositions when RLI is present, so only the primary layer is exported.
-  - Implement generic per-layer RLI RGB/alpha handling according to renderer
-    rules, including alpha overrides, without object-name checks or applying
-    vertex colors twice after baking.
-  - Verify grass coverage against the editor, add a synthetic RLI overlay
-    regression, and check the real object's GLB in Blender.
-  - Deferred on 2026-10-19; no export behavior changed for this issue.
+  - Confirmed: texture `620020F3` is the second, source-alpha material layer;
+    this instance has 508 RLI colors. The former bake guard discarded that layer
+    when RLI was present.
+  - Alpha-overlay baking now evaluates both layers' corner tints using the same
+    instance/geometry color rules as the renderer. Alpha overrides are applied
+    once in the baked result, and the baked material does not apply vertex color
+    a second time. No object-name special case is used.
+  - Added a synthetic per-instance RLI regression. A real GLB export of the
+    named asset contains two baked-layer materials, and Blender 5.2.3 imports
+    both with texture nodes. Output:
+    `artifacts/export-verification/DEC_04_00_ilotphare.gao-audit.glb`.
+  - [ ] Compare the asset's grass coverage and tint against the JadeView
+    viewport or retail game. The GLB imports and its baked layers are present,
+    but an automated Blender import does not prove visual parity.

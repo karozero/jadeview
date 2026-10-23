@@ -24,7 +24,7 @@ internal sealed record CinematicFlashController(
     float SmallWidthMax,
     ushort InitialCapabilities);
 
-internal readonly record struct CinematicFlashState(Vector3 Position, uint Seed, float CameraPullDistance,
+internal readonly record struct CinematicFlashState(Vector3 Position, uint Seed,
     float LengthRatio, uint Color, int RayCount,
     float Opacity, float BigAngleJitter, float BigLengthMin, float BigLengthMax,
     float BigWidthMin, float BigWidthMax, float SmallAngleJitter,

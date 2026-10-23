@@ -156,7 +156,8 @@ sealed class Preview
         if (b.Length < 12 || !b.AsSpan(0, 4).SequenceEqual("RIFF"u8)
             || !b.AsSpan(8, 4).SequenceEqual("WAVE"u8))
             throw new InvalidDataException("Audio resource is not a RIFF WAVE stream.");
-        int format = 0, channels = 0, rate = 0, align = 0, bits = 0, dataOffset = 0, dataSize = 0;
+        int format = 0, channels = 0, rate = 0, align = 0, bits = 0, samplesPerBlock = 0,
+            dataOffset = 0, dataSize = 0;
         int[] c1 = [256, 512, 0, 192, 240, 460, 392], c2 = [0, -256, 0, 64, 0, -208, -232];
         for (int pos = 12; pos + 8 <= b.Length;)
         {
@@ -167,6 +168,7 @@ sealed class Preview
                 format = U16(b, off); channels = U16(b, off + 2); rate = I32(b, off + 4); align = U16(b, off + 12); bits = U16(b, off + 14);
                 if (format == 2 && size >= 22)
                 {
+                    samplesPerBlock = U16(b, off + 18);
                     int count = U16(b, off + 20);
                     if (count > 0 && count <= 256 && size >= 22 + count * 4)
                     { c1 = new int[count]; c2 = new int[count]; for (int i = 0; i < count; i++) { c1[i] = I16(b, off + 22 + 4 * i); c2[i] = I16(b, off + 24 + 4 * i); } }
@@ -206,7 +208,10 @@ sealed class Preview
         }
         else throw new InvalidDataException($"Codec {format}, {bits} bits is not supported.");
         var pcm = samples.ToArray();
-        return AudioAsset.FromSamples(pcm, channels, rate);
+        var loopRegion = AudioWaveLoopReader.Read(b, pcm.Length / channels, channels, format,
+            samplesPerBlock);
+        return AudioAsset.FromSamples(pcm, channels, rate,
+            loopRegion?.StartFrame ?? 0, loopRegion?.EndFrame ?? 0);
     }
     internal static int I32(byte[] b, int p) => BinaryPrimitives.ReadInt32LittleEndian(b.AsSpan(p, 4));
     internal static uint U32(byte[] b, int p) => BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(p, 4));

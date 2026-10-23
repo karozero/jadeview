@@ -945,8 +945,8 @@ internal static class CinematicScriptInspectorChecks
             dialogueOwners, dialogueReceiver.WorldKey);
         Check(dialogueDetails.Any(detail => detail.Contains("Queue priority 5000", StringComparison.Ordinal)
                 && detail.Contains("receiver default", StringComparison.Ordinal))
-            && dialogueDetails.Any(detail => detail.Contains("global voice sound ID 402", StringComparison.Ordinal))
-            && dialogueDetails.Any(detail => detail.Contains("Configured voice volume 0.8", StringComparison.Ordinal))
+            && dialogueDetails.Any(detail => detail.Contains("Associated sound parameter 402", StringComparison.Ordinal))
+            && dialogueDetails.Any(detail => detail.Contains("Associated audio volume 0.8", StringComparison.Ordinal))
             && explicitPriority.EffectivePriority == 700
             && ignoredPriority.EffectivePriority == null
             && CinematicDialogueMessageResolver.DescribeSelectedLine(slotMessage with { Int2 = -1 }, ignoredPriority)
@@ -1043,6 +1043,20 @@ internal static class CinematicScriptInspectorChecks
             $"Animation/material/haptic descriptions mismatch: '{actionFrequencyDescription}' | '{alphaThresholdDescription}' | '{hapticPulseDescription}' | '{hapticEnableDescription}'");
         Check(CinematicEngineFunctionCatalog.Describe(new(1, 0x3AA2, [2, 1])) == "",
             "Alpha-threshold calls with incomplete argument tuples must remain undescribed");
+        uint particleRate = BitConverter.SingleToUInt32Bits(12.5f);
+        uint particleOffset = BitConverter.SingleToUInt32Bits(2.25f);
+        Check(CinematicEngineFunctionCatalog.Describe(new(0x3500A264, 0x20D0, [0x3500A265, particleRate]))
+                .Contains("object 3500A265 at 12.5 particles/second", StringComparison.Ordinal)
+            && CinematicEngineFunctionCatalog.Describe(new(0x3500A264, 0x20D2, [7, particleRate]))
+                .Contains("generator ID 7 frequency to 12.5 particles/second", StringComparison.Ordinal)
+            && CinematicEngineFunctionCatalog.Describe(new(0x3500A264, 0x20D6, [0x40, 0x80]))
+                .Contains("set PAG flag bits 0x40 and clear 0x80", StringComparison.Ordinal)
+            && CinematicEngineFunctionCatalog.Describe(new(0x3500A264, 0x20D8, [22, particleOffset]))
+                .Contains("Friction (22) to 2.25", StringComparison.Ordinal)
+            && CinematicEngineFunctionCatalog.Describe(new(0x3500A264, 0x2109, [0x3500A266]))
+                .Contains("object-vertex emission matrix reference", StringComparison.Ordinal)
+            && CinematicEngineFunctionCatalog.Describe(new(1, 0x20D2, [7])) == "",
+            "PAG script calls should decode source-backed generator, flag, float-parameter and matrix-binding effects");
         var haloEffect = new CinematicScriptOwner(0xD0002E30, 0, 0x62001249, 0xD0002E24,
             uint.MaxValue, uint.MaxValue, "generic halo effect",
             ["SFX_HaloSimple_init", "SFX_HaloSimple_move"],
@@ -1932,7 +1946,7 @@ internal static class CinematicScriptInspectorChecks
                     && finding.Contains("Int1=200", StringComparison.Ordinal)
                     && finding.Contains("Int1 mod 100", StringComparison.Ordinal))
                 && dialogueFindings.Any(finding => finding.Contains("Decoded 1 populated dialogue slots", StringComparison.Ordinal)
-                    && finding.Contains("voice/audio metadata", StringComparison.Ordinal))
+                    && finding.Contains("associated-audio metadata", StringComparison.Ordinal))
                 && dialogueFindings.Any(finding => finding.Contains("message GAO2", StringComparison.Ordinal)
                     && finding.Contains("_PJ_Peyj_le_petit_cochon.gao", StringComparison.Ordinal)
                     && finding.Contains("does not itself drive facial morphs", StringComparison.Ordinal)),
@@ -2035,6 +2049,41 @@ internal static class CinematicScriptInspectorChecks
         Check(CinematicScriptBehaviorAnalyzer.Analyze(enabledFlagGate)
                 .Any(finding => finding.Contains("derived by cine_init (mask 0x80)", StringComparison.Ordinal)),
             "Cine_Events start gates should be derived from OVA fields rather than the serialized transient mask");
+        var capabilityGateActor = new SceneObject
+        {
+            GaoKey = 0x9E001234,
+            Name = "capability gate actor",
+            InitialCapabilities = 0x5
+        };
+        var capabilityGateOwner = cineOwner with
+        {
+            ObjectReferences = [new("des_o_actor_capa1", capabilityGateActor.GaoKey,
+                "instance", capabilityGateActor.Name)],
+            Variables = [.. cineOwner.Variables.Where(variable => variable.Name != "i_tests_a_reussir"),
+                new("i_tests_a_reussir", PcVariableFormat.IntegerType, "instance", "8"),
+                new("des_o_actor_capa1", PcVariableFormat.ObjectReferenceType,
+                    "instance", $"0x{capabilityGateActor.GaoKey:X8}"),
+                new("des_i_capa_test1", PcVariableFormat.IntegerType, "instance", "5"),
+                new("des_i_capa_etat1", PcVariableFormat.IntegerType, "instance", "1")]
+        };
+        string[] capabilitySnapshotPass = CinematicScriptBehaviorAnalyzer.Analyze(capabilityGateOwner,
+            worldObjects: [capabilityGateActor]);
+        var capabilitySnapshotFailOwner = capabilityGateOwner with
+        {
+            Variables = [.. capabilityGateOwner.Variables.Where(variable => variable.Name != "des_i_capa_etat1"),
+                new("des_i_capa_etat1", PcVariableFormat.IntegerType, "instance", "0")]
+        };
+        string[] capabilitySnapshotFail = CinematicScriptBehaviorAnalyzer.Analyze(
+            capabilitySnapshotFailOwner, worldObjects: [capabilityGateActor]);
+        string[] capabilitySnapshotUnknown = CinematicScriptBehaviorAnalyzer.Analyze(
+            capabilityGateOwner, worldObjects: []);
+        Check(capabilitySnapshotPass.Any(finding => finding.Contains("snapshot passes", StringComparison.Ordinal)
+                && finding.Contains("expected 0x00000005", StringComparison.Ordinal))
+            && capabilitySnapshotFail.Any(finding => finding.Contains("snapshot fails", StringComparison.Ordinal)
+                && finding.Contains("expected 0x00000000", StringComparison.Ordinal))
+            && capabilitySnapshotUnknown.Any(finding => finding.Contains("not loaded in this world", StringComparison.Ordinal)
+                && finding.Contains("result is unknown", StringComparison.Ordinal)),
+            "Cinematic capability gates should compare Iris's mask/state formula against a uniquely resolved initial actor snapshot and preserve unknown state when unresolved");
         var zoneGateOwner = cineOwner with
         {
             Variables = [.. cineOwner.Variables.Where(variable => variable.Name != "i_tests_a_reussir"
@@ -2175,6 +2224,33 @@ internal static class CinematicScriptInspectorChecks
         Check(extendedMessageInt1Mismatches is [{ Track.EventKey: 0xA05 }]
             && extendedMessageInt1Mismatches[0].QueueObject.Key == gateQueueOwner.OwnerKey,
             "Same-target MSGSendEx calls must be surfaced as rejected when their zero Int1 cannot satisfy a nonzero gate mask");
+        CinematicScriptMessageTrack CreateMessageAllTrack(uint eventKey, uint executionKey, int messageInt1) =>
+            new(matchingMessageOwner.WorldKey, matchingMessageOwner.OwnerKey, "SceneEvents", eventKey,
+                $"MSGSendAll event {eventKey:X8}", [])
+            {
+                EngineCalls = [(2.75f, new CinematicLiteralCall(executionKey, 0x1F78,
+                    [46, 0x601, 0x602, 0, 0, 0, 0, 0, 0, 0, 0, unchecked((uint)messageInt1), 9]))]
+            };
+        var messageAllTracks = new[]
+        {
+            CreateMessageAllTrack(0xA07, gateQueueOwner.OwnerKey, 4),
+            CreateMessageAllTrack(0xA08, gateQueueOwner.OwnerKey, 2),
+            CreateMessageAllTrack(0xA09, 0x501, 4)
+        };
+        var messageAllCandidates = CinematicScriptBehaviorAnalyzer.FindExtendedMessageGateCandidates(
+            filteredMessageGate, messageAllTracks, messageGateReferences);
+        Check(messageAllCandidates is [{ Track.EventKey: 0xA07 }]
+            && messageAllCandidates[0].QueueObject.Key == gateQueueOwner.OwnerKey,
+            "MSGSendAll should match the queue context and message ID only when its serialized Int1 overlaps the gate mask");
+        var messageAllContextMismatches = CinematicScriptBehaviorAnalyzer.FindExtendedMessageGateTargetMismatches(
+            filteredMessageGate, messageAllTracks, messageGateReferences);
+        Check(messageAllContextMismatches is [{ Track.EventKey: 0xA09 }]
+            && messageAllContextMismatches[0].TargetObject.Key == 0x501,
+            "MSGSendAll messages on another resolved execution object's queue should be shown as context mismatches");
+        var messageAllInt1Mismatches = CinematicScriptBehaviorAnalyzer.FindExtendedMessageGateInt1MaskMismatches(
+            filteredMessageGate, messageAllTracks, messageGateReferences);
+        Check(messageAllInt1Mismatches is [{ Track.EventKey: 0xA08 }],
+            "MSGSendAll with matching ID and queue context but non-overlapping Int1 must be exposed as a rejected candidate");
         var implicitZoneOwner = zoneGateOwner with
         {
             Variables = [.. zoneGateOwner.Variables.Where(variable => variable.Name != "des_o_actor_zone1"),

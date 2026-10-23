@@ -17,6 +17,25 @@ public sealed partial class SceneRenderer
     public static List<(string Name, bool Passed, string Details)> RunVerificationTests()
     {
         var list = new List<(string Name, bool Passed, string Details)>();
+        var hiddenActor = new SceneActor
+        {
+            Root = new SceneObject { Name = "hidden cinematic actor", CinematicExcluded = true }
+        };
+        var visibleActor = new SceneActor
+        {
+            Root = new SceneObject { Name = "visible cinematic actor" }
+        };
+        bool hiddenActorSkipped = !ShouldEvaluateWorldActor(hiddenActor, showHiddenObjects: false);
+        bool debugActorEvaluated = ShouldEvaluateWorldActor(hiddenActor, showHiddenObjects: true);
+        bool visibleActorEvaluated = ShouldEvaluateWorldActor(visibleActor, showHiddenObjects: false);
+        visibleActor.CinematicClockOwned = true;
+        bool cinematicClockPreserved = !ShouldEvaluateWorldActor(visibleActor, showHiddenObjects: true);
+        bool actorUpdatePolicyCorrect = hiddenActorSkipped && debugActorEvaluated
+            && visibleActorEvaluated && cinematicClockPreserved;
+        list.Add(("Hidden_Actor_Animation_Update_Is_Skipped", actorUpdatePolicyCorrect,
+            $"hidden skipped={hiddenActorSkipped}, debug evaluated={debugActorEvaluated}, "
+            + $"visible evaluated={visibleActorEvaluated}, cinematic clock preserved={cinematicClockPreserved}"));
+
         // Exercise the native Matrix ABI, not merely Numerics coordinate math.
         // raylib memory order: m0,m4,m8,m12,m1,m5,... while Numerics uses row vectors.
         var managed = Matrix4x4.CreateRotationY(.7f) * Matrix4x4.CreateTranslation(4000, 8, -4000);
@@ -133,6 +152,29 @@ public sealed partial class SceneRenderer
         catch (Exception ex)
         {
             list.Add(("TransformBoundingBox_AABB_Calculation", false, ex.Message));
+        }
+
+        try
+        {
+            var localBox = new BoundingBox(new Vector3(-2, -1, -3), new Vector3(2, 1, 3));
+            var transform = Matrix4x4.CreateRotationY(.63f) * Matrix4x4.CreateTranslation(3, 7, -4);
+            Vector3 checksum = Vector3.Zero;
+            for (int iteration = 0; iteration < 64; iteration++)
+                checksum += TransformBoundingBox(localBox, transform).Min;
+
+            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            for (int iteration = 0; iteration < 10_000; iteration++)
+                checksum += TransformBoundingBox(localBox, transform).Min;
+            long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+            bool finite = float.IsFinite(checksum.X + checksum.Y + checksum.Z);
+            bool ok = finite && allocatedBytes <= 64;
+            list.Add(("TransformBoundingBox_HotPath_DoesNotAllocate", ok,
+                $"allocated={allocatedBytes} bytes; checksum={checksum}"));
+        }
+        catch (Exception ex)
+        {
+            list.Add(("TransformBoundingBox_HotPath_DoesNotAllocate", false, ex.Message));
         }
 
         // 5. Тест конвертации осей Gizmo (World vs Local)

@@ -61,7 +61,11 @@ internal static class CinematicMaterialRenderChecks
             renderer.CinematicMaterials = null;
             renderer.Render(160, 120, new(), world, null, resolver);
             VerifySprite(renderer);
-            Console.WriteLine("PASS: GPU source-disabled material activation, timed alpha, cache reuse and reverse seek");
+            VerifySimpleOpacity(renderer);
+            VerifyAuthoredDiffuseColor(renderer);
+            VerifyDiffuse2x(renderer);
+            VerifyCinematicFog(renderer);
+            Console.WriteLine("PASS: GPU material activation, vertex-color diffuse/2x, opacity, sprite alpha, cinematic fog and reverse seek");
         }
         finally { Raylib.CloseWindow(); }
 
@@ -102,6 +106,165 @@ internal static class CinematicMaterialRenderChecks
                     throw new InvalidDataException($"SPG alpha should blend at 64/255, observed {pixel}.");
             }
             finally { Raylib.UnloadImage(image); }
+        }
+
+        void VerifySimpleOpacity(SceneRenderer renderer)
+        {
+            const uint simpleMaterial = 0x47000004;
+            var materialBytes = new byte[36];
+            BitConverter.GetBytes(3).CopyTo(materialBytes, 0);
+            BitConverter.GetBytes(.5f).CopyTo(materialBytes, 20);
+            Register("_materials", simpleMaterial, new ResolvedMaterial
+            { Id = new(simpleMaterial), Type = 3, SourceBytes = materialBytes });
+            world.Objects.Clear();
+            world.Objects.Add(new() { GaoKey = 9, GeometryKey = geometryKey, MaterialKey = simpleMaterial });
+            renderer.Render(160, 120, new(), world, null, resolver);
+            var image = Raylib.LoadImageFromTexture(renderer.Target.Texture);
+            try
+            {
+                var pixel = Raylib.GetImageColor(image, 80, 60);
+                if (pixel.R is < 110 or > 145 || pixel.G is < 110 or > 145 || pixel.B is < 110 or > 145)
+                    throw new InvalidDataException($"Simple material opacity should blend white at 50%, observed {pixel}.");
+            }
+            finally { Raylib.UnloadImage(image); }
+        }
+
+        void VerifyAuthoredDiffuseColor(SceneRenderer renderer)
+        {
+            const uint coloredGeometryKey = 102, diffuseMaterialKey = 0x47000005;
+            var coloredGeometry = new Geometry
+            {
+                Key = coloredGeometryKey,
+                Positions = [new(-2, 0, -2), new(2, 0, -2), new(0, 0, 2)],
+                VertexColors = [0xff0000ff, 0xff0000ff, 0xff0000ff],
+                Parts = [new(0, [0, 1, 2], [])]
+            };
+            var diffuseBytes = new byte[56];
+            BitConverter.GetBytes(5).CopyTo(diffuseBytes, 0);
+            BitConverter.GetBytes(0x00000007u).CopyTo(diffuseBytes, 40);
+            Register("_geometries", coloredGeometryKey, coloredGeometry);
+            Register("_materials", diffuseMaterialKey, new ResolvedMaterial
+            { Id = new(diffuseMaterialKey), Type = 5, SourceBytes = diffuseBytes });
+            world.Objects.Clear();
+            world.Objects.Add(new() { GaoKey = 10, GeometryKey = coloredGeometryKey, MaterialKey = diffuseMaterialKey });
+            renderer.Render(160, 120, new(), world, null, resolver);
+            var image = Raylib.LoadImageFromTexture(renderer.Target.Texture);
+            try
+            {
+                var pixel = Raylib.GetImageColor(image, 80, 60);
+                if (pixel.R < 230 || pixel.G > 20 || pixel.B > 20)
+                    throw new InvalidDataException($"Diffuse preview should preserve authored vertex colors, observed {pixel}.");
+            }
+            finally { Raylib.UnloadImage(image); }
+        }
+
+        void VerifyDiffuse2x(SceneRenderer renderer)
+        {
+            const uint doubleGeometryKey = 103, diffuse2xMaterialKey = 0x47000006;
+            var halfRedGeometry = new Geometry
+            {
+                Key = doubleGeometryKey,
+                Positions = [new(-2, 0, -2), new(2, 0, -2), new(0, 0, 2)],
+                VertexColors = [0x800000ff, 0x800000ff, 0x800000ff],
+                Parts = [new(0, [0, 1, 2], [])]
+            };
+            var diffuse2xBytes = new byte[56];
+            BitConverter.GetBytes(5).CopyTo(diffuse2xBytes, 0);
+            BitConverter.GetBytes(0x00006007u).CopyTo(diffuse2xBytes, 40);
+            Register("_geometries", doubleGeometryKey, halfRedGeometry);
+            Register("_materials", diffuse2xMaterialKey, new ResolvedMaterial
+            { Id = new(diffuse2xMaterialKey), Type = 5, SourceBytes = diffuse2xBytes });
+            world.Objects.Clear();
+            world.Objects.Add(new() { GaoKey = 11, GeometryKey = doubleGeometryKey, MaterialKey = diffuse2xMaterialKey });
+            renderer.Render(160, 120, new(), world, null, resolver);
+            var image = Raylib.LoadImageFromTexture(renderer.Target.Texture);
+            try
+            {
+                var pixel = Raylib.GetImageColor(image, 80, 60);
+                if (pixel.R < 240 || pixel.G > 20 || pixel.B > 20)
+                    throw new InvalidDataException($"Diffuse2X should double the authored point color, observed {pixel}.");
+            }
+            finally { Raylib.UnloadImage(image); }
+        }
+
+        void VerifyCinematicFog(SceneRenderer renderer)
+        {
+            const uint fogOwnerKey = 20, sunKey = 21, fogMaterialKey = 0x47000007;
+            var fogMaterialBytes = new byte[36];
+            BitConverter.GetBytes(3).CopyTo(fogMaterialBytes, 0);
+            BitConverter.GetBytes(1f).CopyTo(fogMaterialBytes, 20);
+            Register("_materials", fogMaterialKey, new ResolvedMaterial
+            { Id = new(fogMaterialKey), Type = 3, SourceBytes = fogMaterialBytes });
+            uint[][] palettes = Enumerable.Range(0, 4)
+                .Select(_ => Enumerable.Repeat(0x00000000u, 9).ToArray())
+                .ToArray();
+            foreach (var palette in palettes) palette[1] = 0xff0000ff;
+
+            var controller = new CinematicEnvironmentController(fogOwnerKey, 0, [sunKey])
+            {
+                SunKey = sunKey,
+                NightHeight = 10,
+                DawnHeight = 20,
+                SunriseHeight = 30,
+                DayHeight = 40,
+                FogNear = 0,
+                FogFar = 10,
+                AttackFogNear = 0,
+                AttackFogFar = 10,
+                NormalPalettes = palettes
+            };
+            world.Objects.Clear();
+            world.Objects.Add(new()
+            {
+                GaoKey = 19,
+                GeometryKey = geometryKey,
+                MaterialKey = fogMaterialKey,
+                DrawFlags = 0x01004008
+            });
+            world.Objects.Add(new() { GaoKey = fogOwnerKey });
+            world.Objects.Add(new() { GaoKey = sunKey });
+            var fogState = new CinematicMaterialState(new AnimationClip(), world, resolver.Materials, [controller]);
+            fogState.Evaluate(0);
+            renderer.CinematicMaterials = fogState;
+
+            world.Objects[0].DrawFlags = 0x01000008;
+            renderer.Render(160, 120, new(), world, null, resolver);
+            var unfoggedImage = Raylib.LoadImageFromTexture(renderer.Target.Texture);
+            try
+            {
+                var unfoggedPixel = Raylib.GetImageColor(unfoggedImage, 80, 60);
+                if (unfoggedPixel.R < 240 || unfoggedPixel.G < 240 || unfoggedPixel.B < 240)
+                    throw new InvalidDataException($"Objects without the Fogged draw-mask must not receive cinematic fog, observed {unfoggedPixel}.");
+            }
+            finally { Raylib.UnloadImage(unfoggedImage); }
+
+            world.Objects[0].DrawFlags = 0x01004008;
+            renderer.Render(160, 120, new(), world, null, resolver);
+            var image = Raylib.LoadImageFromTexture(renderer.Target.Texture);
+            try
+            {
+                var pixel = Raylib.GetImageColor(image, 80, 60);
+                if (pixel.R < 240 || pixel.G is < 105 or > 150 || pixel.B is < 105 or > 150)
+                    throw new InvalidDataException($"Linear cinematic fog should blend white toward red at half depth, observed {pixel}.");
+            }
+            finally { Raylib.UnloadImage(image); }
+
+            const uint additiveFogMaterialKey = 0x47000008;
+            var additiveFogMaterialBytes = (byte[])bytes.Clone();
+            BitConverter.GetBytes(0x00054c07u).CopyTo(additiveFogMaterialBytes, 40);
+            Register("_materials", additiveFogMaterialKey, new ResolvedMaterial
+            { Id = new(additiveFogMaterialKey), Type = 5, SourceBytes = additiveFogMaterialBytes });
+            world.Objects[0].MaterialKey = additiveFogMaterialKey;
+            renderer.Render(160, 120, new(), world, null, resolver);
+            var additiveFogImage = Raylib.LoadImageFromTexture(renderer.Target.Texture);
+            try
+            {
+                var pixel = Raylib.GetImageColor(additiveFogImage, 80, 60);
+                if (Math.Abs(pixel.R - pixel.G) > 12 || Math.Abs(pixel.G - pixel.B) > 12)
+                    throw new InvalidDataException($"Jade additive/subtractive fog should fade toward black, observed {pixel}.");
+            }
+            finally { Raylib.UnloadImage(additiveFogImage); }
+            renderer.CinematicMaterials = null;
         }
     }
 }

@@ -193,7 +193,7 @@ internal static class CinematicScriptGraphAudit
                                 item.Time,
                                 Function = CinematicEngineFunctionCatalog.NameFor(item.Call.Selector),
                                 Binding = CinematicSoundCommandResolver.Resolve(item.Call, track.WorldKey,
-                                    document)
+                                    document, archiveEntries: archive.Entries)
                             }).Where(item => item.Binding != null),
                         Messages = track.Messages.Length
                     })
@@ -442,7 +442,7 @@ internal static class CinematicScriptGraphAudit
                             item.Call.Arguments,
                             Description = CinematicEngineFunctionCatalog.Describe(item.Call),
                             SoundBinding = CinematicSoundCommandResolver.Resolve(item.Call, owner.WorldKey,
-                                document),
+                                document, archiveEntries: archive.Entries),
                             EmbeddedTrack = CinematicEmbeddedEventTrackResolver.Describe(
                                 item.Call, document, owner.WorldKey)
                         }),
@@ -493,7 +493,7 @@ internal static class CinematicScriptGraphAudit
                     unresolvedActionLink.Reason
                 } : null,
             SoundBinding = CinematicSoundCommandResolver.Resolve(item.Call, clip.CinematicWorldKey,
-                document),
+                document, archiveEntries: archive.Entries),
             EmbeddedTrack = CinematicEmbeddedEventTrackResolver.Describe(
                 item.Call, document, clip.CinematicWorldKey)
         }).ToArray();
@@ -615,7 +615,7 @@ internal static class CinematicScriptGraphAudit
                             item.Call.Arguments,
                             Description = CinematicEngineFunctionCatalog.Describe(item.Call),
                             SoundBinding = CinematicSoundCommandResolver.Resolve(item.Call, list.WorldKey,
-                                document),
+                                document, archiveEntries: archive.Entries),
                             EmbeddedTrack = CinematicEmbeddedEventTrackResolver.Describe(
                                 item.Call, document, list.WorldKey)
                         }),

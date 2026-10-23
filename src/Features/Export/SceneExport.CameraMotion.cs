@@ -12,15 +12,16 @@ public sealed partial class SceneExporter
             foreach (var pair in cinematicCameraBindings.Where(pair => pair.Key.Clip == clip.Key))
             {
                 if (!objects.Contains(pair.Value.Source)) continue;
-                WriteRoutedCamera(clip, pair.Value);
+                WriteRoutedCamera(clip, pair.Value, world);
             }
     }
 
-    private void WriteRoutedCamera(AnimationClip clip, CinematicCameraBinding binding)
+    private void WriteRoutedCamera(AnimationClip clip, CinematicCameraBinding binding, WorldData world)
     {
-        float[] times = CameraSampleTimes(clip, binding);
+        var tracks = CinematicTracks(clip, world);
+        float[] times = CameraSampleTimes(clip, binding, tracks);
         if (times.Length == 0) return;
-        using var sampler = new CinematicCameraExportSampler(binding, clip);
+        using var sampler = new CinematicCameraExportSampler(binding, clip, tracks);
         var node = D("name", $"Cinematic camera · {binding.Source.Name} · {clip.Key:X8} · {binding.ReceiverKey:X8}", "camera", cameras.Count,
             "extras", D("gaoKey", binding.Source.GaoKey.ToString("X8"), "cinematicClipKey", clip.Key.ToString("X8"),
                 "cameraReceiverKey", binding.ReceiverKey.ToString("X8")));
@@ -44,9 +45,16 @@ public sealed partial class SceneExporter
         AddExportAnimation(D("name", clip.Name, "channels", channels, "samplers", samplers), clip);
     }
 
-    private static float[] CameraSampleTimes(AnimationClip clip, CinematicCameraBinding binding)
+    private static float[] CameraSampleTimes(AnimationClip clip, CinematicCameraBinding binding,
+        AnimationTrack[] sourceTracks)
     {
-        var times = new SortedSet<float>(LensSampleTimes(clip, binding.Lens!));
+        var times = new SortedSet<float>(AnimationExportSampling.Times(clip, sourceTracks));
+        foreach (var lensKey in binding.Lens!.Keys)
+        {
+            if (lensKey.Time < 0 || lensKey.Time > clip.Duration) continue;
+            times.Add(lensKey.Time);
+            if (lensKey.Time > 0) times.Add(MathF.BitDecrement(lensKey.Time));
+        }
         foreach (float boundary in binding.Routing!.Boundaries.Where(time => time >= 0 && time <= clip.Duration))
         {
             times.Add(boundary);

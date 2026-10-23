@@ -8,6 +8,11 @@ public sealed partial class EditorShell
     private WorldData? _cinematicWorld;
     private CinematicPlayback[] _cinematicPlayers = [];
     private CinematicPlayback? _cinematicPlayback;
+    private readonly HashSet<CinematicScriptOwnerId> _disabledCinematicCallbackOwners = [];
+    private readonly HashSet<CinematicScriptOwnerId> _previewedCinematicSceneEventOwners = [];
+    private bool _cinematicVideoPostRollActive;
+    private bool _cinematicVideoPostRollCompleted;
+    private float _cinematicVideoPostRollSeconds;
     private CinematicScriptOwnerId? _selectedCinematicScriptOwnerId;
     private string _cinematicEveSearch = string.Empty;
     private SceneDocument? _cinematicFlagFlowDocument;
@@ -34,9 +39,14 @@ public sealed partial class EditorShell
         Renderer.CinematicScreenFade = null;
         Renderer.CinematicHorizontalFov = null;
         Renderer.CinematicMaterials = null;
+        Renderer.CinematicVideoTime = null;
+        Renderer.CinematicVideoPlayback = null;
         _cinematicPlayback?.Deactivate();
         ResetCinematicAudio();
         _cinematicPlayback = null;
+        _cinematicVideoPostRollActive = false;
+        _cinematicVideoPostRollCompleted = false;
+        _cinematicVideoPostRollSeconds = 0;
         _cinematicPlayers = [];
         _selectedCinematicScriptOwnerId = null;
         _cinematicFlagFlowDocument = null;

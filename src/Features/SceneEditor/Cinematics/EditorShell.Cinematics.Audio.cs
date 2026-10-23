@@ -24,9 +24,8 @@ public sealed partial class EditorShell
             ResetCinematicAudio();
             _cinematicAudioKey = _cinematicPlayback.Key;
             _selectedCinematicAudioCueIndices.Clear();
-            for (int index = 0; index < _cinematicPlayback.AudioCues.Length; index++)
-                if (_cinematicPlayback.AudioCues[index].ChoiceIndex == 0)
-                    _selectedCinematicAudioCueIndices.Add(index);
+            _selectedCinematicAudioCueIndices.UnionWith(
+                CinematicAudioCueSelection.CreateDefaultIndices(_cinematicPlayback.AudioCues));
         }
         if (_cinematicAudio == null && _selectedCinematicAudioCueIndices.Count > 0)
             _cinematicAudio = new(Archive,
@@ -42,7 +41,7 @@ public sealed partial class EditorShell
         if (_cinematicPlayback.AudioCues.Length == 0)
         {
             ImGui.TextWrapped("No source audio cues were resolved for this clip.");
-            foreach (string diagnostic in _cinematicPlayback.AudioDiagnostics) ImGui.TextWrapped(diagnostic);
+            DrawCinematicAudioDiagnostics("Audio diagnostics", _cinematicPlayback.AudioDiagnostics);
             return;
         }
         DrawCinematicAudioCueSelection();
@@ -55,8 +54,16 @@ public sealed partial class EditorShell
         ImGui.SetNextItemWidth(-1);
         ImGui.SliderFloat("##CinematicVolume", ref _cinematicAudio.Volume, 0, 1, "Volume %.2f");
         ImGui.TextWrapped(_cinematicAudio.Status);
-        foreach (string diagnostic in _cinematicAudio.Diagnostics) ImGui.TextWrapped(diagnostic);
-        foreach (string diagnostic in _cinematicPlayback.AudioDiagnostics) ImGui.TextWrapped(diagnostic);
+        DrawCinematicAudioDiagnostics("Playback diagnostics", _cinematicAudio.Diagnostics);
+        DrawCinematicAudioDiagnostics("Source diagnostics", _cinematicPlayback.AudioDiagnostics);
+    }
+
+    private static void DrawCinematicAudioDiagnostics(string title, IReadOnlyList<string> diagnostics)
+    {
+        if (diagnostics.Count == 0) return;
+        if (!ImGui.TreeNode($"{title} ({diagnostics.Count})")) return;
+        foreach (string diagnostic in diagnostics) ImGui.TextWrapped(diagnostic);
+        ImGui.TreePop();
     }
 
     private void DrawCinematicAudioCueSelection()
@@ -70,10 +77,7 @@ public sealed partial class EditorShell
         bool selectionChanged = false;
         if (ImGui.SmallButton("All"))
         {
-            var defaultIndices = Enumerable.Range(0, playback.AudioCues.Length)
-                .Where(index => playback.AudioCues[index].ChoiceGroup == null
-                    || playback.AudioCues[index].ChoiceIndex == 0)
-                .ToHashSet();
+            var defaultIndices = CinematicAudioCueSelection.CreateDefaultIndices(playback.AudioCues);
             selectionChanged = !_selectedCinematicAudioCueIndices.SetEquals(defaultIndices);
             _selectedCinematicAudioCueIndices.Clear();
             _selectedCinematicAudioCueIndices.UnionWith(defaultIndices);

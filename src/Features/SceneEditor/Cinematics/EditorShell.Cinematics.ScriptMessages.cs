@@ -78,20 +78,20 @@ public sealed partial class EditorShell
             DrawMessageGateRows(analysis.DifferentContexts);
         }
 
-        DrawCategoryTitle($"MSGSendEx writes matching this gate ({analysis.EngineMatches.Length})");
-        ImGui.TextDisabled("Iris zero-initializes MSGSendEx messages and sets only sender, message ID, and float payload. These candidates match the configured queue target and message ID; they can pass the gate's Int1 test only when its mask is zero. Queue capacity and execution order remain runtime-dependent.");
+        DrawCategoryTitle($"Literal engine-message sends matching this gate ({analysis.EngineMatches.Length})");
+        ImGui.TextDisabled("MSGSendEx writes a zero Int1; MSGSendAll carries an explicit Int1. MSGSendEx and MSGSendAll enqueue on the current execution object's queue, while MSGSendAllOwner uses a separate registered owner queue and is not joined here. Matches satisfy the configured queue, message ID and Int1 mask, but queue capacity and execution order remain runtime-dependent.");
         DrawEngineMessageGateRows(analysis.EngineMatches);
 
         if (analysis.EngineDifferentTargets.Length > 0)
         {
-            DrawCategoryTitle($"MSGSendEx with matching ID but a different queue target ({analysis.EngineDifferentTargets.Length})");
+            DrawCategoryTitle($"Engine-message sends with matching ID but a different queue ({analysis.EngineDifferentTargets.Length})");
             DrawEngineMessageGateRows(analysis.EngineDifferentTargets);
         }
 
         if (analysis.EngineInt1MaskMismatches.Length > 0)
         {
-            DrawCategoryTitle($"MSGSendEx rejected by this gate's Int1 mask ({analysis.EngineInt1MaskMismatches.Length})");
-            ImGui.TextDisabled("These sends match the gate's queue target and message ID, but MSGSendEx leaves Int1 at zero while this gate requires a nonzero bit overlap.");
+            DrawCategoryTitle($"Engine-message sends rejected by this gate's Int1 mask ({analysis.EngineInt1MaskMismatches.Length})");
+            ImGui.TextDisabled("These sends match the gate's queue and message ID, but their serialized Int1 does not overlap the configured mask.");
             DrawEngineMessageGateRows(analysis.EngineInt1MaskMismatches);
         }
 

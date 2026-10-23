@@ -56,6 +56,13 @@ internal static class MorphPreviewChecks
         var deformed = preview.Positions();
         Check(Vector3.Distance(deformed[0], geometry.Positions[0] + new Vector3(.1f, -.05f, .15f)) < .00001f,
             "Manual weight did not scale the sparse delta");
+        Check(ReferenceEquals(deformed, preview.Positions()),
+            "Animated face-morph positions should reuse the preview deformation buffer.");
+        preview.SetWeight(1, 1);
+        Check(ReferenceEquals(deformed, preview.Positions())
+            && Vector3.Distance(deformed[0], geometry.Positions[0] + new Vector3(.2f, -.1f, .3f)) < .00001f,
+            "Reused face-morph buffer did not refresh when the weight changed.");
+        preview.SetWeight(1, .5f);
         actor.Evaluate(0);
         string path = Path.Combine(output, "manual-morph-weights.glb");
         SceneExporter.Export(path, world, resolver, new() { Animations = true, Textures = false }, actor.Root);

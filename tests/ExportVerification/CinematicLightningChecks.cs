@@ -30,14 +30,18 @@ internal static class CinematicLightningChecks
         };
         var timeline = new CinematicLightningTimeline(source, world,
             new Dictionary<uint, CinematicLightningController> { [99] = controller });
-        if (timeline.Evaluate(.9f).Length != 0)
+        if (timeline.Evaluate(.9f).Count != 0)
             throw new InvalidDataException("Inactive lightning capability rendered before activation.");
-        var fadeIn = timeline.Evaluate(1.5f).Single();
+        var activeStates = timeline.Evaluate(1.5f);
+        var fadeIn = activeStates.Single();
         if (Math.Abs(fadeIn.Opacity - .5f) > .001f || fadeIn.Color != controller.OnColorFirst
             || Vector3.Distance(fadeIn.Start, Vector3.Zero) > .001f
             || Vector3.Distance(fadeIn.End, new(10, 3, -2)) > .001f)
             throw new InvalidDataException($"Lightning activation/fade/endpoints mismatch: opacity={fadeIn.Opacity}, color={fadeIn.Color:X8}, start={fadeIn.Start}, end={fadeIn.End}.");
-        if (Math.Abs(timeline.Evaluate(3.5f).Single().Opacity - .5f) > .001f
+        var inactiveStates = timeline.Evaluate(3.5f);
+        if (!ReferenceEquals(activeStates, inactiveStates))
+            throw new InvalidDataException("Lightning evaluation allocated a new state collection instead of reusing it.");
+        if (Math.Abs(inactiveStates.Single().Opacity - .5f) > .001f
             || Math.Abs(timeline.Evaluate(4.5f).Single().Opacity - .5f) > .001f)
             throw new InvalidDataException("Lightning fade-out or capability reactivation was not repeatable.");
 

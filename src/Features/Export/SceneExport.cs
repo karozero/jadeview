@@ -14,6 +14,10 @@ public sealed partial class SceneExporter
     private readonly Dictionary<string, int> imageCache = [];
     private readonly HashSet<string> warnings = [];
     private readonly Dictionary<SceneObject, int> nodeByObject = [];
+    private readonly Dictionary<(WorldData World, uint ClipKey), AnimationTrack[]> cinematicTrackCache = [];
+    private readonly Dictionary<(WorldData World, uint ClipKey), CinematicNestedEventTimeline> cinematicEventCache = [];
+    private readonly Dictionary<(WorldData World, uint ClipKey), CinematicOrientToTimeline> cinematicOrientCache = [];
+    private readonly Dictionary<(WorldData World, uint ClipKey), CinematicLocalRotationTimeline> cinematicRotationCache = [];
     private HashSet<SceneObject> animatedCinematicObjects = [];
     private int empties;
     private Matrix4x4 originOffset = Matrix4x4.Identity;
@@ -38,7 +42,7 @@ public sealed partial class SceneExporter
         var exporter = lifetime.Value;
         var objects = SelectObjects(world, options, selected);
         exporter.ResolveCinematicCameras(world);
-        exporter.animatedCinematicObjects = FindCinematicObjects(world, objects, options);
+        exporter.animatedCinematicObjects = exporter.FindCinematicObjects(world, objects);
         exporter.SetOrigin(objects, selected);
         exporter.ExportObjects(objects);
         exporter.WriteRoutedCameras(world, objects);
@@ -56,17 +60,58 @@ public sealed partial class SceneExporter
             exporter.animations.Count, exporter.warnings.ToArray());
     }
 
-    private static HashSet<SceneObject> FindCinematicObjects(WorldData world,
-        List<SceneObject> objects, SceneExportOptions options)
+    private HashSet<SceneObject> FindCinematicObjects(WorldData world, List<SceneObject> objects)
     {
         var clips = SelectedCinematicClips(world, options);
         var targetKeys = clips
-            .SelectMany(clip => clip.Tracks.Concat(CinematicScriptTransformTracks.Read(clip)))
+            .SelectMany(clip => CinematicTracks(clip, world))
             .Where(track => track.Bone < 0).Select(track => track.Target).ToHashSet();
         var visibilityTargets = clips.SelectMany(clip =>
             new CinematicObjectState(clip, world, world.Actors).VisibilityTargets).ToHashSet();
+        var orientTargets = clips.SelectMany(clip => CinematicOrientTo(clip, world).OrientedObjects).ToHashSet();
+        var rotationTargets = clips.SelectMany(clip => CinematicLocalRotations(clip, world).Targets).ToHashSet();
         return objects.Where(sceneObject => sceneObject.Actor == null
-            && (targetKeys.Contains(sceneObject.GaoKey) || visibilityTargets.Contains(sceneObject))).ToHashSet();
+            && (targetKeys.Contains(sceneObject.GaoKey) || visibilityTargets.Contains(sceneObject)
+                || orientTargets.Contains(sceneObject) || rotationTargets.Contains(sceneObject))).ToHashSet();
+    }
+
+    private AnimationTrack[] CinematicTracks(AnimationClip clip, WorldData world)
+    {
+        if (cinematicTrackCache.TryGetValue((world, clip.Key), out var cached)) return cached;
+        AnimationTrack[] nestedTracks = NestedCinematicEvents(clip, world).TransformTracks;
+        var tracks = clip.Tracks.Concat(CinematicScriptTransformTracks.Read(clip))
+            .Concat(nestedTracks).ToArray();
+        cinematicTrackCache[(world, clip.Key)] = tracks;
+        return tracks;
+    }
+
+    private CinematicNestedEventTimeline NestedCinematicEvents(AnimationClip clip, WorldData world)
+    {
+        if (cinematicEventCache.TryGetValue((world, clip.Key), out var cached)) return cached;
+        var timeline = options.CinematicDocument == null
+            ? new CinematicNestedEventTimeline([], [], [], [], [])
+            : CinematicNestedEventTransformTracks.ReadTimeline(clip, world, options.CinematicDocument,
+                options.DisabledCinematicCallbackOwners, options.PreviewedCinematicSceneEventOwners);
+        cinematicEventCache[(world, clip.Key)] = timeline;
+        return timeline;
+    }
+
+    private CinematicOrientToTimeline CinematicOrientTo(AnimationClip clip, WorldData world)
+    {
+        if (cinematicOrientCache.TryGetValue((world, clip.Key), out var cached)) return cached;
+        var timeline = new CinematicOrientToTimeline(clip, world,
+            NestedCinematicEvents(clip, world).Commands, CinematicTracks(clip, world));
+        cinematicOrientCache[(world, clip.Key)] = timeline;
+        return timeline;
+    }
+
+    private CinematicLocalRotationTimeline CinematicLocalRotations(AnimationClip clip, WorldData world)
+    {
+        if (cinematicRotationCache.TryGetValue((world, clip.Key), out var cached)) return cached;
+        var timeline = new CinematicLocalRotationTimeline(world,
+            NestedCinematicEvents(clip, world).RotationCommands);
+        cinematicRotationCache[(world, clip.Key)] = timeline;
+        return timeline;
     }
 
     private static List<SceneObject> SelectObjects(WorldData world, SceneExportOptions options, SceneObject? selected)

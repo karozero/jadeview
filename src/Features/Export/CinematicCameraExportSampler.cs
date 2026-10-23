@@ -9,12 +9,12 @@ internal sealed class CinematicCameraExportSampler : IDisposable
     private readonly Dictionary<SceneActor, ActorExportSnapshot> snapshots = [];
     private readonly Dictionary<SceneActor, float> evaluatedTimes = [];
 
-    internal CinematicCameraExportSampler(CinematicCameraBinding binding, AnimationClip clip)
+    internal CinematicCameraExportSampler(CinematicCameraBinding binding, AnimationClip clip,
+        AnimationTrack[] sourceTracks)
     {
         this.binding = binding;
         var dependencies = (binding.Routing?.Dependencies ?? new[] { binding.Source, binding.Target }.OfType<SceneObject>())
             .Append(binding.Source).Distinct().ToArray();
-        var sourceTracks = clip.Tracks.Concat(CinematicScriptTransformTracks.Read(clip)).ToArray();
         tracks = dependencies.ToDictionary(item => item, item => sourceTracks
             .Where(track => track.Bone < 0 && track.Target == item.GaoKey).ToArray());
         try

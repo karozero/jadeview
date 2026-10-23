@@ -440,8 +440,10 @@ public sealed class ResourceResolver
                 report.TotalObjects++;
                 if(_geometries.GetValueOrDefault(obj.RenderGeometryKey)?.Particles is {} pag)
                     doc.Diagnostics.Add($"PAG {obj.Name}: capacity {pag.Capacity}, flags {pag.Flags:X8}, shape {pag.Shape}, direction {pag.Direction}. " +
-                        (pag.Shape>5 || pag.Direction is 4 or >5 ? "External source/target geometry links are not implemented." :
-                        (pag.Flags&64)==0 ? "Emitter disabled in serialized state; runtime activation is not emulated." : "CPU preview; game AI activation and exact runtime random sequence are not emulated."));
+                        (pag.Direction > 5 ? "This direction mode is not implemented." :
+                        pag.Shape == 6 ? "Object-vertex emission requires a PAG_SetObject source binding; resolved cinematic bindings are previewed, and source normals are approximated from triangles." :
+                        pag.Direction == 4 ? "Object-normal speed requires the object-vertex emitter mode and is not previewed for this definition." :
+                        (pag.Flags&64)==0 ? "Emitter is disabled in the archive state; timed cinematic PAG flag calls are applied, but AI/script-owner activation is not inferred." : "CPU preview; AI/script-owner activation and the exact runtime random sequence are not reconstructed."));
 
                 Geometry? geom = null;
 

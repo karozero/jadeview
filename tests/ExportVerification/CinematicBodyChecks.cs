@@ -17,6 +17,14 @@ internal static class CinematicBodyChecks
         actor.DefaultShape = 100;
         actor.Shapes[100] = [1, 0, 0, 254]; // Native no-hide source for bone 0.
         actor.Shapes[101] = [1, 0, 0, 253]; // Native hide source for bone 0.
+        var encodedForcedActionKey = SetAction(0, 0x800000C9);
+        var encodedForcedAction = CinematicActionEvent.Decode(encodedForcedActionKey, 1,
+            encodedForcedActionKey.OpaquePayloads.Single());
+        var noActionKey = SetAction(0, uint.MaxValue);
+        var noAction = CinematicActionEvent.Decode(noActionKey, 1, noActionKey.OpaquePayloads.Single());
+        if (encodedForcedAction is not { Action: 201, Force: true }
+            || noAction is not { Action: -1, Force: false })
+            throw new InvalidDataException("ACTActionSet high-bit force and no-action sentinel were not decoded correctly.");
         root.Actor = bone.Actor = actor;
         var camera = new SceneObject { GaoKey = 3, Name = "Camera" };
         var source = new AnimationClip
@@ -39,7 +47,7 @@ internal static class CinematicBodyChecks
                     SetAction(2, 201),
                     Event(3, (0, 0x01000028), (0, 0x02000806), (201, 0x01000021),
                         (30, 0x01000021), (0, 0x0300339b)),
-                    SetAction(4, 200), SetAction(4.2f, 200),
+                    SetAction(4, 200), SetAction(4.2f, 200), SetAction(4.4f, 0x800000C9),
                     Event(5, (0, 0x01000028), (0, 0x02000806), (200, 0x01000021),
                         (32, 0x01000021), (0, 0x0300339c))
                 ] }
@@ -70,14 +78,39 @@ internal static class CinematicBodyChecks
             throw new InvalidDataException("Cinematic body timeline did not expose its referenced shape key.");
         VerifyBone(3, 10.5f);
         VerifyBone(3.25f, 10.75f);
-        VerifyBone(4.5f, .5f);
+        VerifyBone(4.5f, 10.1f);
+        VerifyBone(5.5f, .25f);
         if (bone.PreviewHidden)
             throw new InvalidDataException("Cinematic action shape did not return to the actor's default shape.");
-        VerifyBone(5.5f, .25f);
         VerifyBone(.5f, .5f);
         if (actor.Clip!.CinematicBody!.Diagnostics.Count != 0)
             throw new InvalidDataException("Resolved action kit unexpectedly produced missing-binding warnings.");
         Console.WriteLine("PASS: cinematic kit merge, message-47 startup, body actions, frame/frequency controls and deterministic seek");
+
+        (float Time, CinematicLiteralCall Call)[] nestedBodyCalls =
+        [
+            (1f, new(root.GaoKey, 0x3398, [44, 250, 250])),
+            (2f, new(root.GaoKey, 0x3391, [250]))
+        ];
+        var nestedBodyKits = new Dictionary<(uint WorldKey, uint OwnerKey), Dictionary<int, CinematicAction>>
+        {
+            [(7, root.GaoKey)] = bodyActions,
+            [(7, 44)] = new() { [250] = Action(20, 101) }
+        };
+        var nestedBodyTimeline = CinematicBodyTimeline.Create(new AnimationClip { Duration = 3 }, actor,
+            7, nestedBodyKits, nestedBodyCalls);
+        if (nestedBodyTimeline.ActionCount != 1 || nestedBodyTimeline.FirstActionTime != 2f
+            || nestedBodyTimeline.Diagnostics.Count != 0)
+            throw new InvalidDataException("Nested SceneEvents action-kit merges and body actions must resolve on the shared cinematic clock.");
+
+        var nestedFrameEvent = CinematicActionEvent.FromLiteralCall(3,
+            new(root.GaoKey, 0x339B, [200, 24]));
+        var nestedFrequencyEvent = CinematicActionEvent.FromLiteralCall(4,
+            new(root.GaoKey, 0x339C, [200, 64]));
+        if (nestedFrameEvent is not { Action: 200, StartFrame: 24, Force: true }
+            || nestedFrequencyEvent is not { Action: 200, Frequency: 64, Force: true })
+            throw new InvalidDataException("Nested ACT frame/frequency commands must keep their serialized controls.");
+        Console.WriteLine("PASS: SceneEvents body-action commands, kit merges, frames and frequencies join cinematic playback");
 
         var unresolvedSource = new AnimationClip
         {
@@ -213,6 +246,41 @@ internal static class CinematicBodyChecks
         if (companionHair.PreviewHidden || companionHair.RenderGeometryKey != 0xA90052F4)
             throw new InvalidDataException("Actor evaluation did not preserve the explicitly selected hair companion.");
         Console.WriteLine("PASS: explicit appearance companion binding activates shape-hidden companion meshes");
+
+        var cachedShapeRoot = new SceneObject { Name = "Cached shape actor", GaoKey = 31 };
+        var cachedShapeBone = new SceneObject
+        {
+            Name = "Cached shape bone",
+            GaoKey = 32,
+            ActorNode = new() { Parent = cachedShapeRoot.GaoKey, Local = Matrix4x4.Identity }
+        };
+        var firstAppearance = new SceneObject { GeometryKey = 33, MaterialKey = 34 };
+        var secondAppearance = new SceneObject { GeometryKey = 35, MaterialKey = 36 };
+        var cachedShapeActor = new SceneActor
+        {
+            Root = cachedShapeRoot,
+            Members = [cachedShapeRoot, cachedShapeBone],
+            Bones = [cachedShapeBone],
+            DefaultShape = 301,
+            Shapes = { [301] = [1, 0, 0, 0], [302] = [1, 0, 0, 1] },
+            SourceMeshes = { [0] = [firstAppearance, secondAppearance] }
+        };
+        cachedShapeRoot.Actor = cachedShapeBone.Actor = cachedShapeActor;
+        cachedShapeActor.ApplyShape(cachedShapeActor.DefaultShape);
+        int originalAppearanceRevision = cachedShapeBone.AppearanceRevision;
+        cachedShapeActor.Evaluate(0);
+        cachedShapeActor.Evaluate(0);
+        if (cachedShapeBone.AppearanceRevision != originalAppearanceRevision)
+            throw new InvalidDataException("Evaluating an unchanged actor shape invalidated its appearance every frame.");
+        cachedShapeActor.DefaultShape = 302;
+        cachedShapeActor.Evaluate(0);
+        int changedAppearanceRevision = cachedShapeBone.AppearanceRevision;
+        cachedShapeActor.Evaluate(0);
+        if (cachedShapeBone.GeometryKey != secondAppearance.GeometryKey
+            || changedAppearanceRevision != originalAppearanceRevision + 1
+            || cachedShapeBone.AppearanceRevision != changedAppearanceRevision)
+            throw new InvalidDataException("Actor shape cache skipped a real shape change or reapplied the selected shape on later frames.");
+        Console.WriteLine("PASS: unchanged actor shapes avoid per-frame appearance invalidation while real shape changes apply once");
 
         void VerifyBone(float time, float localY)
         {

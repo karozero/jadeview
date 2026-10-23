@@ -16,7 +16,10 @@ internal static class CinematicEngineFunctionCatalog
     internal static int[] GameObjectArgumentIndices(CinematicLiteralCall call) => NameFor(call.Selector) switch
     {
         "OBJ_OrientTo" or "OBJ_HierarchySet" or "OBJ_Rejoin" or "OBJ_RejoinAndOrient"
+            or "PAG_AddGenerator" or "PAG_SetObject" or "PAG_SetMatrixRef"
             when call.Arguments.Length > 0 => [0],
+        "MSGSendAll" when call.Arguments.Length == 13 => [1, 2],
+        "MSGSendAllOwner" when call.Arguments.Length == 12 => [1],
         _ => []
     };
 
@@ -38,6 +41,8 @@ internal static class CinematicEngineFunctionCatalog
                 DescribePif(call.Arguments[0]),
             "IoPafSet" when call.Arguments.Length >= 2 =>
                 DescribePaf(call.Arguments[0], call.Arguments[1]),
+            "Gsp_AE_MASTER" when call.Arguments.Length == 4 =>
+                DescribeAfterEffectsMaster(call),
             "Gsp_AE_MASTEREVT" when call.Arguments.Length >= 3 =>
                 DescribeAfterEffectsMasterEvent(call),
             "OBJDestroy" => "destroy target; Iris removes/detaches it when supported, otherwise hides/deactivates it and stops its sound",
@@ -54,6 +59,8 @@ internal static class CinematicEngineFunctionCatalog
                 $"reinitialize target (mode {call.Arguments[0]}) and reattach it to the current world",
             "MSGSendEx" when call.Arguments.Length >= 2 =>
                 DescribeExtendedMessage(call.Arguments[0], call.Arguments[1]),
+            "MSGSendAll" when call.Arguments.Length == 13 => DescribeMessageSendAll(call),
+            "MSGSendAllOwner" when call.Arguments.Length == 12 => DescribeMessageSendAllOwner(call),
             "OBJ_FlagInvisibleSet" when call.Arguments.Length >= 1 => call.Arguments[0] != 0
                 ? "hide target" : "show target",
             "OBJ_FlagInactiveSet" when call.Arguments.Length >= 1 => call.Arguments[0] != 0
@@ -83,6 +90,38 @@ internal static class CinematicEngineFunctionCatalog
             "OBJ_AnimMorphFactorNoKey" when call.Arguments.Length >= 3 =>
                 $"drive morph channel {call.Arguments[2]} on object {call.Arguments[0]:X8} "
                 + $"(channel selector {call.Arguments[1]}) from this carrier object's X/Y transform",
+            "OBJ_ScaleSet" when call.Arguments.Length == 3 =>
+                $"replace target matrix scale with ({DescribeVectorComponent(call.Arguments[0])}, "
+                + $"{DescribeVectorComponent(call.Arguments[1])}, {DescribeVectorComponent(call.Arguments[2])})",
+            "OBJ_ZoomSet" when call.Arguments.Length == 1 =>
+                $"replace target matrix scale with uniform zoom {DescribeVectorComponent(call.Arguments[0])}",
+            "OBJ_SetChannelFactor" when call.Arguments.Length == 2 =>
+                $"set morph channel {call.Arguments[0]} blend factor to {DescribeVectorComponent(call.Arguments[1])}",
+            "OBJ_SetChannelProg" when call.Arguments.Length == 2 =>
+                $"set morph channel {call.Arguments[0]} progression to {DescribeVectorComponent(call.Arguments[1])}",
+            "PAG_AddGenerator" when call.Arguments.Length >= 2 =>
+                DescribeParticleGeneratorAdd(call.Arguments[0], call.Arguments[1]),
+            "PAG_DelGenerator" when call.Arguments.Length >= 1 =>
+                $"remove runtime particle generator ID {unchecked((int)call.Arguments[0])} from the target PAG",
+            "PAG_SetGeneratorFreq" when call.Arguments.Length >= 2 =>
+                DescribeParticleGeneratorFrequency(call.Arguments[0], call.Arguments[1]),
+            "PAG_SetFlag" when call.Arguments.Length >= 2 =>
+                $"set PAG flag bits 0x{call.Arguments[0]:X} and clear 0x{call.Arguments[1]:X} on the target particle system",
+            "PAG_ShiftParticles" when call.Arguments.Length == 3 =>
+                $"shift existing PAG particle positions by ({DescribeVectorComponent(call.Arguments[0])}, "
+                + $"{DescribeVectorComponent(call.Arguments[1])}, {DescribeVectorComponent(call.Arguments[2])}); "
+                + "this affects live particles, not future emission positions",
+            "PAG_GetFlag" => "read the target particle system's runtime flag word",
+            "PAG_Setf" when call.Arguments.Length >= 2 =>
+                DescribeParticleGeneratorParameter(call.Arguments[0], call.Arguments[1]),
+            "PAG_Getf" when call.Arguments.Length >= 1 =>
+                $"read PAG float parameter {DescribeParticleGeneratorParameterIndex(call.Arguments[0])} from the target particle system",
+            "PAG_SetColor" when call.Arguments.Length >= 1 =>
+                $"replace the target PAG's packed particle color with 0x{call.Arguments[0]:X8}",
+            "PAG_SetObject" when call.Arguments.Length >= 1 =>
+                $"bind the target PAG to object {call.Arguments[0]:X8} for its source geometry/object transform",
+            "PAG_SetMatrixRef" when call.Arguments.Length >= 1 =>
+                $"use object {call.Arguments[0]:X8} as the target PAG's object-vertex emission matrix reference",
             "OBJ_SetModuleChannelData" when call.Arguments.Length >= 4 =>
                 $"set module-channel entry {call.Arguments[1]}.{call.Arguments[2]} "
                 + $"to {call.Arguments[3]} on target (channel selector {call.Arguments[0]})",
@@ -106,6 +145,8 @@ internal static class CinematicEngineFunctionCatalog
                 DescribeEventTrackCommand("unpause", call.Arguments[0]),
             "TRAReinit" when call.Arguments.Length >= 1 =>
                 DescribeEventTrackCommand("reset", call.Arguments[0]),
+            "TRASetTime" when call.Arguments.Length >= 1 =>
+                DescribeEventTrackTime(BitConverter.UInt32BitsToSingle(call.Arguments[0])),
             "TRAPlayAll" => "start every embedded event track on the target object",
             "TRAStopAll" => "stop every embedded event track on the target object",
             "TRAPauseAll" => "pause every embedded event track on the target object",
@@ -148,6 +189,10 @@ internal static class CinematicEngineFunctionCatalog
             "SNDRequest" when call.Arguments.Length >= 2 =>
                 $"request sound slot {call.Arguments[0]} on target with flags 0x{call.Arguments[1]:X8}"
                 + ((call.Arguments[1] & 0x800) != 0 ? "; Iris also starts playback immediately" : ""),
+            "SNDRequestPlay" when call.Arguments.Length == 2 =>
+                DescribeSoundRequestPlay(call.Arguments[0], call.Arguments[1]),
+            "SNDRequestPlayRandomFreq" when call.Arguments.Length == 4 =>
+                DescribeSoundRequestRandomFrequency(call.Arguments),
             "MATEnableMltxtLvlMT" when call.Arguments.Length >= 4 =>
                 $"update multi-texture material {call.Arguments[0]:X8}, level selectors {call.Arguments[1]}/{call.Arguments[2]}, "
                 + $"index {call.Arguments[3]} (mode {(call.Arguments[3] != 0 ? "clears" : "sets")} native flag 0x800)",
@@ -237,6 +282,32 @@ internal static class CinematicEngineFunctionCatalog
             + "sender is the current execution object";
     }
 
+    private static string DescribeMessageSendAll(CinematicLiteralCall call)
+    {
+        uint[] arguments = call.Arguments;
+        return $"enqueue message {unchecked((int)arguments[0])} on the current execution object's queue; "
+            + $"message GAO fields {arguments[1]:X8}/{arguments[2]:X8}, "
+            + $"vectors ({DescribeVector(arguments, 3)})/({DescribeVector(arguments, 6)}), "
+            + $"f2 {DescribeVectorComponent(arguments[9])}, f1 {DescribeVectorComponent(arguments[10])}, "
+            + $"Int1 {unchecked((int)arguments[11])}, Int2 {unchecked((int)arguments[12])}; "
+            + "the queue accepts at most five messages";
+    }
+
+    private static string DescribeMessageSendAllOwner(CinematicLiteralCall call)
+    {
+        uint[] arguments = call.Arguments;
+        return $"enqueue message {unchecked((int)arguments[0])} on the registered MSG owner queue; "
+            + $"sender is the current execution object, secondary GAO field {arguments[1]:X8}, "
+            + $"vectors ({DescribeVector(arguments, 2)})/({DescribeVector(arguments, 5)}), "
+            + $"f2 {DescribeVectorComponent(arguments[8])}, f1 {DescribeVectorComponent(arguments[9])}, "
+            + $"Int1 {unchecked((int)arguments[10])}, Int2 {unchecked((int)arguments[11])}; "
+            + "the queue accepts at most five messages";
+    }
+
+    private static string DescribeVector(uint[] arguments, int startIndex) =>
+        $"{DescribeVectorComponent(arguments[startIndex])}, {DescribeVectorComponent(arguments[startIndex + 1])}, "
+        + DescribeVectorComponent(arguments[startIndex + 2]);
+
     private static string DescribeAxisRotation(string function, uint serializedAngle)
     {
         string space = function.Contains("Local", StringComparison.Ordinal) ? "local" : "global";
@@ -274,6 +345,10 @@ internal static class CinematicEngineFunctionCatalog
             _ => $"reset embedded event track {trackIndex} to time zero and clear pause state"
         };
     }
+
+    private static string DescribeEventTrackTime(float requestedTime) => float.IsFinite(requestedTime)
+        ? $"seek every embedded event track to {requestedTime.ToString("0.###", CultureInfo.InvariantCulture)} seconds without changing run or pause state"
+        : "seek every embedded event track using a non-finite serialized time";
 
     private static string DescribeSoundModifierFlagCommand(string action, uint serializedId, uint flagMask)
     {
@@ -324,6 +399,118 @@ internal static class CinematicEngineFunctionCatalog
             + $"for {durationSeconds:0.###} seconds when enabled";
     }
 
+    private static string DescribeParticleGeneratorAdd(uint serializedObjectKey, uint serializedFrequency)
+    {
+        float frequency = BitConverter.UInt32BitsToSingle(serializedFrequency);
+        string rate = float.IsFinite(frequency)
+            ? $"{frequency.ToString("0.###", CultureInfo.InvariantCulture)} particles/second"
+            : $"non-finite frequency bits 0x{serializedFrequency:X8}";
+        return $"add a runtime PAG generator using object {serializedObjectKey:X8} at {rate}; "
+            + "the engine allocates an ID and allows at most 16 generators per PAG";
+    }
+
+    private static string DescribeSoundRequestPlay(uint serializedSlot, uint serializedVolume)
+    {
+        float volume = BitConverter.UInt32BitsToSingle(serializedVolume);
+        string volumeDescription = volume == -1
+            ? "default volume"
+            : float.IsFinite(volume)
+                ? $"volume {Math.Clamp(volume, 0, 1).ToString("0.###", CultureInfo.InvariantCulture)}"
+                : $"non-finite volume bits 0x{serializedVolume:X8}";
+        return $"play target sound-bank slot {unchecked((int)serializedSlot)} at {volumeDescription}";
+    }
+
+    private static string DescribeSoundRequestRandomFrequency(uint[] arguments)
+    {
+        string volumeDescription = DescribeSoundRequestVolume(arguments[1]);
+        float minimum = BitConverter.UInt32BitsToSingle(arguments[2]);
+        float maximum = BitConverter.UInt32BitsToSingle(arguments[3]);
+        string frequencyDescription = float.IsFinite(minimum) && float.IsFinite(maximum)
+            ? $"{minimum.ToString("0.###", CultureInfo.InvariantCulture)}–{maximum.ToString("0.###", CultureInfo.InvariantCulture)} frequency multiplier"
+            : $"non-finite range 0x{arguments[2]:X8}–0x{arguments[3]:X8}";
+        return $"play target sound-bank slot {unchecked((int)arguments[0])} at {volumeDescription} "
+            + $"with {frequencyDescription}";
+    }
+
+    private static string DescribeSoundRequestVolume(uint serializedVolume)
+    {
+        float volume = BitConverter.UInt32BitsToSingle(serializedVolume);
+        if (volume == -1) return "default volume";
+        return float.IsFinite(volume)
+            ? $"volume {Math.Clamp(volume, 0, 1).ToString("0.###", CultureInfo.InvariantCulture)}"
+            : $"non-finite volume bits 0x{serializedVolume:X8}";
+    }
+
+    private static string DescribeParticleGeneratorFrequency(uint serializedGeneratorId, uint serializedFrequency)
+    {
+        float frequency = BitConverter.UInt32BitsToSingle(serializedFrequency);
+        string rate = float.IsFinite(frequency)
+            ? $"{frequency.ToString("0.###", CultureInfo.InvariantCulture)} particles/second"
+            : $"non-finite frequency bits 0x{serializedFrequency:X8}";
+        return $"set runtime PAG generator ID {unchecked((int)serializedGeneratorId)} frequency to {rate}";
+    }
+
+    private static string DescribeVectorComponent(uint serializedValue)
+    {
+        float value = BitConverter.UInt32BitsToSingle(serializedValue);
+        return float.IsFinite(value)
+            ? value.ToString("0.###", CultureInfo.InvariantCulture)
+            : $"non-finite bits 0x{serializedValue:X8}";
+    }
+
+    private static string DescribeParticleGeneratorParameter(uint serializedIndex, uint serializedValue)
+    {
+        float value = BitConverter.UInt32BitsToSingle(serializedValue);
+        string valueDescription = float.IsFinite(value)
+            ? value.ToString("0.###", CultureInfo.InvariantCulture)
+            : $"non-finite bits 0x{serializedValue:X8}";
+        return $"set PAG float parameter {DescribeParticleGeneratorParameterIndex(serializedIndex)} to {valueDescription}";
+    }
+
+    private static string DescribeParticleGeneratorParameterIndex(uint serializedIndex)
+    {
+        int index = unchecked((int)serializedIndex);
+        string? name = index switch
+        {
+            0 => "Offset (0)",
+            1 => "Gen0 (1)",
+            2 => "Gen1 (2)",
+            3 => "Gen2 (3)",
+            4 => "Speed0 (4)",
+            5 => "Speed1 (5)",
+            6 => "Angle1 (6)",
+            7 => "Angle2 (7)",
+            8 => "SizeXMin (8)",
+            9 => "SizeXMax (9)",
+            10 => "SizeYMin (10)",
+            11 => "SizeYMax (11)",
+            12 => "TimeMin (12)",
+            13 => "TimeMax (13)",
+            14 => "TimeDeathMin (14)",
+            15 => "TimeDeathMax (15)",
+            16 => "TimeBirthMin (16)",
+            17 => "TimeBirthMax (17)",
+            18 => "SizeDeathFactor (18)",
+            19 => "AccX (19)",
+            20 => "AccY (20)",
+            21 => "AccZ (21)",
+            22 => "Friction (22)",
+            23 => "ZMin (23)",
+            24 => "ZMinStrength (24)",
+            25 => "ZMax (25)",
+            26 => "ZMaxStrength (26)",
+            27 => "RotationMin (27)",
+            28 => "RotationMax (28)",
+            29 => "RotationSpeedMin (29)",
+            30 => "RotationSpeedMax (30)",
+            32 => "SinX (32)",
+            33 => "SinY (33)",
+            34 => "DistConstraint (34)",
+            _ => null
+        };
+        return name ?? $"unknown index {index}";
+    }
+
     private static string DescribeAfterEffectsMasterEvent(CinematicLiteralCall call)
     {
         int mode = unchecked((int)call.Arguments[0]);
@@ -347,6 +534,35 @@ internal static class CinematicEngineFunctionCatalog
             12 => $"{state} texture-factor effect, variant {variant}{parameterSource}",
             14 => $"{state} depth-blur near plane{parameterSource}",
             15 => $"{state} screen opacity{parameterSource}",
+            _ => ""
+        };
+    }
+
+    private static string DescribeAfterEffectsMaster(CinematicLiteralCall call)
+    {
+        int mode = unchecked((int)call.Arguments[0]);
+        bool enabled = call.Arguments[1] != 0;
+        int parameter = unchecked((int)call.Arguments[2]);
+        float value = BitConverter.UInt32BitsToSingle(call.Arguments[3]);
+        if (!float.IsFinite(value)) return "";
+
+        string state = enabled ? "enable" : "disable";
+        string formattedValue = value.ToString("0.###", CultureInfo.InvariantCulture);
+        return mode switch
+        {
+            0 => $"{state} depth blur, variant {parameter}, factor {formattedValue}",
+            1 => $"{state} motion blur, factor {formattedValue}",
+            2 => $"{state} screen blur, factor {formattedValue}",
+            4 => $"{state} motion smoothing (PC Iris ignores the parameter)",
+            5 => $"{state} zoom smoothing, factor {formattedValue}",
+            6 => $"{state} secondary zoom smoothing, factor {formattedValue}",
+            7 => $"{state} remanence, factor {formattedValue}",
+            8 => $"set PC Iris's unnamed post-effect parameter to {formattedValue}; Jaded's Xenon path names mode 8 brightness",
+            9 => $"set PC Iris's color-balance parameter to {formattedValue}",
+            11 => $"{state} black-and-white effect, factor {formattedValue}",
+            12 => $"{state} texture-factor effect, variant {parameter}, factor {formattedValue}",
+            14 => $"{state} depth-blur near plane, value {formattedValue}",
+            15 => $"{state} global screen-opacity fade, rate {formattedValue}",
             _ => ""
         };
     }

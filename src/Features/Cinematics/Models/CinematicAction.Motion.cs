@@ -18,12 +18,15 @@ public sealed partial record CinematicAction
     private Matrix4x4 Accumulate(float elapsed, int? frequency)
     {
         var result = Matrix4x4.Identity;
-        float total = Items.Sum(item => Duration(item, frequency));
+        float total = 0;
+        foreach (var item in Items) total += Duration(item, frequency);
         if (total <= 0) return result;
         if (elapsed >= total && LoopItem != byte.MaxValue)
         {
             int loopStart = Math.Clamp(LoopItem, 0, Items.Length - 1);
-            float prefix = Items.Take(loopStart).Sum(item => Duration(item, frequency));
+            float prefix = 0;
+            for (int index = 0; index < loopStart; index++)
+                prefix += Duration(Items[index], frequency);
             float cycle = total - prefix;
             if (cycle > 0 && float.IsFinite(cycle))
             {
@@ -65,14 +68,12 @@ public sealed partial record CinematicAction
     {
         float duration = item.Clip.Duration;
         if (duration <= 0) return Matrix4x4.Identity;
-        var tracks = item.Clip.Tracks.Where(track => track.Bone < 0 && track.Target == 0).ToArray();
-        var baseline = new TransformData();
-        var initial = CinematicTransformSampler.Evaluate(baseline, tracks, 0);
+        var initial = CinematicTransformSampler.EvaluateRoot(item.Clip, 0);
         if (!Matrix4x4.Invert(initial, out var inverse)) return Matrix4x4.Identity;
-        var end = CinematicTransformSampler.Evaluate(baseline, tracks, duration) * inverse;
+        var end = CinematicTransformSampler.EvaluateRoot(item.Clip, duration) * inverse;
         int cycles = (int)Math.Min(time / duration, int.MaxValue);
         float remainder = time % duration;
-        var motion = CinematicTransformSampler.Evaluate(baseline, tracks, remainder) * inverse * Power(end, cycles);
+        var motion = CinematicTransformSampler.EvaluateRoot(item.Clip, remainder) * inverse * Power(end, cycles);
         // ANI_AnimPlayer restores the pre-animation position for SpeedFromDyna.
         // The body still advances and rotates; movement belongs to DYN/scripts.
         if (item.UsesDynamicsTranslation) motion.Translation = Vector3.Zero;

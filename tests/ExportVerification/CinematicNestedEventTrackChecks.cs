@@ -73,6 +73,25 @@ internal static class CinematicNestedEventTrackChecks
                 .Contains("12 radians", StringComparison.Ordinal))
             throw new InvalidDataException("Float-typed EVE arguments should decode and retain their serialized bits.");
 
+        AnimationOpaquePayload vectorCommandPayload = CinematicTestEvents.VectorCall(2.25f, 0xA9001DBB,
+            0x210A, new(1.25f, -2, 0)).OpaquePayloads.Single();
+        CinematicLiteralCall? vectorCommand = CinematicLiteralCall.Decode(vectorCommandPayload,
+            0xA9001DBB, 0xA9001DBB);
+        bool vectorCommandMatches = vectorCommand is { Selector: 0x210A, Arguments.Length: 3 }
+            && vectorCommand.Arguments.Select(BitConverter.UInt32BitsToSingle)
+                .SequenceEqual([1.25f, -2f, 0f])
+            && CinematicEngineFunctionCatalog.Describe(vectorCommand)
+                .Contains("live particles", StringComparison.Ordinal);
+        if (!vectorCommandMatches)
+            throw new InvalidDataException("Vector-valued EVE arguments must decode the three float words preceding CastVector.");
+
+        AnimationOpaquePayload invalidVectorPayload = WordPairPayload(
+            (0xA9001DBB, 0x01000028), (0, 0x02000806),
+            (0x3FA00000, 0x01000022), (0xC0000000, 0x01000022), (0, 0x01000022),
+            (0, 0x03000000), (0, 0x0319210A), (0, 0x1F000000));
+        if (CinematicLiteralCall.Decode(invalidVectorPayload, 0xA9001DBB, 0xA9001DBB) != null)
+            throw new InvalidDataException("Malformed vector constructor sequences must not be decoded as engine calls.");
+
         var ambiguousRoot = new CinematicEmbeddedEventTrack(0, 0, 0, 0, 0, 0)
         {
             Calls = [(0, new(0x400, 0x3B64, [0]))]
@@ -102,6 +121,18 @@ internal static class CinematicNestedEventTrackChecks
             || allTracksGraph.Routes.Any(route => !route.IsResolved)
             || !allTracksGraph.Routes.Select(route => route.TargetTrackIndex).Order().SequenceEqual([0, 1]))
             throw new InvalidDataException("TRAPlayAll should expose every decoded channel without inventing order or runtime execution.");
+
+        var setTimeRoot = new CinematicEmbeddedEventTrack(0, 0, 0, 0, 0, 0)
+        {
+            Calls = [(0, new(0x500, 0x3B6D, [BitConverter.SingleToUInt32Bits(1.25f)]))]
+        };
+        var setTimeSource = List(0x100, 0x12, [setTimeRoot]);
+        CinematicNestedEventTrackGraph setTimeGraph = CinematicNestedEventTrackResolver.Analyze(
+            setTimeSource, setTimeRoot, [setTimeSource, allTracksTarget]);
+        if (setTimeGraph.Routes.Length != 2
+            || setTimeGraph.Routes.Any(route => !route.IsResolved)
+            || !setTimeGraph.Routes.Select(route => route.TargetTrackIndex).Order().SequenceEqual([0, 1]))
+            throw new InvalidDataException("TRASetTime must resolve to every target channel because the engine seeks the whole EVE list.");
 
         Console.WriteLine("PASS: nested SceneEvents call chains resolve by world/key, exclude Events and stop on cycles/ambiguity");
     }

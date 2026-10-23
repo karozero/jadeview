@@ -4,6 +4,14 @@ namespace JadeView;
 
 public sealed partial class SceneActor
 {
+    private readonly Dictionary<Geometry, SkinningScratch> skinningScratch = [];
+
+    private sealed class SkinningScratch(int vertexCount)
+    {
+        internal Vector3[] Positions { get; } = new Vector3[vertexCount];
+        internal bool[] InfluencedVertices { get; } = new bool[vertexCount];
+    }
+
     public Vector3[]? Skin(SceneObject sceneObject, Geometry geometry)
     {
         var sourcePositions = FaceMorphPreview.Get(sceneObject, geometry)?.Positions() ?? geometry.Positions;
@@ -17,8 +25,13 @@ public sealed partial class SceneActor
             return null;
         }
 
-        var skinnedPositions = new Vector3[geometry.Positions.Length];
-        var influencedVertices = new bool[skinnedPositions.Length];
+        if (!skinningScratch.TryGetValue(geometry, out var scratch)
+            || scratch.Positions.Length != geometry.Positions.Length)
+            skinningScratch[geometry] = scratch = new(geometry.Positions.Length);
+        var skinnedPositions = scratch.Positions;
+        var influencedVertices = scratch.InfluencedVertices;
+        Array.Clear(skinnedPositions);
+        Array.Clear(influencedVertices);
         foreach (var binding in geometry.Skin)
         {
             if (!TryGetBonePose(sceneObject, binding.Bone, out Matrix4x4 bonePose))

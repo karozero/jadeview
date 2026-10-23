@@ -10,8 +10,8 @@ public sealed partial record CinematicAction(int LoopItem, CinematicActionItem[]
         if (initialRate <= 0)
             return (Items[0].Clip, Math.Clamp(startFrame / 60f, 0, Items[0].Clip.Duration), 0);
         elapsed += startFrame / 60f / initialRate;
-        var durations = Items.Select(item => Duration(item, frequency)).ToArray();
-        float totalDuration = durations.Sum();
+        float totalDuration = 0;
+        foreach (var item in Items) totalDuration += Duration(item, frequency);
         if (elapsed >= totalDuration && totalDuration > 0)
         {
             if (LoopItem == byte.MaxValue)
@@ -20,7 +20,9 @@ public sealed partial record CinematicAction(int LoopItem, CinematicActionItem[]
                 return (last, last.Duration, Items.Length - 1);
             }
             int loopStart = Math.Clamp(LoopItem, 0, Items.Length - 1);
-            float prefixDuration = durations.Take(loopStart).Sum();
+            float prefixDuration = 0;
+            for (int index = 0; index < loopStart; index++)
+                prefixDuration += Duration(Items[index], frequency);
             float loopDuration = totalDuration - prefixDuration;
             if (loopDuration > 0) elapsed = prefixDuration + (elapsed - prefixDuration) % loopDuration;
         }
@@ -28,13 +30,14 @@ public sealed partial record CinematicAction(int LoopItem, CinematicActionItem[]
         for (int index = 0; index < Items.Length; index++)
         {
             var item = Items[index];
-            if (elapsed < durations[index] || index == Items.Length - 1)
+            float duration = Duration(item, frequency);
+            if (elapsed < duration || index == Items.Length - 1)
             {
                 float time = elapsed * Rate(item, frequency);
                 if (item.Clip.Duration > 0) time %= item.Clip.Duration;
                 return (item.Clip, Math.Max(0, time), index);
             }
-            elapsed -= durations[index];
+            elapsed -= duration;
         }
         return null;
     }
@@ -50,7 +53,9 @@ public sealed partial record CinematicAction(int LoopItem, CinematicActionItem[]
         foreach (var item in Items) item.Clip.EnsureLoaded();
         float rate = Items.Length > 0 ? Rate(Items[0], frequency) : 0;
         float offset = rate > 0 ? startFrame / 60f / rate : 0;
-        return Math.Max(0, Items.Sum(item => Duration(item, frequency)) - offset);
+        float total = 0;
+        foreach (var item in Items) total += Duration(item, frequency);
+        return Math.Max(0, total - offset);
     }
 
     private static float Duration(CinematicActionItem item, int? frequency)

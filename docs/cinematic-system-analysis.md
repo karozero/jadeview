@@ -30,6 +30,43 @@ why a prop can exist but fail to break, and why a sky/effect can be visible at t
 wrong time: object presence and clip playback do not execute the actor's whole
 runtime brain.
 
+## Root timeline tracks versus object event tracks
+
+`Events` and `SceneEvents` are separate links on a GAO. The cinematic picker must
+not promote every decoded `i` resource loaded under a cinematic world into a
+playable scene: actor/prop `Events` are local event tracks, and dependency loading
+can make many such short tracks appear alongside the actual sequence. For
+`FF0045A2` (`00_03_dehors_maison_Intro_cine`), the previous broad rule exposed 155
+clips; discovering root clips only through cinematic-world `SceneEvents` links
+exposes 13, including the main `3500B8EA` sequence and its related script-owned
+tracks. Object `Events` remain available to actor/event inspection and do not
+become top-level cinematic playback choices. A few short `SceneEvents` are real
+setup or effect tracks, so short duration alone is not used as a filter. This is
+serialized-link classification; it does not claim that every retained script
+track is active in the game at a given time.
+
+The same distinction was checked against five retail containers: root
+`SceneEvents` counts were 13 for `FF0045A2` (intro), 10 for `FF005833`
+(decryptage), 21 for `FF006B96` (central elevator), 4 for `FF00791B` (sas
+entry), and 13 for `FF001FBE` (military release). The script inspector still
+decoded 15 ordinary `Events` links in the intro, including the Monstroplante's
+two-second `BF00229A` track under its own owner. To repeat the inventory on
+another container, run
+`dotnet run --project tests/ExportVerification -- --cinematic-timeline-inventory <sally_clean.bf> <FF-container-key>`.
+
+Actor clip discovery has a separate owner-scoped rule: short clips shown for a
+rig must be reached from that actor's member `Events` links in the same world.
+The former scan over every cinematic-world `i` record could attach unrelated
+short tracks to a rig merely because their target key happened to overlap. The
+loader now joins member owners to their serialized `Events` key before decoding
+actor clips; root `SceneEvents` remain the cutscene timeline source. In the
+`3500B8EA` script graph, `Part_Fight.gao` is referenced by the
+`SFX_colpag_cam_scp_loop` callback through its `des_o_pag1` / `des_o_pag2`
+instance fields. That is evidence of a callback-controlled object target, not a
+standalone cutscene or proof that its local animation track should appear on
+every actor. The actor-clip inventory still needs an archive-level audit to
+identify which `Events` owners actually link each short track.
+
 ## Evidence from the retail PC archive
 
 The generated `artifacts/export-verification/archive-cinematic-census.json`
@@ -108,7 +145,12 @@ counted. Wait markers occur in three containers with cinematic worlds, and the
 label markers occur in two others. This makes “the preview should run a general conditional VM”
 an incomplete explanation for the archive-wide mismatches. Track lifecycle
 (`RunningInit`, loop, stop, and one-shot state) is a broader candidate for
-repeated or prematurely persistent behavior.
+repeated or prematurely persistent behavior. The nested `SceneEvents` transform
+preview now applies Jaded's `AutoLoop` and `AutoStop` flags to its shared
+playback clock. `RunningInit` channels are also seeded at clip time zero for
+owners present in the assembled world, matching Jaded's `EVE_ReinitData`
+initialization. This still does not simulate per-event `DoOnce` behavior,
+object-processing state, or callback gates.
 
 The per-track sample narrows that hypothesis: among 1,661 flagged tracks whose
 targets are named `_PJ_*`, all 1,661 carry the `AutoStop` bit and none carry
@@ -189,26 +231,31 @@ scheduling, spawned/dependent actors, all visibility/material callbacks, or all
 wrong result; an unknown callback must be diagnosed rather than silently mapped
 to a character-specific fallback.
 
-### Body-action archive audit (2026-10-20)
+### Body-action archive audit (2026-10-23)
 
-`--archive-cinematic-body-coverage <archive>` now compares cinematic actor/clip
-bindings with decoded body-action requests and the serialized action kits. On
-the installed PC archive it scanned all 91 FF containers, found 38 cinematic
-containers and 1,229 clips, and observed 411 skeletal actor/clip bindings with
-1,203 resolved action segments. 187 bindings also contain direct bone tracks;
-393 contain root tracks. These paths overlap: an action kit can animate bones
-while the scene clip supplies actor placement.
+`--archive-cinematic-body-coverage <archive>` compares cinematic actor/clip
+bindings with decoded body-action requests and serialized action kits. The
+latest installed-PC archive run scanned all 91 FF containers, found 38
+cinematic worlds and 1,232 clips, and observed 441 skeletal actor/clip
+bindings with 1,429 resolved body-action segments. 198 bindings also contain
+direct bone tracks and 423 contain root tracks. Of the 145 bindings with no
+resolved body-action segment, 117 have root-transform data and 28 have direct
+bone tracks. Ten bindings contain at least one unresolved action request; seven
+of these still resolve other body actions. These paths overlap: an action kit
+can animate bones while the scene clip supplies actor placement.
 
-The first audit version compared every requested slot with only the actor's
-initial action kit. That was misleading: `0x3398`/`0x3399` commands merge a
-selected slot range from another actor's kit, so actions such as slots 200–230
-can be available even when the initial kit only has 100 entries. The report now
-shows the merge provider and number of populated slots in the requested range;
-actual unresolved calls come from the evaluated timeline diagnostics. Across
-the archive, five actor/clip bindings retain a concrete unresolved body-action
-or provider reference. Examples include _PJ_Militaire in `01_04_entrepot_liberation_mili_cine`
-clips `3500A4C7` and `35009F74`, `Cine_Boss` in `3500BA47`, PNJ_Faucheur in
-`3500B047`, and a Peyj kit merge from key `00000000` in `BF0024B6`.
+An earlier audit used the legacy global action-kit map rather than the
+world-scoped resolver used by playback. This undercounted body-action segments
+(1,281 instead of 1,429) and reported five unresolved bindings instead of ten.
+The current report uses the playback resolver and shows merge providers and the
+number of populated slots in requested ranges. For `FF001FBE / 35009F74`,
+_PJ_Militaire requests action 201 at 0 and 7.817 s, but its serialized base kit
+has 100 slots and contains no slot 201; the clip has no successful kit merge
+for that action. This explains why the static preview has no skeletal body
+action there. It does not prove what action the game's live brain selected or
+whether runtime state supplies another source. Other unresolved examples
+include _PJ_Militaire in `3500A4C7`, `Cine_Boss` in `3500BA47`, PNJ_Faucheur in
+`3500B047`, and Peyj in `BF0024B6`.
 
 This matches the engine source: IrisEngine's `ACT_ul_ActionKitCallback` reads
 action-kit slots and resolves referenced action records, while
@@ -240,7 +287,7 @@ idle fallback.
 
 ### Event tracks can be shared by multiple owners
 
-The archive index found 30 of the 1,229 serialized cinematic event clips
+The archive index found 30 of the 1,232 serialized cinematic event clips
 referenced by more than one GAO in the same cinematic world. Every one of these
 30 clips has at least one track whose target is `00000000`. The candidate owner
 references are serialized in `archive-cinematic-body-coverage.json`; they

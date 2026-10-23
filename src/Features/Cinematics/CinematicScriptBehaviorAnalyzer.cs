@@ -54,7 +54,8 @@ internal static partial class CinematicScriptBehaviorAnalyzer
     ];
 
     internal static string[] Analyze(CinematicScriptOwner owner,
-        IEnumerable<CinematicScriptOwner>? loadedOwners = null)
+        IEnumerable<CinematicScriptOwner>? loadedOwners = null,
+        IEnumerable<SceneObject>? worldObjects = null)
     {
         var diagnostics = new List<string>();
         if (HasCinematicFunctionReference(owner, CinematicStartCallback))
@@ -93,6 +94,7 @@ internal static partial class CinematicScriptBehaviorAnalyzer
                     + "All enabled tests must pass; current gameplay state is unavailable.");
             if (CinematicStartGates.Any(gate => !HasEffectiveValue(owner, gate.Variable)))
                 diagnostics.Add("Some start-gate OVA fields are unavailable; the derived mask may be incomplete.");
+            diagnostics.AddRange(AnalyzeCapabilityGateSnapshot(owner, derivedTestsMask, worldObjects));
             AddSpecialFlagTest(diagnostics, owner, derivedTestsMask, "des_i_specialFlag_test1", 0x80, 1);
             AddSpecialFlagTest(diagnostics, owner, derivedTestsMask, "des_i_specialFlag_test2", 0x100, 2);
             AddCinematicMessageGateBehavior(diagnostics, owner, derivedTestsMask);
@@ -762,11 +764,11 @@ internal static partial class CinematicScriptBehaviorAnalyzer
         CinematicDialogueLine[] configuredLines = (owner.DialogueLines ?? [])
             .Where(line => line.TextBankKey != 0 || line.SoundId is > 0).ToArray();
         diagnostics.Add(configuredLines.Length == 0
-            ? "No populated dialogue text or voice slots were decoded from the owner’s OVA arrays."
-            : $"Decoded {configuredLines.Length} populated dialogue slots from model/instance OVA arrays, including text-bank references and available voice/audio metadata.");
+            ? "No populated dialogue text or associated-sound slots were decoded from the owner’s OVA arrays."
+            : $"Decoded {configuredLines.Length} populated dialogue slots from model/instance OVA arrays, including text-bank references and available associated-audio metadata.");
 
         var defaultSpeaker = owner.EffectiveObjectReference("des_ai_perso_localisation_par");
-        diagnostics.Add($"For the selected line, the receiver routes the associated voice sound ID and per-line near/far/volume values to the shared text/audio manager. Speaker position uses message GAO2 when set, otherwise the configured des_ai_perso_localisation_par reference ({DescribeObjectReference(defaultSpeaker)}); zero line-volume defaults to 0.8. This callback selects dialogue/audio metadata but does not itself drive facial morphs.");
+        diagnostics.Add($"For the selected line, the receiver routes the associated sound parameter and per-line near/far/volume values to the shared text/audio manager. Speaker position uses message GAO2 when set, otherwise the configured des_ai_perso_localisation_par reference ({DescribeObjectReference(defaultSpeaker)}); zero line-volume defaults to 0.8. This callback selects dialogue/audio metadata but does not itself drive facial morphs.");
     }
 
     private static CinematicScriptVariable? EffectiveVariable(CinematicScriptOwner owner, string name) =>

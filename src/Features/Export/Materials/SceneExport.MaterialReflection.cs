@@ -35,9 +35,4 @@ public sealed partial class SceneExporter
         return new Vector2(.5f) - transformed;
     }
 
-    private static Vector4[][] ReflectionCornerTints(SceneObject sceneObject, Geometry geometry, Geometry.Part part,
-        ResolvedMaterial? material, IReadOnlyList<JadeMaterialLayer> layers, int triangle) =>
-        layers.Select(layer => Enumerable.Range(triangle * 3, 3).Select(corner =>
-            MaterialLayerTint.Evaluate(sceneObject, geometry, part.VertexIndices[corner], material, layer)).ToArray()).ToArray();
-
 }

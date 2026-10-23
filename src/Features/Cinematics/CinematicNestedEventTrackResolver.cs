@@ -100,6 +100,7 @@ internal static class CinematicNestedEventTrackResolver
     private static CinematicEmbeddedEventTrack[] SelectTracks(string function, uint[] arguments,
         CinematicEmbeddedEventTrackList list)
     {
+        if (function == "TRASetTime" && arguments.Length == 0) return [];
         if (IsAllTracksCommand(function)) return list.Tracks;
         if (arguments.Length == 0) return [];
         int requestedIndex = unchecked((int)arguments[0]);
@@ -115,9 +116,10 @@ internal static class CinematicNestedEventTrackResolver
     private static bool IsEventTrackFunction(string function) => function is
         "TRAPlay" or "TRAStop" or "TRAPause" or "TRAUnPause" or "TRAReinit" or "TRAIsStop"
         or "TRAPlayAll" or "TRAStopAll" or "TRAPauseAll" or "TRAUnPauseAll"
-        or "TRAReinitAll" or "TRAIsStopAll";
+        or "TRAReinitAll" or "TRAIsStopAll" or "TRASetTime";
 
-    private static bool IsAllTracksCommand(string function) => function.EndsWith("All", StringComparison.Ordinal);
+    private static bool IsAllTracksCommand(string function) => function.EndsWith("All", StringComparison.Ordinal)
+        || function == "TRASetTime";
 
     private static CinematicNestedEventTrackIdentity Identity(CinematicEmbeddedEventTrackList list,
         CinematicEmbeddedEventTrack track) => new(list.WorldKey, list.OwnerKey, list.EventKey, track.Index);

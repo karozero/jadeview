@@ -6,9 +6,12 @@ internal sealed record CinematicSoundCommandBinding(string FunctionName, int? Mo
 internal static class CinematicSoundCommandResolver
 {
     internal static CinematicSoundCommandBinding? Resolve(CinematicLiteralCall call, uint worldKey,
-        SceneDocument document, IEnumerable<CinematicScriptOwner>? scriptOwners = null)
+        SceneDocument document, IEnumerable<CinematicScriptOwner>? scriptOwners = null,
+        IReadOnlyList<Entry>? archiveEntries = null)
     {
         string functionName = CinematicEngineFunctionCatalog.NameFor(call.Selector);
+        if (IsSoundBankRequest(functionName))
+            return ResolveSoundBankRequest(call, functionName, worldKey, document, archiveEntries);
         if (!IsSoundModifierCommand(functionName)) return null;
         if (call.Arguments.Length == 0)
             return new(functionName, null, "modifier ID argument is missing", [], []);
@@ -63,12 +66,14 @@ internal static class CinematicSoundCommandResolver
         CinematicSoundCommandBinding? binding = Resolve(call, worldKey, document, scriptOwners);
         if (binding is null) return "";
 
-        string modifier = binding.ModifierId switch
-        {
-            -1 => "all modifiers",
-            { } value => $"modifier {value}",
-            _ => "modifier ?"
-        };
+        string modifier = IsSoundBankRequest(binding.FunctionName)
+            ? binding.ModifierId is int soundSlot ? $"sound-bank slot {soundSlot}" : "sound-bank slot ?"
+            : binding.ModifierId switch
+            {
+                -1 => "all modifiers",
+                { } value => $"modifier {value}",
+                _ => "modifier ?"
+            };
         string sound = binding.SoundKeys.Length == 0
             ? binding.Status
             : $"sound {string.Join(", ", binding.SoundKeys)} ({binding.Status})";
@@ -76,6 +81,55 @@ internal static class CinematicSoundCommandResolver
             ? ""
             : $"; matches owner OVA slot(s): {string.Join(", ", binding.MatchingOvaSlots)}";
         return $"{modifier} → {sound}{ovaSlots}. Static asset link only; this does not prove playback.";
+    }
+
+    private static CinematicSoundCommandBinding ResolveSoundBankRequest(CinematicLiteralCall call,
+        string functionName, uint worldKey, SceneDocument document, IReadOnlyList<Entry>? archiveEntries)
+    {
+        int expectedArguments = functionName == "SNDRequestPlay" ? 2 : 4;
+        if (call.Arguments.Length != expectedArguments)
+            return new(functionName, null,
+                $"expected {expectedArguments} arguments, found {call.Arguments.Length}", [], []);
+
+        int soundSlot = unchecked((int)call.Arguments[0]);
+        WorldData? targetWorld = document.Worlds.FirstOrDefault(world => world.Key == worldKey);
+        SceneObject[] targets = targetWorld?.Objects.Where(sceneObject => sceneObject.GaoKey == call.Target).ToArray() ?? [];
+        bool resolvedFromOtherWorld = false;
+        if (targets.Length == 0)
+        {
+            targets = document.Worlds.SelectMany(world => world.Objects)
+                .Where(sceneObject => sceneObject.GaoKey == call.Target).ToArray();
+            resolvedFromOtherWorld = targets.Length > 0;
+        }
+        if (targets.Length == 0)
+            return new(functionName, soundSlot, "target GAO is not loaded in any world", [], []);
+        if (targets.Length > 1)
+        {
+            uint[] candidateBankKeys = targets.Select(target => target.SoundBankKey).Distinct().ToArray();
+            if (!resolvedFromOtherWorld || candidateBankKeys.Length != 1)
+                return new(functionName, soundSlot,
+                    $"ambiguous target GAO ({targets.Length} objects across loaded worlds)", [], []);
+        }
+
+        uint bankKey = targets[0].SoundBankKey;
+        if (bankKey == uint.MaxValue || !document.CinematicSoundBanks.TryGetValue(bankKey, out uint[]? sounds))
+            return new(functionName, soundSlot, resolvedFromOtherWorld
+                ? "matching GAO was found in another loaded world, but its sound bank is missing or undecoded"
+                : "target sound bank is missing or undecoded", [], []);
+        if (soundSlot < 0 || soundSlot >= sounds.Length)
+            return new(functionName, soundSlot, $"sound-bank slot is outside the decoded bank ({sounds.Length} entries)", [], []);
+
+        uint soundKey = sounds[soundSlot];
+        if (soundKey is 0 or uint.MaxValue)
+            return new(functionName, soundSlot, "sound-bank slot is empty", [], []);
+        if (archiveEntries != null && !archiveEntries.Any(entry => entry.Key == soundKey))
+            return new(functionName, soundSlot,
+                $"sound-bank slot references missing archive resource {soundKey:X8}", [], []);
+        string bindingStatus = functionName == "SNDRequestPlay"
+            ? "resolved local sound-bank slot" : "resolved local sound-bank slot; random frequency range is not reconstructed";
+        if (resolvedFromOtherWorld)
+            bindingStatus += " via matching GAO in another loaded world";
+        return new(functionName, soundSlot, bindingStatus, [soundKey.ToString("X8")], []);
     }
 
     private static string[] FindMatchingOvaSlots(uint targetKey, uint worldKey, int commandModifierId,
@@ -105,4 +159,7 @@ internal static class CinematicSoundCommandResolver
     private static bool IsSoundModifierCommand(string functionName) => functionName is
         "SNDPlayModifier" or "SNDPauseModifier" or "SNDStopModifier"
         or "SNDSetFlagModifier" or "SNDResetFlagModifier";
+
+    private static bool IsSoundBankRequest(string functionName) => functionName is
+        "SNDRequestPlay" or "SNDRequestPlayRandomFreq";
 }

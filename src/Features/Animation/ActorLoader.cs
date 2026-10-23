@@ -165,11 +165,18 @@ internal static partial class ActorLoader
             }
         }
         foreach (var world in doc.Worlds)
-        foreach (var actor in world.Actors)
-            foreach (var source in doc.CinematicClips.Values)
+        {
+            var cinematicSources = doc.CinematicClips.Values
+                .Where(source => source.CinematicWorldKey == world.Key)
+                .ToArray();
+            var nestedCommandsByClip = cinematicSources.ToDictionary(source => source.Key,
+                source => CinematicNestedEventTransformTracks.ReadTimeline(source, world, doc).Commands);
+
+            foreach (var actor in world.Actors)
+            foreach (var source in cinematicSources)
             {
                 var timeline = CinematicBodyTimeline.Create(source, actor, world.Key,
-                    doc.CinematicActionKitsByOwner);
+                    doc.CinematicActionKitsByOwner, nestedCommandsByClip[source.Key]);
                 if (timeline.ShapeKeys.Any())
                     LoadCinematicActionShapes(actor, timeline, world.Key, scopedResources, origins, doc);
 
@@ -179,6 +186,7 @@ internal static partial class ActorLoader
                     actorClip.CinematicBody = timeline;
                 }
             }
+        }
         doc.Diagnostics.Add($"Actors: {doc.Worlds.Sum(w => w.Actors.Count)}; component instances and animation pose are preview-only.");
     }
 

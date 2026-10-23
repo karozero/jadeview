@@ -1,3 +1,4 @@
+using System.Numerics;
 using JadeView;
 
 internal static class CinematicSceneExportAudit
@@ -27,7 +28,14 @@ internal static class CinematicSceneExportAudit
         var morphBindings = CollectMorphBindings(world, resolver);
         string exportPath = Path.Combine(outputDirectory, $"{entry.Id}-cinematic-synchronized.glb");
 
-        ExportCutscene(world, resolver, facialTimelines, exportPath, clipKey);
+        ExportCutscene(document, world, resolver, facialTimelines, exportPath, clipKey);
+        var exportedClip = document.CinematicClips[clipKey];
+        var nestedEventTimeline = CinematicNestedEventTransformTracks.ReadTimeline(exportedClip, world, document);
+        VerifyExportContainsNestedEventTracks(exportPath, exportedClip, world,
+            nestedEventTimeline.TransformTracks);
+        var objectState = new CinematicObjectState(exportedClip, world, world.Actors,
+            nestedEventTimeline.Commands);
+        VerifyExportContainsVisibilityTransitions(exportPath, exportedClip, objectState);
         if (HasCameraAnimationSource(world, clipKey))
             VerifyExportContainsCameraTrack(exportPath, clipKey);
 
@@ -35,6 +43,87 @@ internal static class CinematicSceneExportAudit
         VerifyExportContainsFacialTracks(exportPath, populatedTimelines.Length);
         return new(exportPath, populatedTimelines.Length,
             populatedTimelines.Sum(pair => pair.Value.Length), morphBindings, bodyBindings);
+    }
+
+    private static void VerifyExportContainsNestedEventTracks(string path, AnimationClip clip,
+        WorldData world, AnimationTrack[] nestedTracks)
+    {
+        if (nestedTracks.Length == 0) return;
+        using var glb = new GlbReader(path);
+        var nodes = glb.Root.GetProperty("nodes");
+        var cinematicAnimation = glb.Root.GetProperty("animations").EnumerateArray()
+            .FirstOrDefault(animation => animation.GetProperty("name").GetString() == clip.Name);
+        if (cinematicAnimation.ValueKind == System.Text.Json.JsonValueKind.Undefined)
+            throw new InvalidDataException($"GLB export for {clip.Key:X8} omitted its synchronized animation.");
+
+        var channels = cinematicAnimation.GetProperty("channels").EnumerateArray().ToArray();
+        foreach (uint targetKey in nestedTracks.Select(track => track.Target).Distinct())
+        {
+            var target = world.Objects.FirstOrDefault(sceneObject => sceneObject.GaoKey == targetKey)
+                ?? throw new InvalidDataException($"Nested event target {targetKey:X8} is absent from the assembled world.");
+            var targetNodes = Enumerable.Range(0, nodes.GetArrayLength())
+                .Where(index => nodes[index].TryGetProperty("name", out var name)
+                    && name.GetString() == target.Name).ToHashSet();
+            bool hasAnimationChannel = channels.Any(channel =>
+                channel.GetProperty("target").TryGetProperty("node", out var node)
+                && targetNodes.Contains(node.GetInt32()));
+            if (targetNodes.Count == 0 || !hasAnimationChannel)
+                throw new InvalidDataException(
+                    $"GLB export for {clip.Key:X8} omitted nested transform channels for {target.Name} ({targetKey:X8}).");
+        }
+    }
+
+    private static void VerifyExportContainsVisibilityTransitions(string path, AnimationClip clip,
+        CinematicObjectState state)
+    {
+        SceneObject[] targets = state.VisibilityTargets
+            .Where(target => target.Actor == null && !SceneRenderer.IsCollision(target))
+            .Distinct().ToArray();
+        if (targets.Length == 0) return;
+        using var glb = new GlbReader(path);
+        var nodes = glb.Root.GetProperty("nodes");
+        var cinematicAnimation = glb.Root.GetProperty("animations").EnumerateArray()
+            .FirstOrDefault(animation => animation.GetProperty("name").GetString() == clip.Name);
+        if (cinematicAnimation.ValueKind == System.Text.Json.JsonValueKind.Undefined)
+            throw new InvalidDataException($"GLB export for {clip.Key:X8} omitted its synchronized animation.");
+        var channels = cinematicAnimation.GetProperty("channels").EnumerateArray().ToArray();
+        var targetNodesByObject = new Dictionary<SceneObject, int>();
+        foreach (var target in targets)
+        {
+            var targetNodes = Enumerable.Range(0, nodes.GetArrayLength())
+                .Where(index => nodes[index].TryGetProperty("name", out var name)
+                    && name.GetString() == target.Name).ToHashSet();
+            bool hasAnimationChannel = channels.Any(channel =>
+                channel.GetProperty("target").TryGetProperty("node", out var node)
+                && targetNodes.Contains(node.GetInt32()));
+            if (targetNodes.Count == 0 || !hasAnimationChannel)
+                throw new InvalidDataException(
+                    $"GLB export for {clip.Key:X8} omitted visibility animation for {target.Name} ({target.GaoKey:X8}).");
+            targetNodesByObject[target] = targetNodes.First();
+        }
+
+        int animationIndex = Enumerable.Range(0, glb.Root.GetProperty("animations").GetArrayLength())
+            .Single(index => glb.Root.GetProperty("animations")[index]
+                .GetProperty("name").GetString() == clip.Name);
+        var sampleTimes = state.VisibilityChangeTimes.Append(0)
+            .Where(time => time >= 0 && time <= clip.Duration).Distinct().Order().ToArray();
+        foreach (float time in sampleTimes)
+        {
+            state.Evaluate(time);
+            foreach (var target in targets)
+            {
+                Matrix4x4 exportedPose = glb.World(targetNodesByObject[target], animationIndex, time);
+                bool exportedHidden = MathF.Abs(exportedPose.M11) + MathF.Abs(exportedPose.M12)
+                    + MathF.Abs(exportedPose.M13) + MathF.Abs(exportedPose.M21)
+                    + MathF.Abs(exportedPose.M22) + MathF.Abs(exportedPose.M23)
+                    + MathF.Abs(exportedPose.M31) + MathF.Abs(exportedPose.M32)
+                    + MathF.Abs(exportedPose.M33) < .0001f;
+                if (exportedHidden != target.IsControlHidden)
+                    throw new InvalidDataException(
+                        $"GLB export for {clip.Key:X8} has incorrect visibility for {target.Name} "
+                        + $"({target.GaoKey:X8}) at {time:F3}s.");
+            }
+        }
     }
 
     private static int CountAnimatedBones(SceneActor actor)
@@ -176,7 +265,7 @@ internal static class CinematicSceneExportAudit
         timeline.Value.Length > 1
         && timeline.Value.Any(frame => frame.Weights.Any(weight => MathF.Abs(weight) > 1e-5f));
 
-    private static void ExportCutscene(WorldData world, ResourceResolver resolver,
+    private static void ExportCutscene(SceneDocument document, WorldData world, ResourceResolver resolver,
         IReadOnlyDictionary<SceneObject, FaceMorphKeyframe[]> facialTimelines, string path, uint clipKey)
     {
         SceneExporter.Export(path, world, resolver, new()
@@ -188,6 +277,7 @@ internal static class CinematicSceneExportAudit
             Animations = true,
             AllClips = false,
             CinematicClipKey = clipKey,
+            CinematicDocument = document,
             MorphAnimations = true,
             CinematicMorphTimelines = facialTimelines
         });

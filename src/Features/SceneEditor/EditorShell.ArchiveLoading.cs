@@ -61,6 +61,7 @@ public sealed partial class EditorShell
                 Resolver = res;
                 Renderer.Document = doc;
                 Renderer.Resolver = res;
+                Renderer.VideoArchive = arch;
                 Renderer.ActiveWorld = ActiveWorld;
                 SelectedObject = ActiveWorld?.Objects.FirstOrDefault();
                 CurrentProject = doc != null ? ModProject.CreateForDocument(doc) : null;
@@ -148,6 +149,7 @@ public sealed partial class EditorShell
                 Resolver = res;
                 Renderer.Document = doc;
                 Renderer.Resolver = res;
+                Renderer.VideoArchive = Archive;
                 Renderer.ActiveWorld = ActiveWorld;
                 SelectedObject = ActiveWorld?.Objects.FirstOrDefault();
                 CurrentProject = ModProject.CreateForDocument(doc);

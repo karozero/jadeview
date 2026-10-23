@@ -37,6 +37,26 @@ public sealed class SceneObject
     public Matrix4x4? PreviewMatrix { get; set; }
     [System.Text.Json.Serialization.JsonIgnore]
     internal float? CinematicZoom { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal ParticleDefinition? CinematicParticles { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal bool HasCinematicParticleSourceOverride { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal SceneObject? CinematicParticleSourceObject { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal bool HasCinematicParticleMatrixOverride { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal SceneObject? CinematicParticleMatrixReference { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal bool IsCinematicParticleMatrixReferenceUnresolved { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal List<CinematicParticleShift> CinematicParticleShifts { get; set; } = [];
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal Vector3[]? PreviewParticlePositions { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal uint[]? PreviewParticleColors { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal float? PreviewParticleTime { get; set; }
     public Matrix4x4 RenderMatrix
     {
         get

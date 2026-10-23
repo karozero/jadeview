@@ -14,6 +14,10 @@ public sealed record CinematicEnvironmentController(uint OwnerKey, uint WorldKey
     internal float DawnRliFactor { get; init; }
     internal float SunsetRliFactor { get; init; }
     internal float DayRliFactor { get; init; }
+    internal float FogNear { get; init; }
+    internal float FogFar { get; init; }
+    internal float AttackFogNear { get; init; }
+    internal float AttackFogFar { get; init; }
     internal float AttackTransitionSpeed { get; init; }
     internal float AttackReturnSpeed { get; init; }
     internal uint[][] NormalPalettes { get; init; } = [];

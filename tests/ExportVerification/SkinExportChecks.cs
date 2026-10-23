@@ -34,6 +34,8 @@ internal static class SkinExportChecks
         {
             actor.Loop = false; actor.Playing = false; actor.Time = time; actor.Evaluate(0);
             var expected = actor.Skin(source, geometry)!;
+            if (!ReferenceEquals(expected, actor.Skin(source, geometry)))
+                throw new InvalidOperationException("Actor skinning should reuse its per-geometry deformation buffer.");
             for (int vertex = 0; vertex < positions.Length; vertex++)
             {
                 var actual = Vector3.Zero;

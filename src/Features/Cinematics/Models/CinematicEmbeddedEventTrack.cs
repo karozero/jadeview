@@ -20,3 +20,10 @@ internal sealed record CinematicEmbeddedEventTrack(
     internal (float Time, CinematicLiteralCall Call)[] Calls { get; init; } = [];
     internal (float Time, CinematicTimelineMessage Message)[] Messages { get; init; } = [];
 }
+
+internal static class CinematicEventTrackFlags
+{
+    internal const int RunningInit = 0x0001;
+    internal const int AutoLoop = 0x0002;
+    internal const int AutoStop = 0x0004;
+}

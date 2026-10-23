@@ -14,8 +14,15 @@ internal sealed class CinematicMaterialState
     private readonly Dictionary<uint, float> shockwaveTransparency = [];
     private readonly CinematicEnvironmentController[] environmentControllers;
     private readonly WorldData world;
+    private int appliedChangeCount;
+    private bool hasEvaluation;
+    private float lastEvaluationTime;
+    internal float Time { get; private set; }
     internal Vector4 RliColor { get; private set; }
     internal float RliFactor { get; private set; }
+    internal Vector4 FogColor { get; private set; }
+    internal float FogNear { get; private set; }
+    internal float FogFar { get; private set; }
 
     internal CinematicMaterialState(AnimationClip clip, WorldData world,
         IReadOnlyDictionary<uint, ResolvedMaterial> materials)
@@ -42,12 +49,18 @@ internal sealed class CinematicMaterialState
     internal void Evaluate(float time, float attackFactor = 0,
         IEnumerable<CinematicShockwaveTimeline.ShockwaveState>? shockwaves = null)
     {
-        evaluated.Clear();
-        environmentConstants.Clear();
-        environmentAlphas.Clear();
-        shockwaveTransparency.Clear();
-        foreach (var change in changes.TakeWhile(change => change.Time <= time))
+        Time = float.IsFinite(time) ? Math.Max(0, time) : 0;
+        if (!hasEvaluation || Time < lastEvaluationTime)
         {
+            evaluated.Clear();
+            appliedChangeCount = 0;
+            hasEvaluation = true;
+        }
+        lastEvaluationTime = Time;
+        shockwaveTransparency.Clear();
+        while (appliedChangeCount < changes.Length && changes[appliedChangeCount].Time <= Time)
+        {
+            var change = changes[appliedChangeCount++];
             var key = (change.Material, change.Level);
             if (!source.TryGetValue(key, out var original)) continue;
             var layer = evaluated.GetValueOrDefault(key) ?? original;
@@ -64,21 +77,25 @@ internal sealed class CinematicMaterialState
                 _ => layer
             };
         }
-        var worldCycle = CinematicWorldCyclePalette.Evaluate(environmentControllers, world, attackFactor);
-        foreach (var pair in worldCycle.Constants) environmentConstants[pair.Key] = pair.Value;
-        foreach (var pair in worldCycle.LocalAlphas) environmentAlphas[pair.Key] = pair.Value;
+        var worldCycle = CinematicWorldCyclePalette.Evaluate(environmentControllers, world,
+            environmentConstants, environmentAlphas, attackFactor);
         RliColor = worldCycle.RliColor;
         RliFactor = worldCycle.RliFactor;
+        FogColor = worldCycle.FogColor;
+        FogNear = worldCycle.FogNear;
+        FogFar = worldCycle.FogFar;
         if (shockwaves != null)
         {
-            var activeShockwaves = shockwaves.Where(effect => !effect.Finished && effect.Transparency > 0).ToArray();
-            foreach (var effect in activeShockwaves)
-                shockwaveTransparency[effect.Object.GaoKey] = effect.Transparency;
-            if (activeShockwaves.Length > 0)
+            float maximumShockwaveTransparency = 0;
+            foreach (var effect in shockwaves)
             {
-                RliColor = Vector4.One;
-                RliFactor = activeShockwaves.Max(effect => effect.Transparency);
+                if (effect.Finished || effect.Transparency <= 0) continue;
+                shockwaveTransparency[effect.Object.GaoKey] = effect.Transparency;
+                maximumShockwaveTransparency = Math.Max(maximumShockwaveTransparency, effect.Transparency);
             }
+            if (maximumShockwaveTransparency <= 0) return;
+            RliColor = Vector4.One;
+            RliFactor = maximumShockwaveTransparency;
         }
     }
 

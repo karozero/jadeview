@@ -7,6 +7,9 @@ internal sealed class CinematicScreenFadeTimeline
     private sealed record Fade(float Time, float[] Durations, Vector4 Start, Vector4 End);
     private readonly List<Fade> fades = [];
     internal int Count => fades.Count;
+    internal string[] Describe() => fades.Select(fade =>
+        $"t={fade.Time:F3}s durations=[{string.Join(",", fade.Durations.Select(value => value.ToString("F3", System.Globalization.CultureInfo.InvariantCulture)))}] "
+        + $"from={fade.Start} to={fade.End}").ToArray();
 
     internal CinematicScreenFadeTimeline(AnimationClip source, WorldData world, SceneDocument document)
     {

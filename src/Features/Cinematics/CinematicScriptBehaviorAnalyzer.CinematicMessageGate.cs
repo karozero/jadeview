@@ -134,11 +134,6 @@ internal static partial class CinematicScriptBehaviorAnalyzer
             || expectedInt1Mask is null)
             return [];
 
-        // MSGSendEx zero-initializes its message and writes only sender, msgID, and f2.
-        // A nonzero Int1 mask rejects it; a zero mask is not an Int1 mismatch.
-        bool int1MaskCompatible = expectedInt1Mask.Value == 0;
-        if (int1MaskCompatible != requireInt1MaskCompatibility) return [];
-
         var referenceArray = namedReferences.ToArray();
         var queueObject = CinematicScriptReferenceNameResolver.Resolve(queueKey.Value,
             gateOwner.WorldKey, referenceArray);
@@ -146,18 +141,28 @@ internal static partial class CinematicScriptBehaviorAnalyzer
 
         var resolvedCandidates = eventTracks
             .SelectMany(track => track.EngineCalls
-                .Where(entry => CinematicEngineFunctionCatalog.NameFor(entry.Call.Selector) == "MSGSendEx"
-                    && entry.Call.Arguments.Length >= 2
-                    && unchecked((int)entry.Call.Arguments[0]) == expectedMessageId)
+                .Where(entry => TryReadGateMessage(entry.Call, out int messageId, out _)
+                    && messageId == expectedMessageId)
                 .Select(entry => (Track: track, entry.Time, entry.Call)))
             .Select(candidate =>
             {
+                if (!TryReadGateMessage(candidate.Call, out _, out int messageInt1)) return null;
+                bool int1MaskCompatible = expectedInt1Mask.Value == 0
+                    || (expectedInt1Mask.Value & messageInt1) != 0;
+                if (int1MaskCompatible != requireInt1MaskCompatibility) return null;
+
+                uint queueContextKey = candidate.Call.Target;
+                var messageFunction = CinematicEngineFunctionCatalog.NameFor(candidate.Call.Selector);
+                // MSGSendEx and MSGSendAll enqueue on the prior CurrentUltra. During EVE playback,
+                // that is the track execution object established by EVE_Event_AIFunction_Play.
+                // MSGSendAllOwner uses a separate global MSG_gpo_Owner and cannot be joined here.
+                if (messageFunction == "MSGSendAllOwner") return null;
                 var targetObject = CinematicScriptReferenceNameResolver.Resolve(
-                    candidate.Call.Target, candidate.Track.WorldKey, referenceArray);
+                    queueContextKey, candidate.Track.WorldKey, referenceArray);
                 if (targetObject == null) return null;
-                bool targetMatchesQueue = targetObject.WorldKey == queueObject.WorldKey
+                bool queueMatches = targetObject.WorldKey == queueObject.WorldKey
                     && targetObject.Key == queueObject.Key;
-                return targetMatchesQueue == requireQueueTarget
+                return queueMatches == requireQueueTarget
                     ? new CinematicScriptEngineMessageGateCandidate(candidate.Track, candidate.Time,
                         candidate.Call, queueObject, targetObject, [candidate.Track])
                     : null;
@@ -179,6 +184,26 @@ internal static partial class CinematicScriptBehaviorAnalyzer
             .ThenBy(candidate => candidate.Time)
             .ToArray();
         return resolvedCandidates;
+    }
+
+    private static bool TryReadGateMessage(CinematicLiteralCall call, out int messageId, out int int1)
+    {
+        uint[] arguments = call.Arguments;
+        switch (CinematicEngineFunctionCatalog.NameFor(call.Selector))
+        {
+            case "MSGSendEx" when arguments.Length >= 2:
+                messageId = unchecked((int)arguments[0]);
+                int1 = 0; // Iris zero-initializes MSGSendEx's message structure.
+                return true;
+            case "MSGSendAll" when arguments.Length == 13:
+                messageId = unchecked((int)arguments[0]);
+                int1 = unchecked((int)arguments[11]);
+                return true;
+            default:
+                messageId = 0;
+                int1 = 0;
+                return false;
+        }
     }
 
     private static bool HasMessageStartGate(CinematicScriptOwner owner)

@@ -3,7 +3,7 @@ using System.Numerics;
 namespace JadeView;
 
 // PC SubTexture layout, decoded independently from Iris common.a.d_0/Common.j.
-public sealed record JadeMaterialLayer(ushort Custom, uint Flags, uint TransformU, uint TransformV, uint Texture)
+public sealed record JadeMaterialLayer(ushort Custom, uint Flags, uint TransformU, uint TransformV, uint Texture, float Opacity = 1)
 {
     private const int MaterialHeaderSize = 36;
     private const int LayerRecordSize = 20;
@@ -54,7 +54,14 @@ public sealed record JadeMaterialLayer(ushort Custom, uint Flags, uint Transform
                 result.Add(new((ushort)Preview.U16(bytes, offset + 2), Preview.U32(bytes, offset + 4),
                     Preview.U32(bytes, offset + 8), Preview.U32(bytes, offset + 12), Preview.U32(bytes, offset + 16)));
         else if (type == SimpleMaterialType)
-            result.Add(new(0, 7, 0, 0, Preview.U32(bytes, 28)));
+        {
+            float opacity = bytes.Length >= 24 ? BitConverter.Int32BitsToSingle(Preview.I32(bytes, 20)) : 1;
+            if (!float.IsFinite(opacity)) opacity = 1;
+            opacity = Math.Clamp(opacity, 0, 1);
+            uint flags = 7;
+            if (opacity <= .98f) flags |= 1u << 16;
+            result.Add(new(0, flags, 0, 0, Preview.U32(bytes, 28), opacity));
+        }
         return result;
     }
 }

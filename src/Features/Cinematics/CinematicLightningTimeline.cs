@@ -5,7 +5,9 @@ namespace JadeView;
 internal sealed class CinematicLightningTimeline
 {
     private const int CapabilitySet = 8133;
+    private const int MaximumTransitionsPerTrack = 4096;
     private readonly LightningTrack[] tracks;
+    private readonly List<CinematicLightningState> activeStates = [];
 
     internal CinematicLightningTimeline(AnimationClip source, WorldData world,
         IReadOnlyDictionary<uint, CinematicLightningController> controllers)
@@ -22,37 +24,39 @@ internal sealed class CinematicLightningTimeline
                 .Select(item => new CapabilityChange(item.Time,
                     unchecked((uint)item.Call!.Arguments[0]), unchecked((uint)item.Call.Arguments[1])))
                 .ToArray();
-            return new LightningTrack(controller, owner, destination, capabilityActor, controllerChanges);
+            var track = new LightningTrack(controller, owner, destination, capabilityActor, controllerChanges);
+            float duration = float.IsFinite(source.Duration) ? Math.Max(0, source.Duration) : 0;
+            track.Transitions = BuildTransitions(track, duration);
+            return track;
         }).OfType<LightningTrack>().ToArray();
     }
 
-    internal CinematicLightningState[] Evaluate(float time)
+    internal IReadOnlyList<CinematicLightningState> Evaluate(float time)
     {
-        var states = new List<CinematicLightningState>();
+        activeStates.Clear();
         foreach (var track in tracks)
         {
-            var transitions = Transitions(track, time);
-            if (!TrySample(track.Controller, transitions, time, out uint color, out float opacity)) continue;
+            if (!TrySample(track.Controller, track.Transitions, time, out uint color, out float opacity)) continue;
             var start = track.Owner.RenderMatrix.Translation;
             var end = track.Destination.RenderMatrix.Translation;
             if (!float.IsFinite(Vector3.DistanceSquared(start, end))) continue;
-            states.Add(new(start, end, color, opacity, track.Controller.Width,
+            activeStates.Add(new(start, end, color, opacity, track.Controller.Width,
                 track.Controller.Radius, track.Controller.SegmentCount, track.Controller.OwnerKey, time));
         }
-        return states.ToArray();
+        return activeStates;
     }
 
-    private static List<(float Time, bool Active)> Transitions(LightningTrack track, float until)
+    private static LightningTransition[] BuildTransitions(LightningTrack track, float until)
     {
         var controller = track.Controller;
         uint capabilities = track.CapabilityActor.InitialCapabilities;
         bool capabilityActive = HasCapability(capabilities, controller.CapabilityMask);
         bool active = controller.Mode == 1 || capabilityActive;
-        var transitions = new List<(float Time, bool Active)> { (0, active) };
+        var transitions = new List<LightningTransition> { new(0, active, active) };
         if (controller.Mode == 1)
         {
             AddPeriodicTransitions(transitions, controller, until);
-            return transitions;
+            return transitions.ToArray();
         }
 
         if (controller.Mode == 0)
@@ -61,9 +65,10 @@ internal sealed class CinematicLightningTimeline
             {
                 bool wasEnabled = capabilityActive;
                 capabilityActive = ApplyCapability(ref capabilities, change, controller.CapabilityMask);
-                if (wasEnabled != capabilityActive) transitions.Add((change.Time, capabilityActive));
+                if (wasEnabled != capabilityActive)
+                    AddTransition(transitions, change.Time, capabilityActive);
             }
-            return transitions;
+            return transitions.ToArray();
         }
 
         float nextToggle = capabilityActive ? DelayAfter(true, controller) : float.PositiveInfinity;
@@ -74,39 +79,45 @@ internal sealed class CinematicLightningTimeline
             capabilityActive = ApplyCapability(ref capabilities, change, controller.CapabilityMask);
             if (wasEnabled == capabilityActive) continue;
             active = capabilityActive;
-            transitions.Add((change.Time, active));
+            AddTransition(transitions, change.Time, active);
             nextToggle = capabilityActive ? change.Time + DelayAfter(true, controller) : float.PositiveInfinity;
         }
         AdvanceTimerUntil(until);
-        return transitions.OrderBy(item => item.Time).ToList();
+        return transitions.OrderBy(item => item.Time).ToArray();
 
         void AdvanceTimerUntil(float time)
         {
             int iterations = 0;
-            while (capabilityActive && nextToggle <= time && iterations++ < 4096)
+            while (capabilityActive && nextToggle <= time && iterations++ < MaximumTransitionsPerTrack)
             {
                 active = !active;
-                transitions.Add((nextToggle, active));
+                AddTransition(transitions, nextToggle, active);
                 float delay = DelayAfter(active, controller);
                 nextToggle = delay > 0 ? nextToggle + delay : float.PositiveInfinity;
             }
         }
     }
 
-    private static void AddPeriodicTransitions(List<(float Time, bool Active)> transitions,
+    private static void AddPeriodicTransitions(List<LightningTransition> transitions,
         CinematicLightningController controller, float until)
     {
         bool active = transitions[^1].Active;
         float delay = DelayAfter(active, controller);
         float nextToggle = delay > 0 ? delay : float.PositiveInfinity;
         int iterations = 0;
-        while (nextToggle <= until && iterations++ < 4096)
+        while (nextToggle <= until && iterations++ < MaximumTransitionsPerTrack)
         {
             active = !active;
-            transitions.Add((nextToggle, active));
+            AddTransition(transitions, nextToggle, active);
             delay = DelayAfter(active, controller);
             nextToggle = delay > 0 ? nextToggle + delay : float.PositiveInfinity;
         }
+    }
+
+    private static void AddTransition(List<LightningTransition> transitions, float time, bool active)
+    {
+        bool wasEverActive = transitions.Count > 0 && transitions[^1].WasEverActive || active;
+        transitions.Add(new(time, active, wasEverActive));
     }
 
     private static float DelayAfter(bool active, CinematicLightningController controller) => active
@@ -124,17 +135,14 @@ internal sealed class CinematicLightningTimeline
         (ushort)mask != 0 && (capabilities & (ushort)mask) != 0;
 
     private static bool TrySample(CinematicLightningController controller,
-        IReadOnlyList<(float Time, bool Active)> transitions, float time, out uint color, out float opacity)
+        IReadOnlyList<LightningTransition> transitions, float time, out uint color, out float opacity)
     {
-        bool active = transitions[0].Active;
-        bool wasEverActive = active;
-        float changedAt = transitions[0].Time;
-        for (int index = 1; index < transitions.Count && transitions[index].Time <= time; index++)
-        {
-            active = transitions[index].Active;
-            wasEverActive |= active;
-            changedAt = transitions[index].Time;
-        }
+        int transitionIndex = LastTransitionAtOrBefore(transitions, time);
+        transitionIndex = Math.Max(transitionIndex, 0);
+        var transition = transitions[transitionIndex];
+        bool active = transition.Active;
+        bool wasEverActive = transition.WasEverActive;
+        float changedAt = transition.Time;
         float fade = active ? controller.FadeIn : controller.FadeOut;
         float amount = fade <= 0 ? 1 : Math.Clamp((time - changedAt) / fade, 0, 1);
         if (!active && controller.OffColor == 0)
@@ -165,6 +173,20 @@ internal sealed class CinematicLightningTimeline
         return opacity > 0;
     }
 
+    private static int LastTransitionAtOrBefore(IReadOnlyList<LightningTransition> transitions,
+        float time)
+    {
+        int low = 0;
+        int high = transitions.Count;
+        while (low < high)
+        {
+            int middle = low + (high - low) / 2;
+            if (transitions[middle].Time <= time) low = middle + 1;
+            else high = middle;
+        }
+        return low - 1;
+    }
+
     private static uint Blend(uint first, uint second, float amount)
     {
         uint result = 0;
@@ -179,7 +201,16 @@ internal sealed class CinematicLightningTimeline
 
     private static float NextDelay(float minimum, float maximum) => Math.Max(0, (minimum + maximum) * .5f);
 
-    private sealed record LightningTrack(CinematicLightningController Controller, SceneObject Owner,
-        SceneObject Destination, SceneObject CapabilityActor, CapabilityChange[] Changes);
+    private sealed class LightningTrack(CinematicLightningController controller, SceneObject owner,
+        SceneObject destination, SceneObject capabilityActor, CapabilityChange[] changes)
+    {
+        internal CinematicLightningController Controller { get; } = controller;
+        internal SceneObject Owner { get; } = owner;
+        internal SceneObject Destination { get; } = destination;
+        internal SceneObject CapabilityActor { get; } = capabilityActor;
+        internal CapabilityChange[] Changes { get; } = changes;
+        internal LightningTransition[] Transitions { get; set; } = [];
+    }
+    private readonly record struct LightningTransition(float Time, bool Active, bool WasEverActive);
     private sealed record CapabilityChange(float Time, uint SetMask, uint RemoveMask);
 }

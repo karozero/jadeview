@@ -7,6 +7,7 @@ internal sealed class CinematicShockwaveTimeline
     private const int ObjectInvisibleSet = 8152;
     private const uint VisibilityMask = CinematicObjectState.Invisible | CinematicObjectState.Inactive;
     private readonly Shockwave[] shockwaves;
+    private readonly List<ShockwaveState> activeShockwaves = [];
 
     internal CinematicShockwaveTimeline(AnimationClip source, WorldData world,
         IReadOnlyDictionary<uint, CinematicShockwaveController> controllers)
@@ -30,9 +31,9 @@ internal sealed class CinematicShockwaveTimeline
         }).OfType<Shockwave>().ToArray();
     }
 
-    internal ShockwaveState[] Evaluate(float time)
+    internal IReadOnlyList<ShockwaveState> Evaluate(float time)
     {
-        var active = new List<ShockwaveState>();
+        activeShockwaves.Clear();
         foreach (var shockwave in shockwaves)
         {
             float elapsed = time - shockwave.Start;
@@ -48,14 +49,15 @@ internal sealed class CinematicShockwaveTimeline
             bool finished = elapsed >= 1;
             shockwave.Object.CinematicZoom = finished ? 0 : shockwave.Radius * wave;
             shockwave.Object.CinematicExcluded = finished;
-            active.Add(new(shockwave.Object, shockwave.Start, shockwave.Object.CinematicZoom.Value,
+            activeShockwaves.Add(new(shockwave.Object, shockwave.Start, shockwave.Object.CinematicZoom.Value,
                 finished ? 0 : wave * wave, finished));
         }
-        return active.ToArray();
+        return activeShockwaves;
     }
 
     internal void Clear()
     {
+        activeShockwaves.Clear();
         foreach (var shockwave in shockwaves)
         {
             shockwave.Object.CinematicZoom = null;
@@ -76,5 +78,5 @@ internal sealed class CinematicShockwaveTimeline
 
     private sealed record Shockwave(SceneObject Object, float Radius, float Start);
 
-    internal sealed record ShockwaveState(SceneObject Object, float StartTime, float Zoom, float Transparency, bool Finished);
+    internal readonly record struct ShockwaveState(SceneObject Object, float StartTime, float Zoom, float Transparency, bool Finished);
 }

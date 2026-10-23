@@ -1,3 +1,4 @@
+using System.Numerics;
 using JadeView;
 
 internal static class CinematicMaterialChecks
@@ -31,6 +32,7 @@ internal static class CinematicMaterialChecks
         var state = new CinematicMaterialState(clip, world, materials);
         var original = JadeMaterialLayer.Read(bytes)[1];
         state.Evaluate(3.5f);
+        Require(state.Time == 3.5f, "Cinematic material time must follow the playhead.");
         var evaluated = state.Apply(materialKey, 1, original);
         Require(!evaluated.Disabled && evaluated.Custom == 0x6060 && (evaluated.Flags >> 22 & 0xfc) == 252,
             "Native material enable, five-bit local alpha or six-bit threshold was lost.");
@@ -40,8 +42,87 @@ internal static class CinematicMaterialChecks
         state.Evaluate(.5f);
         Require(state.Apply(materialKey, 1, original) == original && JadeMaterialLayer.Read(bytes)[1] == original,
             "Material reverse seek or immutable source state was lost.");
+        Require(state.Time == .5f, "Cinematic material time must rewind with a reverse seek.");
+        VerifyWorldCycleSampling();
+        VerifySimpleMaterialOpacity();
         VerifySpriteAlpha();
         Console.WriteLine("PASS: timed material activation, native key/index lookup, packed alpha/threshold, layer isolation and reverse seek");
+    }
+
+    private static void VerifyWorldCycleSampling()
+    {
+        const uint sunKey = 0x47000010;
+        var sun = new SceneObject { GaoKey = sunKey, Transform = new() { Translation = new(0, 0, -.5f) } };
+        var world = new WorldData();
+        world.Objects.Add(sun);
+        uint[][] palettes = Enumerable.Range(0, 4)
+            .Select(paletteIndex => Enumerable.Range(0, 9)
+                .Select(colorIndex => 0xff000000u | (uint)(paletteIndex * 24) << 16
+                    | (uint)(paletteIndex * 24) << 8 | (uint)(paletteIndex * 24 + colorIndex)).ToArray())
+            .ToArray();
+        var controller = new CinematicEnvironmentController(1, 0, [sunKey])
+        {
+            EnvironmentKey = 8,
+            SkyKey = 9,
+            SunKey = sunKey,
+            NightHeight = 0,
+            DawnHeight = 1,
+            SunriseHeight = 2,
+            DayHeight = 3,
+            NightRliFactor = .1f,
+            DawnRliFactor = .2f,
+            SunsetRliFactor = .3f,
+            DayRliFactor = .4f,
+            FogNear = 10,
+            FogFar = 100,
+            AttackFogNear = 20,
+            AttackFogFar = 200,
+            NormalPalettes = palettes
+        };
+        CinematicEnvironmentController[] controllers = [controller];
+        var constants = new Dictionary<(uint ObjectKey, int SubMaterial), Vector4>();
+        var alphas = new Dictionary<(uint ObjectKey, int SubMaterial, int Layer), byte>();
+        var state = CinematicWorldCyclePalette.Evaluate(controllers, world, constants, alphas);
+        Require(constants[(8, 0)] == PackedColor(palettes[0][3])
+            && constants[(8, 1)] == PackedColor(palettes[0][8])
+            && constants[(9, 0)] == PackedColor(palettes[0][4]),
+            "World-cycle palette endpoint colors or scene bindings changed.");
+        Require(state.RliColor == PackedColor(palettes[0][7]) && state.RliFactor == .1f
+            && state.FogColor == PackedColor(palettes[0][1]) && state.FogNear == 10 && state.FogFar == 100
+            && alphas[(8, 0, 1)] == 127,
+            "Night environment, fog, or local-alpha state changed during allocation-free sampling.");
+
+        for (int iteration = 0; iteration < 32; iteration++)
+            _ = CinematicWorldCyclePalette.Evaluate(controllers, world, constants, alphas);
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int iteration = 0; iteration < 1024; iteration++)
+            _ = CinematicWorldCyclePalette.Evaluate(controllers, world, constants, alphas);
+        long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Require(allocatedBytes == 0,
+            $"World-cycle preview allocated {allocatedBytes} bytes for 1024 cached palette evaluations.");
+    }
+
+    private static Vector4 PackedColor(uint color) => new(
+        (color & 0xff) / 255f,
+        (color >> 8 & 0xff) / 255f,
+        (color >> 16 & 0xff) / 255f,
+        (color >> 24) / 255f);
+
+    private static void VerifySimpleMaterialOpacity()
+    {
+        var bytes = new byte[36];
+        BitConverter.GetBytes(3).CopyTo(bytes, 0);
+        BitConverter.GetBytes(.5f).CopyTo(bytes, 20);
+        BitConverter.GetBytes(0x12345678u).CopyTo(bytes, 28);
+        var translucent = JadeMaterialLayer.Read(bytes).Single();
+        Require(Math.Abs(translucent.Opacity - .5f) < .0001f && translucent.Blend == 1
+            && translucent.Texture == 0x12345678,
+            "Simple material opacity must enable alpha blending and preserve its texture key.");
+
+        BitConverter.GetBytes(1f).CopyTo(bytes, 20);
+        var opaque = JadeMaterialLayer.Read(bytes).Single();
+        Require(opaque.Opacity == 1 && opaque.Blend == 0,
+            "Opaque simple materials must retain copy blending.");
     }
 
     private static void VerifySpriteAlpha()

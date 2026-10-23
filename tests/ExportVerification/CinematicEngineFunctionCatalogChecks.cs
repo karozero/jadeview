@@ -9,6 +9,8 @@ internal static class CinematicEngineFunctionCatalogChecks
         Check(0x1F55, [3, 0xFF102030], "world-table slot 3 ambient color 2 to 0xFF102030");
         Check(0x213B, [2, 0], "clear light flag bit 2");
         Check(0x32CB, [1, 150], "animation track 1 time to frame 150 (2.5 seconds");
+        Check(0x3B6D, [BitConverter.SingleToUInt32Bits(4.5f)],
+            "seek every embedded event track to 4.5 seconds without changing run or pause state");
         Check(0x2F3F, [uint.MaxValue], "prefetch sound resources for all sound modifiers");
         Check(0x2F3F, [10], "prefetch sound resources for sound modifier 10");
         Check(0x30D4, [0], "assign target object to world view slot 0");
@@ -19,6 +21,25 @@ internal static class CinematicEngineFunctionCatalogChecks
         Check(0x1FDC, [0x200], "attach target under object 00000200, retaining its current world transform");
         Check(0x1FDD, [], "clear target's parent-hierarchy binding");
         Check(0x1F76, [47, 2], "queue extended message 47 to the target script owner with float payload 2");
+        uint[] messageSendAllArguments = [46, 0x201, 0x202, BitConverter.SingleToUInt32Bits(1),
+            BitConverter.SingleToUInt32Bits(2), BitConverter.SingleToUInt32Bits(3),
+            BitConverter.SingleToUInt32Bits(4), BitConverter.SingleToUInt32Bits(5),
+            BitConverter.SingleToUInt32Bits(6), BitConverter.SingleToUInt32Bits(7),
+            BitConverter.SingleToUInt32Bits(8), 4, 9];
+        Check(0x1F78, messageSendAllArguments,
+            "enqueue message 46 on the current execution object's queue");
+        uint[] messageSendAllOwnerArguments = [47, 0x202, BitConverter.SingleToUInt32Bits(1),
+            BitConverter.SingleToUInt32Bits(2), BitConverter.SingleToUInt32Bits(3),
+            BitConverter.SingleToUInt32Bits(4), BitConverter.SingleToUInt32Bits(5),
+            BitConverter.SingleToUInt32Bits(6), BitConverter.SingleToUInt32Bits(7),
+            BitConverter.SingleToUInt32Bits(8), 4, 9];
+        Check(0x1F7D, messageSendAllOwnerArguments,
+            "enqueue message 47 on the registered MSG owner queue");
+        string messageSendAllDescription = CinematicEngineFunctionCatalog.Describe(
+            new(0x12345678, 0x1F78, messageSendAllArguments));
+        if (!messageSendAllDescription.Contains("vectors (1, 2, 3)/(4, 5, 6)", StringComparison.Ordinal)
+            || !messageSendAllDescription.Contains("f2 7, f1 8, Int1 4, Int2 9", StringComparison.Ordinal))
+            throw new InvalidOperationException("MSGSendAll fields must retain native vector, float and integer argument order.");
         Check(0x2714, [], "enable target dynamics and register it for the world's dynamics update");
         Check(0x2715, [], "disable target dynamics and remove it from the world's dynamics update");
         Check(0x3BC6, [0xFFFF, uint.MaxValue], "reset visibility suppression on target group and all sections");
@@ -31,6 +52,16 @@ internal static class CinematicEngineFunctionCatalogChecks
         CheckObjectArguments(0x1FDC, [0x200]);
         CheckObjectArguments(0x1FDA, [0x200]);
         CheckObjectArguments(0x1FDB, [0x200]);
+        CheckObjectArguments(0x20D0, [0x200, BitConverter.SingleToUInt32Bits(3)]);
+        CheckObjectArguments(0x2108, [0x200]);
+        CheckObjectArguments(0x2109, [0x200]);
+        if (!CinematicEngineFunctionCatalog.GameObjectArgumentIndices(new CinematicLiteralCall(1, 0x1F78,
+                [46, 0x201, 0x202, 1, 2, 3, 4, 5, 6, 7, 8, 4, 9]))
+            .SequenceEqual([1, 2]))
+            throw new InvalidOperationException("MSGSendAll must expose both serialized GAO payload fields as references.");
+        if (!CinematicEngineFunctionCatalog.GameObjectArgumentIndices(new CinematicLiteralCall(1, 0x1F7D,
+                messageSendAllOwnerArguments)).SequenceEqual([1]))
+            throw new InvalidOperationException("MSGSendAllOwner must expose its serialized secondary GAO field as a reference.");
         if (CinematicEngineFunctionCatalog.GameObjectArgumentIndices(new(1, 0x2135, [0x200])).Length != 0)
             throw new InvalidOperationException("Packed colors must not be exposed as object references.");
         Check(0x3BC7, [2, 1], "Iris stub consumes section arguments 2 and 1");
@@ -41,13 +72,59 @@ internal static class CinematicEngineFunctionCatalogChecks
         Check(0x1FC7, [0x4100], "test whether target flags2 bits 8–15 intersect mask 0x4100");
         Check(0x2713, [0x100, 0x20], "add dynamics flags 0x100, remove 0x20");
         Check(0x3D54, [uint.MaxValue, 1], "activate matching XMEN modifiers on target and its skeleton objects (all user IDs; Jaded source behavior)");
+        string particleShift = CinematicEngineFunctionCatalog.Describe(new(1, 0x210A,
+            [BitConverter.SingleToUInt32Bits(1.25f), BitConverter.SingleToUInt32Bits(-2), 0]));
+        if (!particleShift.Contains("(1.25, -2, 0)", StringComparison.Ordinal)
+            || !particleShift.Contains("existing PAG particle positions", StringComparison.Ordinal))
+            throw new InvalidOperationException("PAG_ShiftParticles must describe its serialized vector and live-particle scope.");
+        Check(0x2EF6, [2, BitConverter.SingleToUInt32Bits(-1)],
+            "play target sound-bank slot 2 at default volume");
+        Check(0x2F47, [3, BitConverter.SingleToUInt32Bits(.5f), BitConverter.SingleToUInt32Bits(.9f),
+            BitConverter.SingleToUInt32Bits(1.1f)], "play target sound-bank slot 3 at volume 0.5 with 0.9–1.1 frequency multiplier");
+        Check(0x203D, [2, BitConverter.SingleToUInt32Bits(.75f)], "set morph channel 2 blend factor to 0.75");
+        Check(0x203F, [1, BitConverter.SingleToUInt32Bits(.25f)], "set morph channel 1 progression to 0.25");
+        Check(0x1FBE, [BitConverter.SingleToUInt32Bits(1), BitConverter.SingleToUInt32Bits(.5f),
+            BitConverter.SingleToUInt32Bits(2)], "replace target matrix scale with (1, 0.5, 2)");
+        Check(0x1FC0, [BitConverter.SingleToUInt32Bits(.6f)], "replace target matrix scale with uniform zoom 0.6");
+        Check(0x3CF0, [7, 1, 0, BitConverter.SingleToUInt32Bits(.2f)],
+            "enable remanence, factor 0.2");
+        Check(0x3CF0, [0, 1, 2, BitConverter.SingleToUInt32Bits(.3f)],
+            "enable depth blur, variant 2, factor 0.3");
+        Check(0x3CF0, [1, 0, 0, BitConverter.SingleToUInt32Bits(.4f)],
+            "disable motion blur, factor 0.4");
+        Check(0x3CF0, [2, 1, 0, BitConverter.SingleToUInt32Bits(.5f)],
+            "enable screen blur, factor 0.5");
+        Check(0x3CF0, [4, 1, 0, 0], "enable motion smoothing");
+        Check(0x3CF0, [5, 1, 0, BitConverter.SingleToUInt32Bits(.6f)],
+            "enable zoom smoothing, factor 0.6");
+        Check(0x3CF0, [6, 1, 0, BitConverter.SingleToUInt32Bits(.7f)],
+            "enable secondary zoom smoothing, factor 0.7");
+        Check(0x3CF0, [8, 1, 0, BitConverter.SingleToUInt32Bits(.45f)],
+            "Jaded's Xenon path names mode 8 brightness");
+        Check(0x3CF0, [9, 1, 0, BitConverter.SingleToUInt32Bits(.55f)],
+            "PC Iris's color-balance parameter");
+        Check(0x3CF0, [11, 1, 0, BitConverter.SingleToUInt32Bits(1)],
+            "enable black-and-white effect, factor 1");
+        Check(0x3CF0, [12, 1, 1, BitConverter.SingleToUInt32Bits(.8f)],
+            "enable texture-factor effect, variant 1, factor 0.8");
+        Check(0x3CF0, [14, 1, 0, BitConverter.SingleToUInt32Bits(.9f)],
+            "enable depth-blur near plane, value 0.9");
+        Check(0x3CF0, [15, 0, 0, BitConverter.SingleToUInt32Bits(.3f)],
+            "disable global screen-opacity fade, rate 0.3");
 
         string incomplete = CinematicEngineFunctionCatalog.Describe(new(1, 0x2C26, [1]));
         if (incomplete.Length != 0)
             throw new InvalidOperationException("A command with missing required arguments must remain undescribed.");
+        if (CinematicEngineFunctionCatalog.Describe(new(1, 0x1F78, [46, 0x201])).Length != 0
+            || CinematicEngineFunctionCatalog.Describe(new(1, 0x1F7D, [46, 0x201])).Length != 0)
+            throw new InvalidOperationException("Malformed full-message calls must remain undescribed rather than guessing field layout.");
         string nonFiniteRotation = CinematicEngineFunctionCatalog.Describe(new(1, 0x1FAA, [0x7FC00000]));
         if (!nonFiniteRotation.Contains("non-finite serialized angle 0x7FC00000", StringComparison.Ordinal))
             throw new InvalidOperationException("Non-finite serialized angles must stay visible as raw data.");
+        if (CinematicEngineFunctionCatalog.Describe(new(1, 0x3CF0, [7, 1, 0])).Length != 0
+            || CinematicEngineFunctionCatalog.Describe(new(1, 0x3CF0,
+                [7, 1, 0, 0x7FC00000])).Length != 0)
+            throw new InvalidOperationException("Malformed or non-finite After Effects master calls must remain undescribed.");
 
         Console.WriteLine("PASS: source-confirmed cinematic engine command descriptions and argument guards");
     }

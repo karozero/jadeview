@@ -53,11 +53,7 @@ public sealed partial class CinematicBodyTimeline
             pose = BlendRootTranslation(previousPose, pose, segment, previousTime, time);
         }
         Matrix4x4.Decompose(pose, out var scale, out var rotation, out var position);
-        return CinematicTransformSampler.Evaluate(new TransformData
-        {
-            Translation = position,
-            Rotation = rotation,
-            Scale = scale
-        }, rootTracks, time, holdInactive: false);
+        return CinematicTransformSampler.Evaluate(position, rotation, scale,
+            rootTracks, time, holdInactive: false);
     }
 }

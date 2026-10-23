@@ -19,9 +19,14 @@ public sealed partial class EditorShell
         ImGui.SetNextWindowSize(new Vector2(460 * _scale, 0), ImGuiCond.Appearing);
         if (!ImGui.BeginPopupModal("Export GLB", ImGuiWindowFlags.AlwaysAutoResize))
             return;
-        DrawPanelTitle("EXPORT GLB", "Export the current world or selected asset as a Blender-compatible GLB file.");
+        DrawPanelTitle("EXPORT GLB", _cutsceneMode
+            ? "Export the assembled cinematic scene with its actors, environment and selected synchronized clip as a Blender-compatible GLB."
+            : "Export the current world or selected asset as a Blender-compatible GLB file.");
         DrawCategoryTitle("Target");
-        ImGui.TextWrapped(_exportTarget == null ? $"Level: {ActiveWorld?.Name}" : $"Object: {_exportTarget.Name}");
+        string targetDescription = _exportTarget != null ? $"Object: {_exportTarget.Name}"
+            : _cutsceneMode ? $"Cinematic scene: {ActiveWorld?.Name}"
+            : $"Level: {ActiveWorld?.Name}";
+        ImGui.TextWrapped(targetDescription);
         if (_exportTarget?.Actor is { } actor && _exportTarget == actor.Root)
             ImGui.TextDisabled($"Actor with {actor.Members.Count - 1} components");
         DrawCategoryTitle("Assets");
@@ -66,8 +71,13 @@ public sealed partial class EditorShell
                 {
                     Forms.Cursor.Current = Forms.Cursors.WaitCursor;
                     _exportOptions.ExperimentalMouthCycle = false;
+                    _exportOptions.CinematicDocument = Document;
                     _exportOptions.CinematicClipKey = _cutsceneMode && !_exportOptions.AllClips
                         ? _cinematicPlayback?.Key : null;
+                    _exportOptions.DisabledCinematicCallbackOwners = _cutsceneMode
+                        ? _disabledCinematicCallbackOwners : null;
+                    _exportOptions.PreviewedCinematicSceneEventOwners = _cutsceneMode
+                        ? _previewedCinematicSceneEventOwners : null;
                     _exportOptions.CinematicMorphTimelines = _cutsceneMode
                         ? _cinematicPlayback?.SampleFacialMorphTimelines() : null;
                     var result = SceneExporter.Export(dialog.FileName, ActiveWorld, Resolver, _exportOptions, _exportTarget);
