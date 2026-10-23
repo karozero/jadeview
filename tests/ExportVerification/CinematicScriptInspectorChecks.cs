@@ -347,6 +347,14 @@ internal static class CinematicScriptInspectorChecks
                 && call.TargetName == "linked radio" && call.Api == "OBJ_FlagInactiveSet"
                 && call.Branches.Length > 0),
             "Linked-object call inspection should also expose generic media-player switch and radio operations with source conditions");
+        var specialActorSlotCalls = CinematicScriptReferencedObjectCallResolver.Resolve(
+            mpegPlayerSourceOwner with
+            {
+                ObjectReferences =
+                [new("des_o_Interrupteur", 1, "instance", "AI_MainActor slot")]
+            });
+        Check(!specialActorSlotCalls.Any(call => call.VariableName == "des_o_Interrupteur"),
+            "Linked-object call inspection must not report a runtime actor slot as an archive GAO dependency");
         var activatorSourceOwner = new CinematicScriptOwner(0xD9005D6C, 0, 0x71003F6C, 0xFF005833,
             uint.MaxValue, uint.MaxValue, "Nested branch fixture", ["activator_simple_ac_loop"], [], [])
         {

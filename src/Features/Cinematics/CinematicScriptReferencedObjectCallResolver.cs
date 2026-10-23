@@ -20,7 +20,7 @@ internal static class CinematicScriptReferencedObjectCallResolver
         foreach (var argumentField in call.ArgumentFields)
         {
             var binding = owner.EffectiveObjectReference(argumentField.Name);
-            if (binding == null || binding.TargetKey is 0 or uint.MaxValue) continue;
+            if (binding == null || !CinematicObjectKey.IsArchiveObject(binding.TargetKey)) continue;
 
             yield return new(argumentField.Name, binding.TargetKey, binding.TargetName,
                 argumentField.AliasVariable, argumentField.AssignmentLine, call.Api,
