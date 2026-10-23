@@ -76,6 +76,19 @@ internal static class CinematicFrameAudit
             foreach (string fadeEvent in playback.ScreenFadeEvents)
                 Console.WriteLine($"SCREEN FADE EVENT: {fadeEvent}");
             playback.Seek(time);
+            var cameraPagControllers = CinematicCameraPagControllerReader.Read(
+                document.CinematicScriptOwners.Values, world);
+            Console.WriteLine($"CAMERA PAG AUDIT: controllers={cameraPagControllers.Length}");
+            foreach (var controller in cameraPagControllers)
+            {
+                uint capabilities = controller.Owner.PreviewCapabilities
+                    ?? controller.Owner.InitialCapabilities;
+                Console.WriteLine($"CAMERA PAG OWNER: {controller.Owner.Name} "
+                    + $"({controller.Owner.GaoKey:X8}) cap={capabilities:X4} "
+                    + $"camera={controller.Camera.GaoKey:X8} "
+                    + $"pag1={DescribePag(controller.FirstEffect)} "
+                    + $"pag2={DescribePag(controller.SecondEffect)}");
+            }
             var activeEnvironment = document.CinematicEnvironmentControllers.Values.FirstOrDefault(controller =>
                 world.Objects.Any(item => item.GaoKey == controller.OwnerKey
                     && (item.ControlFlags & CinematicObjectState.Inactive) == 0)
@@ -153,6 +166,18 @@ internal static class CinematicFrameAudit
             Console.WriteLine($"CINEMATIC FRAME: {path}; shutter={playback.Shutter?.Closure}; "
                 + $"screenFade={playback.ScreenFade?.ToString() ?? "none"}; "
                 + $"colorBalance={playback.ColorBalance:F3}; objects={renderer.StatVisibleObjects}");
+        }
+
+        static string DescribePag(SceneObject? effect)
+        {
+            if (effect == null) return "unresolved";
+            float? frequency = effect.CinematicParticles?.Values.Length > 4
+                ? effect.CinematicParticles.Values[4] : null;
+            string position = (effect.PreviewMatrix ?? AnimationMath.Trs(effect.Transform))
+                .Translation.ToString();
+            return $"{effect.Name}({effect.GaoKey:X8}) hidden={effect.IsControlHidden} "
+                + $"freq={frequency?.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) ?? "n/a"} "
+                + $"pos={position}";
         }
     }
 }

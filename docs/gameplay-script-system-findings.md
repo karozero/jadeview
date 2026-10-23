@@ -1076,6 +1076,17 @@ source/API evidence before JadeView can preview them. The implementation is in
 `CinematicCameraPagChecks` covers owner binding, capability gating, camera
 placement, repeatable backward seeking, and allocation-free warmed evaluation.
 
+A real archive frame audit of `FF0045A2 / 3500B8EA` confirms the owner gate is
+off at 33 s (`cap=0`, both PAG rates are zero) and on at 54 s (`cap=1`, rates
+50/20; both OVA references resolve and the effects receive the camera-relative
+pose). Iris's serialized timeline activates `SFX_tempete.gao` at 53 s by
+clearing control flags `0x00600000` and setting capability `1`; it repeats
+those commands at 117.35 s. Therefore the star visible in the 33 s frame is the
+separate cinematic flash controller, not these camera-following PAG carriers.
+The PAG adapter does not explain or fix the still-open 33 s spiral/lightning
+effect. The frame audit now prints callback owner, gate, references, effect
+visibility, frequency, and preview position to keep these systems distinct.
+
 ### Script execution is a runtime relationship
 
 Jade Engine keeps a world's AI-bearing objects in `st_EOT.st_AI`.
