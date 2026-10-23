@@ -16,6 +16,7 @@ GameWorldListDescriptorChecks.Verify();
 GameScriptWorldListResolverChecks.Verify();
 GameScriptSerializedObjectStateChecks.Verify();
 GameScriptObjectActivationChecks.Verify();
+PcCompiledScriptFunctionChecks.Verify();
 GameScriptObjectFlagsChecks.Verify();
 PcCollisionResourceChecks.Verify();
 CinematicActionLibraryChecks.Verify();
