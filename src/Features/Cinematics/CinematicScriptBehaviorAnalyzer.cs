@@ -83,21 +83,7 @@ internal static partial class CinematicScriptBehaviorAnalyzer
                 : "This owner uses shared cinematic priority: it waits while another cinematic is active "
                     + "or the board-panel busy bit 0x800 is set.");
 
-            int derivedTestsMask = DeriveStartGateMask(owner);
-            var enabledGates = CinematicStartGates.Where(gate => (derivedTestsMask & gate.Mask) != 0)
-                .Select(gate => gate.Description).ToArray();
-            diagnostics.Add(enabledGates.Length == 0
-                ? "No optional cine_tests_depart gates are derived from the effective OVA fields. "
-                    + "If this owner is running, its start path proceeds to cinematic-priority arbitration; "
-                    + "the serialized data alone cannot prove runtime activation."
-                : $"Start gates derived by cine_init (mask 0x{derivedTestsMask:X}): {string.Join("; ", enabledGates)}. "
-                    + "All enabled tests must pass; current gameplay state is unavailable.");
-            if (CinematicStartGates.Any(gate => !HasEffectiveValue(owner, gate.Variable)))
-                diagnostics.Add("Some start-gate OVA fields are unavailable; the derived mask may be incomplete.");
-            diagnostics.AddRange(AnalyzeCapabilityGateSnapshot(owner, derivedTestsMask, worldObjects));
-            AddSpecialFlagTest(diagnostics, owner, derivedTestsMask, "des_i_specialFlag_test1", 0x80, 1);
-            AddSpecialFlagTest(diagnostics, owner, derivedTestsMask, "des_i_specialFlag_test2", 0x100, 2);
-            AddCinematicMessageGateBehavior(diagnostics, owner, derivedTestsMask);
+            diagnostics.AddRange(AnalyzeStartGates(owner, worldObjects));
             AddCinematicInterruptionBehavior(diagnostics, owner);
             AddInitializationFlagSuppression(diagnostics, owner);
 
@@ -175,6 +161,30 @@ internal static partial class CinematicScriptBehaviorAnalyzer
         if (HasBoundingVolumeActivationCallbacks(owner))
             AddBoundingVolumeActivationBehavior(diagnostics, owner);
 
+        return diagnostics.ToArray();
+    }
+
+    internal static string[] AnalyzeStartGates(CinematicScriptOwner owner,
+        IEnumerable<SceneObject>? worldObjects = null)
+    {
+        if (!HasCinematicFunctionReference(owner, CinematicStartCallback)) return [];
+
+        var diagnostics = new List<string>();
+        int testsMask = DeriveStartGateMask(owner);
+        var enabledGates = CinematicStartGates.Where(gate => (testsMask & gate.Mask) != 0)
+            .Select(gate => gate.Description).ToArray();
+        diagnostics.Add(enabledGates.Length == 0
+            ? "No optional cine_tests_depart gates are derived from the effective OVA fields. "
+                + "If this owner is running, its start path proceeds to cinematic-priority arbitration; "
+                + "the serialized data alone cannot prove runtime activation."
+            : $"Start gates derived by cine_init (mask 0x{testsMask:X}): {string.Join("; ", enabledGates)}. "
+                + "All enabled tests must pass; current gameplay state is unavailable.");
+        if (CinematicStartGates.Any(gate => !HasEffectiveValue(owner, gate.Variable)))
+            diagnostics.Add("Some start-gate OVA fields are unavailable; the derived mask may be incomplete.");
+        diagnostics.AddRange(AnalyzeCapabilityGateSnapshot(owner, testsMask, worldObjects));
+        AddSpecialFlagTest(diagnostics, owner, testsMask, "des_i_specialFlag_test1", 0x80, 1);
+        AddSpecialFlagTest(diagnostics, owner, testsMask, "des_i_specialFlag_test2", 0x100, 2);
+        AddCinematicMessageGateBehavior(diagnostics, owner, testsMask);
         return diagnostics.ToArray();
     }
 

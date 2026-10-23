@@ -2126,6 +2126,16 @@ internal static class CinematicScriptInspectorChecks
         Check(CinematicScriptBehaviorAnalyzer.Analyze(enabledFlagGate)
                 .Any(finding => finding.Contains("derived by cine_init (mask 0x80)", StringComparison.Ordinal)),
             "Cine_Events start gates should be derived from OVA fields rather than the serialized transient mask");
+        string[] enabledStartGateEvidence = CinematicScriptBehaviorAnalyzer.AnalyzeStartGates(enabledFlagGate);
+        var nonCinematicGateOwner = enabledFlagGate with
+        {
+            CallbackNames = ["Unrelated_init"]
+        };
+        Check(enabledStartGateEvidence.Any(finding => finding.Contains("derived by cine_init (mask 0x80)", StringComparison.Ordinal))
+            && enabledStartGateEvidence.Any(finding => finding.Contains("All enabled tests must pass", StringComparison.Ordinal))
+            && enabledStartGateEvidence.All(finding => !finding.Contains("runtime state is known", StringComparison.Ordinal))
+            && CinematicScriptBehaviorAnalyzer.AnalyzeStartGates(nonCinematicGateOwner).Length == 0,
+            "The reusable Cine_Events gate summary should expose derived gates, retain runtime uncertainty, and ignore unrelated callback owners");
         var capabilityGateActor = new SceneObject
         {
             GaoKey = 0x9E001234,
@@ -2161,6 +2171,10 @@ internal static class CinematicScriptInspectorChecks
             && capabilitySnapshotUnknown.Any(finding => finding.Contains("not loaded in this world", StringComparison.Ordinal)
                 && finding.Contains("result is unknown", StringComparison.Ordinal)),
             "Cinematic capability gates should compare Iris's mask/state formula against a uniquely resolved initial actor snapshot and preserve unknown state when unresolved");
+        Check(CinematicScriptBehaviorAnalyzer.AnalyzeStartGates(capabilityGateOwner, [])
+                .Any(finding => finding.Contains("not loaded in this world", StringComparison.Ordinal)
+                    && finding.Contains("result is unknown", StringComparison.Ordinal)),
+            "The callback-owner gate summary should preserve unresolved actor capability state in the UI-facing analysis path");
         var zoneGateOwner = cineOwner with
         {
             Variables = [.. cineOwner.Variables.Where(variable => variable.Name != "i_tests_a_reussir"

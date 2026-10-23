@@ -50,7 +50,7 @@ public sealed partial class EditorShell
             return;
 
         DrawCategoryTitle("Callback-linked EVE channels");
-        ImGui.TextWrapped("These source-reachable callback owners start this clip's SceneEvents list. Select an owner to inspect its callback and gate analysis below; disable it to omit its linked tracks from preview and GLB export. Runtime start gates are not executed.");
+        ImGui.TextWrapped("These source-reachable callback owners start this clip's SceneEvents list. Select an owner to inspect its callback; disable it to omit linked tracks from preview and GLB export. Gate inputs are summarized here, but the preview does not execute the runtime tests.");
         foreach (var ownerId in playback.CallbackSceneEventOwners)
         {
             Document.CinematicScriptOwners.TryGetValue(ownerId, out var owner);
@@ -59,6 +59,8 @@ public sealed partial class EditorShell
             if (ImGui.Selectable($"{ownerLabel}##callback-scene-owner-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}",
                     _selectedCinematicScriptOwnerId == ownerId))
                 _selectedCinematicScriptOwnerId = ownerId;
+            if (owner != null)
+                DrawCallbackOwnerStartGateEvidence(owner, ownerId);
             ImGui.SameLine();
             bool enabled = !_disabledCinematicCallbackOwners.Contains(ownerId);
             if (!ImGui.Checkbox($"Include##callback-scene-events-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}",
@@ -70,6 +72,26 @@ public sealed partial class EditorShell
             RebuildCinematicPlayersForScriptSelection(playback);
             return;
         }
+    }
+
+    private void DrawCallbackOwnerStartGateEvidence(CinematicScriptOwner owner,
+        CinematicScriptOwnerId ownerId)
+    {
+        string[] evidence = CinematicScriptBehaviorAnalyzer.AnalyzeStartGates(owner,
+            _cinematicWorld?.Objects);
+        if (evidence.Length == 0)
+        {
+            ImGui.TextDisabled("No Cine_Events start-gate analysis is available for this owner.");
+            return;
+        }
+
+        ImGui.TextDisabled(evidence[0]);
+        if (evidence.Length <= 1
+            || !ImGui.TreeNode($"Gate evidence ({evidence.Length - 1})##callback-gates-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}"))
+            return;
+
+        foreach (string detail in evidence.Skip(1)) ImGui.BulletText(detail);
+        ImGui.TreePop();
     }
 
     private void DrawManualSceneEventOwnerControls()
