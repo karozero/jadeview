@@ -60,7 +60,7 @@ internal static class CinematicScriptMessageFlowResolver
 
         foreach (var field in CinematicScriptArgumentBindingResolver.ResolveOwnerFields(call, sender))
         {
-            if (field.ObjectKey is { } objectKey && objectKey is not (0 or uint.MaxValue))
+            if (field.ObjectKey is { } objectKey && CinematicObjectKey.IsArchiveObject(objectKey))
                 keys.Add(objectKey);
         }
 

@@ -7,7 +7,7 @@ internal static class CinematicScriptReferenceNameResolver
     internal static CinematicScriptNamedReference? Resolve(uint key, uint preferredWorldKey,
         IEnumerable<CinematicScriptNamedReference> references)
     {
-        if (key is 0 or uint.MaxValue) return null;
+        if (!CinematicObjectKey.IsArchiveObject(key)) return null;
         CinematicScriptNamedReference[] candidates = references.Where(reference => reference.Key == key).ToArray();
 
         CinematicScriptNamedReference? localObject = candidates.FirstOrDefault(reference =>

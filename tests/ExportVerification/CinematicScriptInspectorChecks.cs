@@ -193,6 +193,11 @@ internal static class CinematicScriptInspectorChecks
         ]);
         Check(sourceArgumentReferences.Length == 1 && sourceArgumentReferences[0].Key == 0x1234,
             "Source command arguments should join only exact function-local object-reference identifiers");
+        var specialActorSlotReferences = CinematicScriptArgumentBindingResolver.ResolveSourceObjectReferences(
+            sourceArgumentCall,
+            [new("fixture_callback", "Object", "target", 1, "fixture.c", 3, "fixture_callback")]);
+        Check(specialActorSlotReferences.Length == 0,
+            "AI_MainActor slot references must not be treated as archive object dependencies");
         var sourceAssignmentCall = sourceArgumentCall with
         {
             Arguments = ["v26"],
@@ -1005,7 +1010,9 @@ internal static class CinematicScriptInspectorChecks
         ];
         Check(CinematicScriptReferenceNameResolver.Resolve(0x20, 0x100, namedReferences)?.Name == "local object"
             && CinematicScriptReferenceNameResolver.Resolve(0x21, 0x100, namedReferences)?.Name == "unique linked object"
-            && CinematicScriptReferenceNameResolver.Resolve(0x22, 0x100, namedReferences) == null,
+            && CinematicScriptReferenceNameResolver.Resolve(0x22, 0x100, namedReferences) == null
+            && CinematicScriptReferenceNameResolver.Resolve(1, 0x100,
+                [new(0x100, 1, "not an archive object", IsObject: true)]) == null,
             "Archive reference labels should prefer the current world, use only unique external matches, and leave cross-world key collisions unresolved");
         var namedReferenceDocument = new SceneDocument();
         var namedReferenceWorld = new WorldData { Key = 0x500 };

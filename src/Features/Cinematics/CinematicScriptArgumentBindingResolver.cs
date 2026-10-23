@@ -11,6 +11,7 @@ internal static class CinematicScriptArgumentBindingResolver
             .Concat(call.ArgumentAssignmentAlternatives?.Select(assignment => assignment.Expression) ?? [])
             .ToArray();
         return sourceReferences.Where(reference => reference.Kind == "Object"
+                && CinematicObjectKey.IsArchiveObject(reference.Key)
                 && reference.FunctionName == call.FunctionName
                 && UsesIdentifier(argumentFlow, $"{call.FunctionName}_{reference.Symbol}",
                     $"fct_{call.FunctionName}_{reference.Symbol}"))

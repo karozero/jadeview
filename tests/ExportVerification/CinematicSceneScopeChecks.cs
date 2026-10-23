@@ -83,6 +83,7 @@ internal static class CinematicSceneScopeChecks
         CinematicScriptReachableSourceReference[] sourceReferences =
         [
             new("callback", "Object", "single", 101, "iris.c", 10, "callback"),
+            new("callback", "Object", "main-actor-slot", 1, "iris.c", 10, "callback"),
             new("callback", "Object", "ambiguous", 202, "iris.c", 11, "callback"),
             new("callback", "Function", "not-an-object", 303, "iris.c", 12, "callback"),
             new("callback", "Object", "not-loaded", 404, "iris.c", 13, "callback")
@@ -90,6 +91,7 @@ internal static class CinematicSceneScopeChecks
         CinematicScriptNamedReference[] availableReferences =
         [
             new(1, 101, "Unique prop", IsObject: true),
+            new(1, 1, "not an archive object", IsObject: true),
             new(1, 202, "Duplicate prop A", IsObject: true),
             new(2, 202, "Duplicate prop B", IsObject: true),
             new(1, 303, "Function key collision", IsObject: true)
