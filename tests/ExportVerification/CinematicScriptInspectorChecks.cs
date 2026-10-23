@@ -1944,7 +1944,8 @@ internal static class CinematicScriptInspectorChecks
             && finding.Contains("ENG_gf_SpecialTime is zero", StringComparison.Ordinal)
             && finding.Contains("source-confirmed ordinary-activation blocker", StringComparison.Ordinal));
         bool reportsSpecialTimeActivation = specialTimeFindings.Any(finding => finding.Contains("alternate activation branch requires runtime flags2 0x04000000", StringComparison.Ordinal)
-            && finding.Contains("present in this serialized state", StringComparison.Ordinal));
+            && finding.Contains("mask discards raw 0x04000000", StringComparison.Ordinal))
+            && !specialTimeFindings.Any(finding => finding.Contains("survives the initial", StringComparison.Ordinal));
         bool reportsDispatchFilters = schedulerFindings.Any(finding => finding.Contains("extraFlag 0x4", StringComparison.Ordinal)
             && finding.Contains("AIInstance", StringComparison.Ordinal)
             && finding.Contains("AI_RunInstance", StringComparison.Ordinal));

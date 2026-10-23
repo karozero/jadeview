@@ -14,6 +14,8 @@ if (VerificationCommands.TryRun(args, output)) return;
 GameWorldUniverseReducerChecks.Verify();
 GameWorldListDescriptorChecks.Verify();
 GameScriptWorldListResolverChecks.Verify();
+GameScriptSerializedObjectStateChecks.Verify();
+GameScriptObjectActivationChecks.Verify();
 GameScriptObjectFlagsChecks.Verify();
 PcCollisionResourceChecks.Verify();
 CinematicActionLibraryChecks.Verify();
