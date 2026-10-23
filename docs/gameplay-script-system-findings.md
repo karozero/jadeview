@@ -1011,6 +1011,48 @@ the finding is specific evidence for a reusable rule: conditional appearance
 requires both the owner GAO and the runtime script state, not a blanket
 dependency expansion.
 
+### World residency is built from the world object group
+
+The retail Iris load path gives a concrete order for deciding which scene
+assets can exist before scripts run. `WOR_ul_World_LoadCallback` reads the
+`.wow` world record and queues its object-group resource through
+`LOA_MakeFileRef(..., WOR_ul_GameObjectGroupCallback, ...)`. The group callback
+reads object keys and queues each GAO through `OBJ_ul_GameObjectCallback`.
+During GAO parsing, typed fields queue their own resources, including visual
+geometry/material, actor action kits, AI instances, `Events`/`SceneEvents`,
+sound banks, lights, and other linked data. This is the loader's dependency
+graph; an AI model's OVA object reference is not another edge in that loading
+graph.
+
+After resource resolution, `WOR_pst_World_Load` calls
+`WOR_World_JustAfterLoadObject` for the loaded objects. That routine
+reinitializes each GAO, resolves collision/sound/animation references, attaches
+it to the world, and optionally resolves its AI instance. `WORUniverseAdd`
+then initializes the world, activates eligible objects, and builds the AI EOT
+table. This separates four states that a preview should keep distinct:
+archive resource exists, world group makes the GAO resident, world activation
+allows it to participate, and its AI callbacks are actually dispatched.
+
+Consequently, a missing actor or effect should be debugged in this order:
+check whether its GAO key is in a loaded world's object group; check whether
+its typed GAO links (geometry, animation, script, sound, etc.) resolve; inspect
+initial visibility/capability/activity state; then inspect script gates and
+dispatch. Automatically adding every source-referenced GAO would skip these
+steps and can pull in unrelated gameplay helpers. The source supports
+world-level loading (`WORUniverseAdd`) and world-list replacement
+(`WORLoadList`); it does not establish a generic script API that loads an
+arbitrary GAO into an existing world by key. This last point is a boundary of
+the examined bindings, not proof that no private engine path exists.
+
+Source references: `external/irisEng/world.c`
+(`WOR_ul_World_LoadCallback`, `WOR_ul_GameObjectGroupCallback`,
+`WOR_pst_World_Load`, `WOR_World_JustAfterLoadObject`,
+`WOR_pst_Universe_AddWorld`), `external/irisEng/gameobject.c`
+(`OBJ_ul_GameObjectCallback` typed references), and
+`external/irisEng/ai/ai_worldfunctions.c` (`WORUniverseAdd`, `WORLoadList`).
+Jaded corroborates the broad engine design but its desktop-specific world
+transition behavior should not replace the retail Iris call path.
+
 ### Nested native calls and sound-completion handoff
 
 The call-graph generator now balances nested C parentheses instead of treating
