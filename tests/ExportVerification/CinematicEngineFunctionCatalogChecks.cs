@@ -15,6 +15,15 @@ internal static class CinematicEngineFunctionCatalogChecks
         Check(0x2F3F, [10], "prefetch sound resources for sound modifier 10");
         Check(0x30D4, [0], "assign target object to world view slot 0");
         Check(0x1FB2, [0], "reinitialize target (mode 0) and reattach it to the current world");
+        Check(0x1F40, [0xFF005833], "load world key 0xFF005833, initialize and activate its objects");
+        Check(0x1F41, [3], "make loaded universe world slot 3 active");
+        Check(0x1F42, [3], "clear the active flag on loaded universe world slot 3");
+        Check(0x1F43, [3, 12], "object-table slot 12 in loaded universe world slot 3");
+        Check(0x1F45, [3, 0xA5], "delete loaded universe world slot 3");
+        Check(0x1F46, [0xFF005833], "replace the current world universe with world-list key 0xFF005833");
+        Check(0x1F48, [3], "rebuild visibility tables for loaded universe world slot 3");
+        Check(0x1F51, [], "return 1 (PC Iris stub");
+        Check(0x1F52, [], "current execution object's world");
         Check(0x3CF4, [1], "Iris stub consumes value 1 and emits a debug trace");
         Check(0x1FD7, [0x200], "rotate target to face object 00000200 while preserving target position");
         Check(0x1FAA, [0x41400000], "rotate target around the local Y axis by 12 radians");
@@ -115,6 +124,18 @@ internal static class CinematicEngineFunctionCatalogChecks
         string incomplete = CinematicEngineFunctionCatalog.Describe(new(1, 0x2C26, [1]));
         if (incomplete.Length != 0)
             throw new InvalidOperationException("A command with missing required arguments must remain undescribed.");
+        foreach ((int selector, uint[] arguments) in new[]
+        {
+            (0x1F40, Array.Empty<uint>()), (0x1F41, Array.Empty<uint>()),
+            (0x1F42, Array.Empty<uint>()), (0x1F43, new uint[] { 3 }),
+            (0x1F45, new uint[] { 3 }), (0x1F46, Array.Empty<uint>()),
+            (0x1F48, Array.Empty<uint>())
+        })
+        {
+            if (CinematicEngineFunctionCatalog.Describe(new(1, selector, arguments)).Length != 0)
+                throw new InvalidOperationException(
+                    $"World command {CinematicEngineFunctionCatalog.NameFor(selector)} must remain undescribed when required arguments are missing.");
+        }
         if (CinematicEngineFunctionCatalog.Describe(new(1, 0x1F78, [46, 0x201])).Length != 0
             || CinematicEngineFunctionCatalog.Describe(new(1, 0x1F7D, [46, 0x201])).Length != 0)
             throw new InvalidOperationException("Malformed full-message calls must remain undescribed rather than guessing field layout.");
