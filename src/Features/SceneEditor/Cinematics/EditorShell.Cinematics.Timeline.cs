@@ -60,7 +60,7 @@ public sealed partial class EditorShell
                     _selectedCinematicScriptOwnerId == ownerId))
                 _selectedCinematicScriptOwnerId = ownerId;
             if (owner != null)
-                DrawCallbackOwnerStartGateEvidence(owner, ownerId);
+                DrawSceneEventOwnerGateEvidence(owner, ownerId);
             ImGui.SameLine();
             bool enabled = !_disabledCinematicCallbackOwners.Contains(ownerId);
             if (!ImGui.Checkbox($"Include##callback-scene-events-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}",
@@ -74,20 +74,23 @@ public sealed partial class EditorShell
         }
     }
 
-    private void DrawCallbackOwnerStartGateEvidence(CinematicScriptOwner owner,
+    private void DrawSceneEventOwnerGateEvidence(CinematicScriptOwner owner,
         CinematicScriptOwnerId ownerId)
     {
         string[] evidence = CinematicScriptBehaviorAnalyzer.AnalyzeStartGates(owner,
             _cinematicWorld?.Objects);
         if (evidence.Length == 0)
         {
-            ImGui.TextDisabled("No Cine_Events start-gate analysis is available for this owner.");
+            string[] dispatchEvidence = CinematicEventSchedulerAnalyzer.Analyze(owner);
+            ImGui.TextDisabled(dispatchEvidence.Length > 1
+                ? dispatchEvidence[1]
+                : "No source-defined Cine_Events start gate is available for this owner.");
             return;
         }
 
         ImGui.TextDisabled(evidence[0]);
         if (evidence.Length <= 1
-            || !ImGui.TreeNode($"Gate evidence ({evidence.Length - 1})##callback-gates-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}"))
+            || !ImGui.TreeNode($"Gate evidence ({evidence.Length - 1})##scene-event-gates-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}"))
             return;
 
         foreach (string detail in evidence.Skip(1)) ImGui.BulletText(detail);
@@ -109,6 +112,8 @@ public sealed partial class EditorShell
             if (ImGui.Selectable($"{ownerLabel}##script-eve-owner-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}",
                     _selectedCinematicScriptOwnerId == ownerId))
                 _selectedCinematicScriptOwnerId = ownerId;
+            if (owner != null)
+                DrawSceneEventOwnerGateEvidence(owner, ownerId);
             ImGui.SameLine();
             bool enabled = _previewedCinematicSceneEventOwners.Contains(ownerId);
             if (!ImGui.Checkbox($"Preview##script-eve-preview-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}",
