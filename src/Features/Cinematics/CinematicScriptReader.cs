@@ -431,6 +431,7 @@ internal static class CinematicScriptReader
             uint brainKey = Preview.U32(origins[owner], owner.BrainFieldOffset);
             var modelFunctionNames = CallbacksFor(model.Key);
             var callbackSlots = ReadCallbackSlots(model, resources, origins);
+            var functionResources = PcScriptFunctionResourceReader.Read(model, resources, origins);
             var callbackNames = EffectiveCallbackNames(callbackSlots);
             var objectReferences = ReadObjectReferences(model, instanceKey, owner.LoadWorldKey, resources, origins);
             var variables = ReadVariables(model, instanceKey, owner.LoadWorldKey, resources, origins);
@@ -452,7 +453,8 @@ internal static class CinematicScriptReader
                 SerializedGaoFlags = owner.Flags,
                 SerializedStateFlags = owner.SerializedStateFlags,
                 CallbackSlots = callbackSlots,
-                ModelFunctionNames = modelFunctionNames
+                ModelFunctionNames = modelFunctionNames,
+                FunctionResources = functionResources
             };
             var linkedEventTracks = new List<CinematicScriptEventTrack>();
             AddEventTrack("Events", owner.Events);

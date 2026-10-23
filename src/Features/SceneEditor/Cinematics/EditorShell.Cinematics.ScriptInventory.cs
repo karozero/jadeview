@@ -84,6 +84,7 @@ public sealed partial class EditorShell
             ImGui.TextDisabled("Callback-slot data was not decoded for this script owner.");
         }
 
+        DrawCinematicScriptFunctionResources(selectedOwner);
         DrawCinematicScriptSchedulerEvidence(selectedOwner);
         DrawCinematicEventSchedulerEvidence(selectedOwner);
         DrawCinematicScriptEventTracks(selectedOwner);

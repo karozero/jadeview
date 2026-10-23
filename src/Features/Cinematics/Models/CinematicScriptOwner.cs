@@ -17,6 +17,7 @@ public sealed record CinematicScriptOwner(
     public uint SerializedStateFlags { get; init; }
     public CinematicScriptCallbackSlot[]? CallbackSlots { get; init; }
     public string[] ModelFunctionNames { get; init; } = [];
+    internal CinematicScriptFunctionResource[] FunctionResources { get; init; } = [];
 
     internal CinematicScriptOwnerId Id => new(WorldKey, OwnerKey);
 
