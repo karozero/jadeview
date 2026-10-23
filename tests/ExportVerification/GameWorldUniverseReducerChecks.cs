@@ -7,7 +7,7 @@ internal static class GameWorldUniverseReducerChecks
 
     internal static void Verify()
     {
-        VerifyAddUsesResolvedWorldAndDoesNotActivateIt();
+        VerifyAddDoesNotActivateUniverseSlotOrSelectCurrentWorld();
         VerifyExistingWorldAddReturnsItsOriginalSlot();
         VerifyActiveAndDesactiveTrackUniverseFlagsSeparately();
         VerifyAddDoesNotGuessTableHoleCompaction();
@@ -78,7 +78,7 @@ internal static class GameWorldUniverseReducerChecks
             "When the source table has holes, AddWorld must invalidate slot assumptions instead of guessing whether capacity exhaustion compacts and shifts them.");
     }
 
-    private static void VerifyAddUsesResolvedWorldAndDoesNotActivateIt()
+    private static void VerifyAddDoesNotActivateUniverseSlotOrSelectCurrentWorld()
     {
         GameWorldUniverseState initial = GameWorldUniverseState.FromKnownSlots(
             [new(HangarWorld, false)]);
@@ -105,8 +105,9 @@ internal static class GameWorldUniverseReducerChecks
         Require(result.State.Slots.Count == 2
             && result.Operations.Single().Status == GameWorldUniverseOperationStatus.AlreadyPresent
             && result.Operations.Single().WorldSlot == 1
-            && result.State.CurrentWorldKey == HangarWorld,
-            "Adding an already loaded world should return its existing slot without duplicating or changing activation.");
+            && result.State.CurrentWorldKey == HangarWorld
+            && result.State.Slots[1].IsUniverseActive == true,
+            "Adding an already loaded world should return its existing slot without duplicating or changing its existing universe-active flag.");
     }
 
     private static void VerifyActiveAndDesactiveTrackUniverseFlagsSeparately()
