@@ -48,34 +48,7 @@ internal static partial class ActorLoader
         var sceneEventCache = new Dictionary<PcSceneLoader.Record, AnimationClip?>();
         var cinematicWorlds = replay.Worlds.Where(world => world.Name.Contains("cine", StringComparison.OrdinalIgnoreCase))
             .ToDictionary(world => world.Key, world => world.Name);
-        var cinematicOwnersByClip = replay.Records
-            .Where(record => record.Kind == 'l' && cinematicWorlds.ContainsKey(record.LoadWorldKey))
-            .SelectMany(record => new[] { record.SceneEvents, record.Events }
-                .Where(key => key is > 2 and < uint.MaxValue)
-                .Select(key => (WorldKey: record.LoadWorldKey, ClipKey: key, OwnerKey: record.Key)))
-            .GroupBy(reference => (reference.WorldKey, reference.ClipKey))
-            .ToDictionary(group => group.Key, group => group.Select(item => item.OwnerKey).Distinct().ToArray());
-        foreach (var events in replay.Records.Where(record => record.Kind == 'i' && cinematicWorlds.ContainsKey(record.LoadWorldKey)))
-        {
-            try
-            {
-                var clip = AnimationReader.Read(origins[events], events.Offset, events.Size);
-                clip.Key = events.Key;
-                clip.Name = $"Cinematic · {cinematicWorlds[events.LoadWorldKey]} · {events.Key:X8}";
-                clip.SceneMotion = true;
-                clip.Cinematic = true;
-                clip.CinematicOwnerKeys = cinematicOwnersByClip.GetValueOrDefault((events.LoadWorldKey, events.Key)) ?? [];
-                clip.CinematicOwnerKey = clip.CinematicOwnerKeys.FirstOrDefault();
-                clip.CinematicWorldKey = events.LoadWorldKey;
-                doc.CinematicClips.TryAdd(events.Key, clip);
-                sceneEventCache.TryAdd(events, clip);
-            }
-            catch (Exception ex) when (ex is InvalidDataException or ArgumentException or OverflowException or IndexOutOfRangeException)
-            {
-                doc.Diagnostics.Add($"Cinematic clip {events.Key:X8} could not be decoded: {ex.Message}");
-                sceneEventCache.TryAdd(events, null);
-            }
-        }
+        CinematicTimelineClipDiscovery.Load(doc, replay, origins, cinematicWorlds, sceneEventCache);
         foreach (var w in doc.Worlds)
         {
             scope = replay.Worlds.FirstOrDefault(world => world.Key == w.Key)?.ActorResources;

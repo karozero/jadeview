@@ -822,3 +822,162 @@ particle and halo capability changes bracket the event. These decoded calls
 provide a source-backed timeline explanation for the rotor/ventilation
 sequence without assigning undocumented meaning to the raw control flags. The
 audit is `artifacts/callback-span-audit-v68/FF005833-BF00218E-script-graph.json`.
+
+### Engine-side object → brain → callback load path
+
+Iris confirms that a GAO stores separate typed references for its appearance,
+brain instance, event list, and sound bank. In `gameobject.c`, the `0x20`
+extension flag reads an AI-instance key and queues `AI_ul_CallbackLoadInstance`;
+the `0x02000000` flag reads an EVE-list key and queues
+`EVE_ul_CallbackLoadListTracks`. `PcSceneLoader.ReadObjectExtensions` mirrors
+these two serialized links as the brain (`q`) and `SceneEvents` (`i`) records.
+The base `.gao` animation `Events` key is a different field parsed in
+`PcSceneLoader.ReadBaseObject`.
+
+The AI instance loader reads two more typed keys: an AI model and optional
+instance OVA. The model loader reads `(key, tag)` pairs, where `.ova` supplies
+model defaults and `.ofc` supplies functions. `AI_ResolveInstanceRef` resolves
+model references and initializes instance data; instance OVA values are merged
+over same-named model values by `AI_ResolveCarDecHiHiEditor`. The function
+loader first tries to bind a resource key to Iris's compiled-function registry;
+when no compiled implementation matches, the serialized AINode body remains
+available for interpretation. This is why an OVA reference, a callback model,
+and a compiled function are separate edges in the asset graph, rather than one
+monolithic script blob.
+
+Runtime dispatch is also context-sensitive. `AI_ExecCallback` selects the
+configured model function at the callback index and then invokes matching
+`AICBAdd` registrations. Source call sites show callbacks 0 and 1 in geometry
+render paths, callback 3 during animation processing, and callback 2 from the
+world engine loop. Separately, `AI_Exec` calls `AI_RunInstance` for eligible
+objects during the world AI pass. That ordinary brain execution is distinct
+from indexed callback dispatch. Thus a script can have visible, animation-time,
+or per-frame brain behavior that does not run merely because JadeView loaded the
+object and its brain.
+Previewing a callback should therefore expose its dispatch source and input
+context; it should not call every configured callback as though all four were
+scene-start hooks.
+
+These findings give a reusable join for future asset-loading and script preview
+work: `GAO typed link → resolved AI instance → model defaults/functions →
+instance overrides → callback dispatch site → engine calls and referenced GAOs`.
+The remaining gap is runtime ordering and predicates: static OVA references do
+not establish that a render, world, or animation callback was dispatched for
+the current frame, nor that its conditions passed. Relevant sources:
+`external/irisEng/gameobject.c`, `external/irisEng/ai_common.c`,
+`external/irisEng/graphicsobjects/geo.c`, and
+`external/irisEng/animation.c`.
+
+### World-loading and activation commands
+
+The cinematic script inspector now describes the world-management calls whose
+PC Iris implementations are available. `WORUniverseAdd(key)` loads and
+initializes a world, resolves and activates its objects, and returns its
+universe slot. `WORActive(slot)` and `WORDesactive(slot)` change which already
+loaded world is active. `WORGetObject(worldSlot, objectSlot)` resolves an
+object-table entry, while `WORUniverseDestroy(slot, flags)` deletes a loaded
+world; PC Iris consumes the second integer but does not use it.
+`WORRefreshVisible(slot)` and `WORRefreshVisibleOfActor()` rebuild visibility
+tables for a world or the current execution object's world.
+
+`WORLoadList(key)` has substantially different scope: the PC Iris
+`WOR_pst_Universe_AddWorldList` implementation deletes existing universe
+worlds, clears global graphics, audio, and texture state, reads the requested
+world-list key, merges its member worlds, resolves AI, activates objects, and
+attaches the result as the current world. It is a world transition/replacement,
+not a request to add all listed GAOs to the currently assembled cinematic.
+Jaded's desktop source has an additional fixed-world resolution step before
+the same load-list routine, so its behavior should not be copied into the PC
+Iris preview without data proving the target version uses it. `WORLoaded` in
+PC Iris is a stub returning constant 1, not a reliable loaded-world predicate.
+
+JadeView reports these calls as static script findings. It does not execute
+world replacement, activate external worlds, or infer that every referenced
+world belongs in the selected cinematic. The source behavior explains a
+general asset-loading path, while the caller's trigger and runtime timing still
+need to be established from its script graph and game state.
+
+An archive-backed example distinguishes visibility refresh from world loading:
+the `FF001FBE` / `35009F74` graph has four `WORRefreshVisible(0)` calls in
+`camera_speciale_cs_wait`, `camera_speciale_cs_mode_inventaire`, and
+`camera_speciale_cs_mode_look`. The graph records camera capability tests on
+some paths before the refresh. The sampled `BF00218E`, `BF003BD1`, and
+`3500B8EA` graphs have no `WORLoadList`, `WORUniverseAdd`, or
+`WORUniverseDestroy` calls. That absence is limited to those decoded script
+graphs; it does not rule out a world transition initiated by another owner or
+external game state.
+
+The source-reference inventory is now also joined against the cinematic's
+assembled object set in `--cinematic-script-graph-audit`. On `3500B8EA`, the
+reachable owner graph produced 337 owner/key reference rows; 192 reference rows
+point to keys already included through scene, track, or serialized OVA links.
+The remaining rows include gameplay managers, inventory/UI and weapon helpers.
+They are useful evidence, but a callback being source-reachable does not show
+that it runs during this cinematic. JadeView therefore reports these as
+possible script dependencies and does not automatically add them to the scene.
+This avoids pulling gameplay-only objects into cinematic previews before the
+callback dispatch and runtime gate are established.
+
+The \`3500B8EA\` graph confirms this distinction for the generic cinematic
+manager. \`CINE_BIGINTRO_EVENTS.gao\` resolves \`INV_MatFade.gao\` in
+\`Cine_Events_cine_init\`, then passes that resolved pointer through a local
+assignment chain to \`GFXMaterialSet\`. That call is nested under the
+\`i_sf_fade\` gate and an additional saved-flag/fade-priority/time condition.
+The owner's serialized/model \`i_sf_fade\` value is \`0\`, so the fade material
+reference is available to the script but this instance's source data does not
+request that fade branch. The script-graph report now connects the object key,
+source API call, branch predicates, and OVA values used by those predicates.
+This is stronger than an unqualified reference list, but the preview still
+does not evaluate global saved flags, clock state, or actual callback dispatch.
+
+### Script object references are lookups, not GAO load requests
+
+PC Iris resolves object references with `AI_ul_RealResolveOneRefObject` →
+`AI_ul_RealResolveOneRef` (`external/irisEng/ai_common.c:456-472`). The latter
+looks up the key in the BF index and then asks the LOA address table for the
+already loaded object; it does not enqueue the GAO's loader. By contrast,
+loading an AI instance, its model, callback functions, and variable blocks uses
+explicit `LOA_MakeFileRef` requests (`ai_common.c:1296-1406,1447-1452`). World
+assembly and world-list loading determine which game objects are resident
+before these script references are resolved. This confirms why reachable
+source references are useful diagnostics but cannot safely be treated as an
+automatic list of scene additions. JadeView now labels that distinction in
+the callback inspector and resolves reference names against actor roots and
+their component meshes as well as standalone world objects.
+
+### Special AI actor slots are not archive keys
+
+The type-40 object resolver has one exception before the BF/LOA lookup:
+keys `1` and `2` are returned unchanged. Its consumers convert those values to
+`AI_MainActor[key - 1]` (`ai_common.c:252,1496,1522,1583-1594`). They therefore
+refer to the two runtime actor slots, not GAOs with archive keys `00000001` or
+`00000002`. Script-reference labels and source-dependency joins now exclude
+those two values. The rule is deliberately scoped to AI object references;
+other serialized fields and synthetic timeline fixtures can use small numeric
+keys with different meanings. The source-call inspector applies the same rule
+when joining OVA object fields to individual API call sites.
+
+### The inventory-screen video controller is state-driven
+
+The `BF00218E` script graph identifies `Cine_ecran_explik_invent.gao` as a
+procedural Bink material using `mpegplayer_init`; its instance links
+`des_o_Interrupteur` to `C100AEF9` and has `des_i_SubMatLevel=1`. Iris's retail
+function (`ai/ai_bge/ai_compiledscripts_misc.c`, `mpegplayer_init`) resolves
+that already-loaded object, tests capability `0x100`, and also checks the
+configured saved-flag gate. If neither condition is true, it stops the current
+AI track and hides the screen owner. Otherwise it enables the video material
+state, makes the object visible, and switches its AI track to
+`mpegplayer_loop`. The loop is dispatched only after the source AI node changes
+the current track; merely finding the function in the model does not start it.
+
+The cinematic has a direct `OBJ_CapaSet(2, 0)` event for the screen owner at
+44.783 s, but the game script first evaluates the external interrupter's
+capability and save flag. This separates three things that can look like one
+missing-asset bug: the screen GAO/material may be loaded, its Bink source may
+be attached, and the script may still keep it hidden or on a non-video material
+state. JadeView previews the decoded track and procedural video descriptor,
+but does not yet emulate the screen AI instance's live gate or Bink control
+loop. The report is `artifacts/callback-driven-eve-audits/FF005833-BF00218E-script-graph.json`;
+the finding is specific evidence for a reusable rule: conditional appearance
+requires both the owner GAO and the runtime script state, not a blanket
+dependency expansion.

@@ -391,8 +391,11 @@ not cover the full editor UI or audible output. The largest click-like PCM jump
 in the FR-bank mix (66.963 s, 17,319 sample units) corresponds to a 26,060-unit
 jump in the decoded source WAD at 65.763 s; the cue starts at 1.2 s. The mixer
 therefore did not create that transient, but the remaining four reported jumps
-have not been correlated to source samples and no loopback capture has confirmed
-whether any of them sound like clicks.
+have not been correlated to source samples. The FR WAD contains 63,134 stereo
+MS ADPCM blocks (72 bytes each); all initial delta headers are between 16 and
+1,722, so signed-versus-unsigned delta interpretation does not explain the
+decoded result. No loopback capture has confirmed whether any of the reported
+jumps sound like clicks.
 The editor-side Outliner was also a separate per-frame cost: it rebuilt temporary
 filtered lists and submitted every scene row to ImGui. It now reuses row buffers
 and clips rendering to visible rows; regression checks cover filtering, actor
