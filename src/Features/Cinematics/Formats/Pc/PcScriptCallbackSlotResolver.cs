@@ -2,9 +2,9 @@ namespace JadeView;
 
 /// <summary>
 /// Resolves only explicitly referenced model OVA blocks in model world scope.
-/// Iris ai_common.c:1374 writes each OVA into the same model-vars pointer; until loader
-/// overwrite order is reproduced, conflicting candidates remain unknown rather than
-/// treating OVA blocks as overlays or preferring the first nonempty callback table.
+/// Iris ai_common.c:1374 writes each OVA into the same model-vars pointer. FIFO reference
+/// resolution (loading.c:257-277,336-375) makes the final ordered assignment effective,
+/// including repeated references and zero callback tables. Incomplete evidence stays unknown.
 /// </summary>
 internal static class PcScriptCallbackSlotResolver
 {
@@ -15,10 +15,10 @@ internal static class PcScriptCallbackSlotResolver
         IReadOnlyDictionary<PcSceneLoader.Record, byte[]> origins,
         IReadOnlyDictionary<uint, string> functionNames)
     {
-        CinematicScriptCallbackSlot[]? agreedSlots = null;
+        CinematicScriptCallbackSlot[]? effectiveSlots = null;
         foreach (uint variableKey in model.References
                      .Where(reference => reference.Kind == VariableResourceKind)
-                     .Select(reference => reference.Key).Distinct())
+                     .Select(reference => reference.Key))
         {
             PcSceneLoader.Record? record = resources.Resolve(variableKey, model.LoadWorldKey);
             if (record?.Kind != VariableResourceKind
@@ -30,11 +30,8 @@ internal static class PcScriptCallbackSlotResolver
             CinematicScriptCallbackSlot[]? slots = PcScriptCallbackSlotReader.Read(
                 bytes.AsSpan(record.Offset, record.Size), functionNames);
             if (slots == null) return null;
-            if (agreedSlots != null && !agreedSlots.Select(slot => slot.FunctionKey)
-                    .SequenceEqual(slots.Select(slot => slot.FunctionKey)))
-                return null;
-            agreedSlots ??= slots;
+            effectiveSlots = slots;
         }
-        return agreedSlots;
+        return effectiveSlots;
     }
 }

@@ -9,7 +9,7 @@ internal static class PcScriptCallbackSlotResolverChecks
         var model = new PcSceneLoader.Record(1, 's', 0, 0)
         {
             LoadWorldKey = modelWorld,
-            References = [new(2, 't'), new(3, 't'), new(2, 't')]
+            References = [new(2, 't'), new(3, 't')]
         };
         byte[] callbacks = Payload(10, 0, 30, 0, 50);
         var first = Record(2, 't', modelWorld, callbacks);
@@ -26,17 +26,28 @@ internal static class PcScriptCallbackSlotResolverChecks
         var agreed = Resolve(first, second, shadow);
         Require(agreed is { Length: 5 } && agreed[0].FunctionName == "init"
             && agreed.Select(slot => slot.FunctionKey).SequenceEqual(new uint[] { 10, 0, 30, 0, 50 }),
-            "Agreeing model-scoped callback tables lost order, gaps, names or repeated-reference deduplication.");
+            "Model-scoped callback tables lost order, gaps or names.");
 
         origins[second] = Payload(0, 0, 0, 0, 0);
-        Require(Resolve(first, second) == null,
-            "A nonzero callback table was silently preferred over a conflicting zero table.");
+        Require(Resolve(first, second)?.All(slot => slot.FunctionKey == 0) == true,
+            "A final empty callback table failed to replace the earlier nonzero table.");
         origins[first] = Payload(0, 0, 0, 0, 0);
         Require(Resolve(first, second)?.All(slot => slot.FunctionKey == 0) == true,
             "Two agreeing empty callback tables should remain known empty slots.");
         origins[first] = callbacks;
         origins[second] = Payload(0, 10, 30, 0, 50);
-        Require(Resolve(first, second) == null, "Callback table position conflicts were ignored.");
+        Require(Resolve(first, second)?.Select(slot => slot.FunctionKey)
+                .SequenceEqual(new uint[] { 0, 10, 30, 0, 50 }) == true,
+            "The final source-order OVA assignment was not selected.");
+        model.References = [new(3, 't'), new(2, 't')];
+        Require(Resolve(first, second)?.Select(slot => slot.FunctionKey)
+                .SequenceEqual(new uint[] { 10, 0, 30, 0, 50 }) == true,
+            "Reversing OVA source order failed to reverse the effective assignment.");
+        model.References = [new(2, 't'), new(3, 't'), new(2, 't')];
+        Require(Resolve(first, second)?.Select(slot => slot.FunctionKey)
+                .SequenceEqual(new uint[] { 10, 0, 30, 0, 50 }) == true,
+            "A repeated final OVA reference was deduplicated out of source order.");
+        model.References = [new(2, 't'), new(3, 't')];
         Require(Resolve(first) == null, "A missing referenced OVA was ignored.");
         var wrongKind = Record(3, 'r', modelWorld, callbacks);
         origins[wrongKind] = callbacks;
@@ -67,7 +78,7 @@ internal static class PcScriptCallbackSlotResolverChecks
         Require(Resolve(first, second) == null, "An unavailable OVA origin was ignored.");
         model.References = [];
         Require(Resolve(first) == null, "A model without explicit OVA references acquired callback slots.");
-        Console.WriteLine("PASS: callback slot resolution rejects conflicting or incomplete model-scoped evidence");
+        Console.WriteLine("PASS: callback slots follow ordered model OVA replacement and reject incomplete evidence");
     }
 
     private static PcSceneLoader.Record Record(uint key, char kind, uint world, byte[] bytes) =>
