@@ -13,6 +13,7 @@ Directory.CreateDirectory(output);
 if (VerificationCommands.TryRun(args, output)) return;
 GameWorldUniverseReducerChecks.Verify();
 GameScriptObjectFlagsChecks.Verify();
+PcCollisionResourceChecks.Verify();
 CinematicActionLibraryChecks.Verify();
 CinematicEngineFunctionCatalogChecks.Verify();
 CinematicAfterEffectChecks.Verify();
