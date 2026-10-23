@@ -84,6 +84,29 @@ internal static class CinematicScriptGraphAudit
                     slot.FunctionName
                 })
             }).ToArray();
+        var availableObjectReferences = document.Worlds.SelectMany(world => world.Objects
+                .Concat(world.Actors.SelectMany(actor => actor.Members))
+                .Select(sceneObject => new CinematicScriptNamedReference(world.Key,
+                    sceneObject.GaoKey, sceneObject.Name, IsObject: true)))
+            .DistinctBy(reference => (reference.WorldKey, reference.Key))
+            .ToArray();
+        var assembledObjectKeys = assembledWorld.Objects.Select(sceneObject => sceneObject.GaoKey).ToHashSet();
+        var sourceObjectDependencies = reachableScriptOwnerObjects.SelectMany(owner =>
+                CinematicScriptSourceObjectDependencyResolver.ResolveUniqueObjects(
+                        CinematicScriptReader.ReachableSourceReferences(owner), availableObjectReferences)
+                    .Select(reference => new
+                    {
+                        FromOwner = owner.Name,
+                        FromOwnerKey = owner.OwnerKey.ToString("X8"),
+                        SourceWorld = reference.WorldKey.ToString("X8"),
+                        Key = reference.Key.ToString("X8"),
+                        reference.Name,
+                        IsIncludedInAssembly = assembledObjectKeys.Contains(reference.Key)
+                    }))
+            .DistinctBy(reference => (reference.FromOwnerKey, reference.SourceWorld, reference.Key))
+            .OrderBy(reference => reference.FromOwner, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(reference => reference.Key)
+            .ToArray();
         var allScriptOwners = document.CinematicScriptOwners.Values.ToArray();
         var allScriptEventTracks = document.CinematicScriptEventTracks.Values.SelectMany(tracks => tracks).ToArray();
         var savedFlagLinkGraph = CinematicScriptFlagFlowAnalyzer.BuildLinkGraph(allScriptOwners,
@@ -586,6 +609,7 @@ internal static class CinematicScriptGraphAudit
             ScriptOwners = owners,
             ParticipantScriptOwners = participantScripts,
             ReferencedActorLibraries = referencedActorLibraries,
+            SourceObjectDependencies = sourceObjectDependencies,
             ReachableScriptOwners = reachableScriptOwners,
             SavedFlagLinks = reachableSavedFlagLinks,
             ScriptOwnerReferenceGraph = ownerReferences,

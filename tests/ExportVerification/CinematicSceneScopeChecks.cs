@@ -4,6 +4,7 @@ internal static class CinematicSceneScopeChecks
 {
     internal static void Verify()
     {
+        VerifySourceObjectDependencies();
         var current = new WorldData { Key = 1000, Name = "Room_cine" };
         var other = new WorldData { Key = 2000, Name = "Other_cine" };
         var setup = new WorldData { Key = 3000, Name = "Setup" };
@@ -75,6 +76,28 @@ internal static class CinematicSceneScopeChecks
             || assembled.CinematicClips.ContainsKey(otherSource.Key))
             throw new InvalidDataException("Scene assembly lost literal camera references or mixed another cinematic world.");
         Console.WriteLine("PASS: per-world clip scope, literal-only scene dependencies and camera-only actor/target inclusion");
+    }
+
+    private static void VerifySourceObjectDependencies()
+    {
+        CinematicScriptReachableSourceReference[] sourceReferences =
+        [
+            new("callback", "Object", "single", 101, "iris.c", 10, "callback"),
+            new("callback", "Object", "ambiguous", 202, "iris.c", 11, "callback"),
+            new("callback", "Function", "not-an-object", 303, "iris.c", 12, "callback"),
+            new("callback", "Object", "not-loaded", 404, "iris.c", 13, "callback")
+        ];
+        CinematicScriptNamedReference[] availableReferences =
+        [
+            new(1, 101, "Unique prop", IsObject: true),
+            new(1, 202, "Duplicate prop A", IsObject: true),
+            new(2, 202, "Duplicate prop B", IsObject: true),
+            new(1, 303, "Function key collision", IsObject: true)
+        ];
+        var resolved = CinematicScriptSourceObjectDependencyResolver.ResolveUniqueObjects(
+            sourceReferences, availableReferences);
+        if (resolved.Length != 1 || resolved[0].Key != 101 || resolved[0].Name != "Unique prop")
+            throw new InvalidDataException("Cinematic source dependencies must include only uniquely available literal object references.");
     }
 
     private static SceneActor Actor(uint key)
