@@ -48,6 +48,7 @@ internal static partial class ActorLoader
         var sceneEventCache = new Dictionary<PcSceneLoader.Record, AnimationClip?>();
         var cinematicWorlds = replay.Worlds.Where(world => world.Name.Contains("cine", StringComparison.OrdinalIgnoreCase))
             .ToDictionary(world => world.Key, world => world.Name);
+        var cinematicWorldKeys = cinematicWorlds.Keys.ToHashSet();
         CinematicTimelineClipDiscovery.Load(doc, replay, origins, cinematicWorlds, sceneEventCache);
         foreach (var w in doc.Worlds)
         {
@@ -108,20 +109,8 @@ internal static partial class ActorLoader
                     actor.Clips.Add(new() { Key = e.Key, Name = $"{e.Key:X8}", Read = () => AnimationReader.Read(origins[e], e.Offset, e.Size) });
                 if (actor.Clips.Count == 0)
                 {
-                    var memberKeys = new HashSet<uint> { root.GaoKey };
-                    foreach (var events in replay.Records.Where(e => e.Kind == 'i'))
-                    {
-                        if (!sceneEventCache.TryGetValue(events, out var sceneClip))
-                        {
-                            try { sceneClip = AnimationReader.Read(origins[events], events.Offset, events.Size); }
-                            catch (Exception ex) when (ex is InvalidDataException or ArgumentException or OverflowException or IndexOutOfRangeException) { sceneClip = null; }
-                            sceneEventCache[events] = sceneClip;
-                        }
-                        if (sceneClip == null) continue;
-                        var tracks = sceneClip.Tracks.Where(t => IsActorTrack(t, root, memberKeys)).ToList();
-                        if (tracks.Count == 0) continue;
-                        actor.Clips.Add(new() { Key = events.Key, Name = $"{events.Key:X8} (scene motion)", SceneMotion = true, Cinematic = cinematicWorlds.ContainsKey(events.LoadWorldKey), Loaded = true, Tracks = tracks, Duration = sceneClip.Duration });
-                    }
+                    AddLinkedSceneMotionClips(actor, replay, origins, cinematicWorldKeys,
+                        cinematicWorlds, sceneEventCache);
                     actor.Diagnostic = actor.Clips.Count > 0
                         ? "Scene motion tracks only. Gameplay animation table is not linked in this actor record."
                         : "No animation table or matching scene motion tracks in loaded data.";

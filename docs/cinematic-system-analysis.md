@@ -54,6 +54,16 @@ two-second `BF00229A` track under its own owner. To repeat the inventory on
 another container, run
 `dotnet run --project tests/ExportVerification -- --cinematic-timeline-inventory <sally_clean.bf> <FF-container-key>`.
 
+The fallback that populates an actor's motion list follows serialized links too:
+the actor or one of its components must own the `Events` link, or the clip must
+be a root cinematic `SceneEvents` track. It no longer scans every decoded `i`
+record and accepts any short resource whose track happens to target that GAO.
+This prevents unrelated effect/PAG resources from appearing as actor motions;
+the exact `Part_Fight.gao` activation and particle phase still depend on its
+script callback and are analyzed separately. The source-link unit check covers
+owner `Events`, root `SceneEvents`, paired gameplay-world links, and rejection
+of an unlinked record.
+
 Actor clip discovery combines two legitimate sources: root `SceneEvents` in the
 cinematic world and member `Events` linked by that actor's root/bone owners. The
 former scan over every cinematic-world `i` record could attach unrelated short
