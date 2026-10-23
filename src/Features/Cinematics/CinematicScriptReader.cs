@@ -430,7 +430,7 @@ internal static class CinematicScriptReader
 
             uint brainKey = Preview.U32(origins[owner], owner.BrainFieldOffset);
             var modelFunctionNames = CallbacksFor(model.Key);
-            var callbackSlots = ReadCallbackSlots(model, owner.LoadWorldKey, resources, origins);
+            var callbackSlots = ReadCallbackSlots(model, resources, origins);
             var callbackNames = EffectiveCallbackNames(callbackSlots);
             var objectReferences = ReadObjectReferences(model, instanceKey, owner.LoadWorldKey, resources, origins);
             var variables = ReadVariables(model, instanceKey, owner.LoadWorldKey, resources, origins);
@@ -492,23 +492,8 @@ internal static class CinematicScriptReader
     }
 
     private static CinematicScriptCallbackSlot[]? ReadCallbackSlots(PcSceneLoader.Record model,
-        uint ownerWorldKey, PcSceneResourceIndex resources,
-        IReadOnlyDictionary<PcSceneLoader.Record, byte[]> origins)
-    {
-        CinematicScriptCallbackSlot[]? firstValidSlots = null;
-        foreach (var variableRecord in model.References.Where(reference => reference.Kind == 't')
-            .Select(reference => resources.Resolve(reference.Key, model.LoadWorldKey))
-            .OfType<PcSceneLoader.Record>())
-        {
-            if (!origins.TryGetValue(variableRecord, out byte[]? origin)) continue;
-            var slots = PcScriptCallbackSlotReader.Read(
-                origin.AsSpan(variableRecord.Offset, variableRecord.Size), FunctionNames.Value);
-            if (slots == null) continue;
-            firstValidSlots ??= slots;
-            if (slots.Any(slot => slot.FunctionKey != 0)) return slots;
-        }
-        return firstValidSlots;
-    }
+        PcSceneResourceIndex resources, IReadOnlyDictionary<PcSceneLoader.Record, byte[]> origins) =>
+        PcScriptCallbackSlotResolver.Resolve(model, resources, origins, FunctionNames.Value);
 
     private static CinematicDialogueLine[] ReadDialogueLines(PcSceneLoader.Record model, uint instanceKey,
         uint ownerWorldKey, PcSceneResourceIndex resources,
