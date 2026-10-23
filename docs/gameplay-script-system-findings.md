@@ -945,6 +945,25 @@ automatic list of scene additions. JadeView now labels that distinction in
 the callback inspector and resolves reference names against actor roots and
 their component meshes as well as standalone world objects.
 
+There is an important separate edge: while parsing an EVE/`SceneEvents` list,
+`EVE_ul_CallbackLoadListTracks` explicitly queues each non-null object target
+(the record's animation-track form is handled separately) through
+`LOA_MakeFileRef(..., OBJ_ul_GameObjectCallback, ...)`
+(`external/irisEng/events.c:2585-2670`). The later
+`EVE_ResolveListTrackRef` resolves the loaded target pointers, and playback
+temporarily makes each target the current event object. Thus an event-list
+target can cause its GAO resource to load even when no AI OVA field references
+it. That is a resource-load edge, but it is not by itself proof that the GAO is
+attached to the owning world's object table, activated, visible, or running AI;
+those are separate world/activation relationships. JadeView's SceneEvents
+target resolver should preserve this distinction: show an unresolved target as
+a possible typed dependency, and add it to a preview world only when world
+membership or a tested attachment path is established.
+Jaded's editor-side EVE loader makes the same typed object-reference request
+(`external/jaded/src/libraries/AIinterp/Sources/Events/EVEload.c:541-576`),
+corroborating the asset-link interpretation without proving retail-PC world
+attachment behavior.
+
 ### Runtime effects are registered separately from asset loading
 
 The Iris PC AI bindings distinguish world residency from effect registration.
