@@ -117,6 +117,7 @@ public sealed partial class EditorShell
             if (ImGui.CollapsingHeader($"Source object/function references ({sourceReferences.Length})"))
             {
                 ImGui.TextDisabled("Literal keys passed to Iris object/function resolvers by reachable source functions. A reference does not prove that the function executes at runtime.");
+                ImGui.TextDisabled("Object-key resolution looks up an already loaded object; it does not load a GAO by itself. World lists and object records determine which GAOs are resident.");
                 foreach (var reference in sourceReferences.Take(64))
                 {
                     string target = ResolveSourceReferenceTarget(reference, owner, archiveReferences);
