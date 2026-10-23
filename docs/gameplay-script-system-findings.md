@@ -1075,3 +1075,44 @@ source/API evidence before JadeView can preview them. The implementation is in
 `CinematicCameraPagControllerReader.cs` and `CinematicCameraPagTimeline.cs`;
 `CinematicCameraPagChecks` covers owner binding, capability gating, camera
 placement, repeatable backward seeking, and allocation-free warmed evaluation.
+
+### Script execution is a runtime relationship
+
+Jade Engine keeps a world's AI-bearing objects in `st_EOT.st_AI`.
+`AI_MainCall` (`AIengine.c:1077–1180`) walks that table, skips objects already
+processed through hierarchy, optimized-culled objects, and objects with
+`ForceInactive` or `SectoInactive`, then advances each remaining AI instance.
+This means an object reference in a script model is not by itself proof that
+the referenced object is loaded, active, or being updated.
+
+There is a second, dynamic relationship for engine callbacks.
+`AI_EvalFunc_AICBAdd_C` (`AIfunctions_ai.c:535–580`) appends a
+function/type/context tuple to a destination object's AI instance;
+`AI_EvalFunc_AICBDel_C` (`AIfunctions_ai.c:607–635`) removes the matching tuple
+by nulling its function. `AI_ExecCallback` (`AIengine.c:1350–1420`)
+checks the engine state, inactive/pause flags, AI instance/model validity, and
+then runs only entries whose callback type matches the requested phase.
+`AI_ExecCallbackAll` enumerates the world's AI EOT and requests the same phase
+for each object (`AIengine.c:1200–1234`). The callback's stored context object
+can differ from the destination whose instance owns the callback table.
+The phase IDs are lifecycle points, not generic gameplay triggers: before and
+after display, after record, after blend, destroy, short-way, and sector
+activation/visibility on/off. Jaded routes them from rendering, animation,
+world-sector, and destruction code (`STRrender.c`, `ANIrender.c`, `ENGcall.c`,
+`WORmain.c`, `AIfunctions_obj.c`, and `AIfunctions_way.c`).
+
+A lexical census of Iris BGE's compiled C sources finds 312
+`AI_EvalFunc_AICBAdd_C` call sites in 51 script modules: 176 register
+before-display (type 0), 21 after-display (type 1), 93 after-record (type 2),
+and 22 after-blend (type 3). This count records source call sites, including
+mutually exclusive branches; it is not a count of registrations that occur in
+a particular scene or save. It gives JadeView a tractable first set of
+source-backed callback phases to map to the script call graph.
+
+JadeView's script-owner inspector can therefore report serialized script model
+functions and object links, while an “active now” answer needs additional
+runtime state: EOT membership, current sector/inactive flags, and dynamically
+registered callback tuples. Those are not fully recoverable from a static BF
+archive. The next general script step is to model and expose the registration
+relationships where Iris source and serialized event data prove them, keeping
+declared, registered-by-script, and runtime-confirmed states distinct.
