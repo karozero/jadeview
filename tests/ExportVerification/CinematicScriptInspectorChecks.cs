@@ -193,6 +193,21 @@ internal static class CinematicScriptInspectorChecks
         ]);
         Check(sourceArgumentReferences.Length == 1 && sourceArgumentReferences[0].Key == 0x1234,
             "Source command arguments should join only exact function-local object-reference identifiers");
+        var sourceAssignmentCall = sourceArgumentCall with
+        {
+            Arguments = ["v26"],
+            ArgumentAssignments =
+            [
+                new("v26", "AI_MainActor[fixture_callback_target - 1]", 10, 0),
+                new("fixture_callback_target", "AI_ul_RealResolveOneRefObject(0x1234u)", 8, 1)
+            ],
+            BranchConditions = [new("if", "v2->des_i_enabled != 0", 7)]
+        };
+        var assignedObjectReference = CinematicScriptArgumentBindingResolver.ResolveSourceObjectReferences(
+            sourceAssignmentCall,
+            [new("fixture_callback", "Object", "target", 0x1234, "fixture.c", 3, "fixture_callback")]);
+        Check(assignedObjectReference.Length == 1 && assignedObjectReference[0].Key == 0x1234,
+            "Source object references should follow local assignments from a resolved object key to the API argument");
         var sourceArgumentOwner = new CinematicScriptOwner(0x100, 0, 0, 0x200, 0, 0,
             "OVA argument fixture", [], [],
             [new("des_i_SubMat", PcVariableFormat.IntegerType, "model", "3"),
@@ -211,6 +226,20 @@ internal static class CinematicScriptInspectorChecks
             && ovaArgumentBindings.Single(binding => binding.VariableName == "des_i_SubMatLevel") is
                 { Value: "2", Source: "model" },
             "Source call arguments should resolve exact OVA field names using effective instance/model precedence");
+        var gatedOvaCall = sourceArgumentCall with
+        {
+            Arguments = ["AI_gpst_CurrentGameObject"],
+            BranchConditions = [new("if", "v1->i_sf_fade", 4133)]
+        };
+        var gatedOvaOwner = sourceArgumentOwner with
+        {
+            Variables = [new("i_sf_fade", PcVariableFormat.IntegerType, "model", "0")]
+        };
+        var gatedOvaBindings = CinematicScriptArgumentBindingResolver.ResolveOwnerFields(
+            gatedOvaCall, gatedOvaOwner);
+        Check(gatedOvaBindings.Length == 1
+                && gatedOvaBindings[0] is { VariableName: "i_sf_fade", Value: "0", Source: "model" },
+            "Source API summaries should resolve OVA fields used only by branch conditions");
         var ovaUsageOwner = new CinematicScriptOwner(0x101, 0, 0, 0x200, 0, 0,
             "OVA source-use fixture", [],
             [new("o_target", 0x301, "instance", "linked target"),

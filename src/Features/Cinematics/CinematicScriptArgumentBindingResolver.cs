@@ -4,14 +4,20 @@ internal static class CinematicScriptArgumentBindingResolver
 {
     internal static CinematicScriptReachableSourceReference[] ResolveSourceObjectReferences(
         CinematicScriptReachableEngineCall call,
-        IEnumerable<CinematicScriptReachableSourceReference> sourceReferences) =>
-        sourceReferences.Where(reference => reference.Kind == "Object"
+        IEnumerable<CinematicScriptReachableSourceReference> sourceReferences)
+    {
+        string[] argumentFlow = call.Arguments
+            .Concat(call.ArgumentAssignments.Select(assignment => assignment.Expression))
+            .Concat(call.ArgumentAssignmentAlternatives?.Select(assignment => assignment.Expression) ?? [])
+            .ToArray();
+        return sourceReferences.Where(reference => reference.Kind == "Object"
                 && reference.FunctionName == call.FunctionName
-                && UsesIdentifier(call.Arguments, $"{call.FunctionName}_{reference.Symbol}",
+                && UsesIdentifier(argumentFlow, $"{call.FunctionName}_{reference.Symbol}",
                     $"fct_{call.FunctionName}_{reference.Symbol}"))
             .DistinctBy(reference => reference.Key)
             .OrderBy(reference => reference.Symbol, StringComparer.Ordinal)
             .ToArray();
+    }
 
     internal static CinematicScriptOvaFieldBinding[] ResolveOwnerFields(
         CinematicScriptReachableEngineCall call, CinematicScriptOwner owner)
@@ -24,6 +30,10 @@ internal static class CinematicScriptArgumentBindingResolver
                     field.Name.Equals(fieldName, StringComparison.OrdinalIgnoreCase))
                 || call.ArgumentAssignments.Any(assignment =>
                     ReferencesMemberField(assignment.Expression, fieldName))
+                || call.ArgumentAssignmentAlternatives?.Any(assignment =>
+                    ReferencesMemberField(assignment.Expression, fieldName)) == true
+                || call.BranchConditions.Any(condition =>
+                    ReferencesMemberField(condition.Expression, fieldName))
                 || UsesIdentifier(call.Arguments, fieldName))
             .OrderBy(fieldName => fieldName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
