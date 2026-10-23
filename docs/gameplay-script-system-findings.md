@@ -1217,3 +1217,32 @@ registered callback tuples. Those are not fully recoverable from a static BF
 archive. The next general script step is to model and expose the registration
 relationships where Iris source and serialized event data prove them, keeping
 declared, registered-by-script, and runtime-confirmed states distinct.
+
+### Event-track owners also require world dispatch eligibility
+
+The retail Iris frame loop calls `EVE_MainCall`, then `ANI_MainCall`, then
+`AI_MainCall` for a world (`external/irisEng/engine.c:185-214`). These are
+separate passes: an EVE track can update transforms or issue timeline commands
+before the regular animation and AI passes, but the presence of a decoded EVE
+list does not mean that its owner is being ticked.
+
+`WOR` builds `eventGameObjectsTablePF` from activated objects whose runtime
+table flags include `0x02000000` (`world.c:727-748`). On each event pass,
+`EVE_MainCall` iterates only that table and requires a valid object, an attached
+EVE component, no pending-inactive runtime bit `0x00400000`, and—when the
+owner's extra flag `0x4` is set—a nonzero distance before it calls
+`EVE_b_RunAllTracks` (`events.c:2683-2720`). Thus there are at least three
+separate facts to inspect: the EVE resource was decoded, its owner qualified
+for the world's event table, and the runtime pass actually advanced its
+tracks. The latter two depend partly on runtime world/visibility state and
+cannot be inferred from the clip's duration or target list alone.
+
+Jaded's later desktop implementation uses the same per-world event-table
+dispatch shape, but its gate is expressed through its own control/LOD helpers
+(`external/jaded/src/libraries/AIinterp/Sources/Events/EVEplay.c:1600-1647`).
+Use it as architectural corroboration; keep Iris's flags and predicates for
+the retail-PC preview. This also explains why a script owner may be correctly
+listed in JadeView yet its attached event track or effect does not run. A future
+diagnostic should label event owners as `decoded`, `dispatch-eligible from
+serialized state`, or `runtime-confirmed`; JadeView currently cannot claim the
+last state without a live game trace.
