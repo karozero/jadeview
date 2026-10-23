@@ -1011,3 +1011,20 @@ modifier state machine or its track operations. Keep `0x4` as a raw PC Iris
 predicate in diagnostics: Jaded's desktop `SNDGetStatusModifier_C` returns a
 different state-mask value, so its implementation does not establish the
 meaning of that bit for the PC game build.
+
+### `01_04_entrepot_liberation_mili_cine` residency check
+
+An archive-backed script-graph audit of container `FF001FBE`, clip
+`35009F74`, resolves the loaded scene worlds `01_Carte3D_RdC`,
+`01_04_entrepot_liberation_mili_cine`, and `01_04_entrepot_liberation_mili`.
+The assembled participant roster already contains `_PJ_Militaire.gao`
+(`7100596B`), `OBJ_Perle.gao` (`3D003D82`), and
+`OBJ_PerlePrendre.gao` (`3D003D85`). The reachable script-owner graph reports
+no `WOR*` world-management calls for this clip. In this case, their absence in
+a rendered frame is not evidence that the script failed to load those GAOs;
+the archive and scene assembler resolve them as participants. The next checks
+should target runtime activation/visibility, the selected actor pose, and
+material state. `_PJ_Militaire.gao` has the generic `companion_co_init`
+gameplay brain, but static callback reachability alone does not prove that
+brain's gameplay actions execute in a cinematic preview. Audit output:
+`artifacts/export-verification/FF001FBE-35009F74-script-graph.json`.
