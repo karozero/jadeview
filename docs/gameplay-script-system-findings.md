@@ -1028,3 +1028,41 @@ material state. `_PJ_Militaire.gao` has the generic `companion_co_init`
 gameplay brain, but static callback reachability alone does not prove that
 brain's gameplay actions execute in a cinematic preview. Audit output:
 `artifacts/export-verification/FF001FBE-35009F74-script-graph.json`.
+
+### Camera-following PAG effects: `SFX_tempete.gao`
+
+The intro audit (`FF0045A2`, main clip `3500B8EA`) resolves owner
+`SFX_tempete.gao` (`3D002F6C`) to model `3D002F6F` and callback
+`SFX_colpag_cam_scp_loop`. The owner has no serialized `Events` or
+`SceneEvents` link. Its instance variables instead reference
+`DEC_3_9_brumephare.gao` (`3D002DDF`), `Part_Fight.gao` (`3D002DCB`), and
+`Part_Fight1.gao` (`3D002DE3`). Thus the two `Part_Fight` objects are runtime
+effect carriers selected by the owner's script data, not evidence of many
+standalone animation scenes.
+
+The PC Iris callback checks capability mask `1` on its current owner. When the
+bit is set, it clears forced-invisible on both PAG objects and sets generator
+ID `1` to 50 and 20 particles per second. It periodically chooses a 1–4 second
+delay, toggles a mode bit, and repositions/aims the two effects from the live
+`_PJ_Camera.gao` position, sight, horizon, and banking vectors. When the bit is
+clear, it sets both generator frequencies to zero. Jade Engine's shared source
+confirms that `OBJ_CapaTest` is a bit test of the object's extended capacities,
+`OBJ_FlagInvisibleSet` controls the force-invisible flag, and the PAG frequency
+setter updates a generator by ID (`ai_compiledscripts_sfx.c:9093–9550`,
+`AIfunctions_obj.c:2680–2720,2970–2980,5152–5159`,
+`PAGstruct.c:2025–2040`).
+
+This explains why loading the carriers and decoding their geometry is
+insufficient: the callback owns visibility, emission, and camera-relative
+placement, and—when the owner is activated and admitted to the EOT callback
+table—it runs as an AI update rather than being sampled from a standalone `i`
+clip. The static archive cannot establish that this owner was actually
+scheduled during a particular game run. JadeView's generic actor-motion
+fallback now requires a serialized owner `Events` or root cinematic
+`SceneEvents` link, so an unlinked `i` resource cannot become a motion only
+because one of its tracks targets the same GAO. The next reusable
+implementation step is a callback-preview adapter driven by resolved owner
+variables, capability state, camera samples, and an explicit deterministic
+time-step; it must not infer that an object-reference field itself activates a
+script or load request. This finding is specific to the source-confirmed
+callback; other compiled callbacks still need their own data/API evidence.
