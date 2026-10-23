@@ -1949,6 +1949,9 @@ internal static class CinematicScriptInspectorChecks
         bool reportsDispatchFilters = schedulerFindings.Any(finding => finding.Contains("extraFlag 0x4", StringComparison.Ordinal)
             && finding.Contains("AIInstance", StringComparison.Ordinal)
             && finding.Contains("AI_RunInstance", StringComparison.Ordinal));
+        Check(schedulerFindings.Any(finding => finding.Contains("remaining delay", StringComparison.Ordinal))
+            && schedulerFindings.Any(finding => finding.Contains("stops the remaining AI_MainCall table traversal", StringComparison.Ordinal)),
+            "AI scheduling must expose callback timing and world traversal abort dependencies.");
         bool rejectsRawActivationBit = rawActivationBitFindings.Any(finding => finding.Contains("0x00400000 bit is discarded", StringComparison.Ordinal))
             && !rawActivationBitFindings.Any(finding => finding.Contains("source-mapped contribution", StringComparison.Ordinal));
         Check(reportsAiCallbackTable && reportsWorldActivation && retainsRuntimeUncertainty

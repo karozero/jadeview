@@ -34,6 +34,8 @@ internal static class CinematicScriptSchedulerAnalyzer
 
         findings.Add("WOR_ActivateObjectIfFlagsAllow also requires the object not already be active; at ordinary time it rejects runtime flags2 masks 0x04400000 and 0x10, while special-time activation requires 0x04000000. The BF snapshot cannot reveal later flag changes or final activated-table membership.");
         findings.Add($"AI_MainCall dispatches only valid, not-yet-processed callback-table entries; extraFlag 0x4 additionally requires nonzero distance, hierarchy references can redirect processing to a parent, and the resolved object must have an AIInstance. It skips AI_RunInstance while runtime flags2 0x{DisabledAiRunInstanceBit:X8} is set. Runtime distance, hierarchy, instance allocation, scheduling and callback results remain unknown.");
+        findings.Add("AI_RunInstance also checks its model's disabled state, callback-track range, per-track remaining delay and function pointer. A positive delay is reduced by TIM_gf_dt before the callback can run; serialized assignment alone does not make the callback due.");
+        findings.Add("AI_RunInstance returning zero stops the remaining AI_MainCall table traversal for this world. Iris maps function result sentinel 3 to that zero return; later owners cannot be assumed to run independently of earlier callback results.");
         findings.Add("These source-derived conditions cannot prove that the owner's callbacks ran in the game.");
         return findings.ToArray();
     }
