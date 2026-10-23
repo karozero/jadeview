@@ -32,3 +32,20 @@ native state changes, not an assumed missing OBJMove command.
 Evidence: `artifacts/move-real-hangar-audit.log` and
 `artifacts/export-verification/FF005833-nested-eve-transforms.json` (generated,
 not committed). These prove decoded input routes, not visual parity with game.
+
+The expanded transform-input audit also shows **no serialized parent or local
+hierarchy matrix for either fan object**. Both baselines are approximately
+`(68.521, 21.517, 7.412)` and their position keys are in that same world-space
+range. A hierarchy-local interpretation is therefore not supported for these
+two objects by the decoded input. Their defect must not be “fixed” by applying
+an invented parent transform.
+
+For the drone pair, Iris native `Drone_Mdisk_Drone_Mdisk_init`
+(`ai/ai_bge/ai_compiledscripts_objects.c:2218` onward) reads the current object's
+position, sight and banking, copies them to `des_o_drone_vert`, and sets zoom
+to `0.65` for both variants. This is an example of initialization transferring
+state through a script object reference, rather than an authored EVE position
+track. The general missing layer is callback initialization and getter/setter
+state flow. This source branch must not be applied solely because an object
+has a matching name: effective callback assignment, dispatch and branch inputs
+still need to be established for the selected preview.
