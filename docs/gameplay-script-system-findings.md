@@ -945,6 +945,30 @@ automatic list of scene additions. JadeView now labels that distinction in
 the callback inspector and resolves reference names against actor roots and
 their component meshes as well as standalone world objects.
 
+### Runtime effects are registered separately from asset loading
+
+The Iris PC AI bindings distinguish world residency from effect registration.
+`PAG_AddGenerator` resolves an already available effect-object pointer and asks
+the current object's PAG component to create a runtime generator
+(`ai_pagfunctions.c:5-15`); it returns a generator ID and does not load a GAO.
+`PAG_SetGeneratorFreq` only changes an existing generator by ID. `GFXAdd`
+registers an object in the current world's GFX list through `GFX_i_Add`
+(`ai_gfxfunctions.c:50-57`), while `CreateExplosion` constructs a transient
+GFX effect from the current object's geometry/material
+(`ai_gfxfunctions.c:562-583`). These calls can make an already loaded asset or
+transient effect render, but they do not add arbitrary archive resources to
+the world's object table.
+
+`GFXAddWorld` is unsafe to interpret as a loading operation: the available
+Iris PC implementation is a TODO stub, only toggles a presentation flag when
+a display exists, and returns `-1` (`ai_gfxfunctions.c:17-31`). The function
+name alone is not evidence of a world or asset load. For previews, classify
+calls by their implementation and required pre-existing objects; only
+`WORUniverseAdd` / `WORLoadList` provide confirmed world-loading paths in the
+examined PC source. Runtime PAG generator creation is not yet simulated by the
+cinematic preview, which currently handles the source-confirmed
+`PAG_SetGeneratorFreq` behavior for the camera-following storm controller.
+
 ### Special AI actor slots are not archive keys
 
 The type-40 object resolver has one exception before the BF/LOA lookup:

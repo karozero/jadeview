@@ -86,6 +86,15 @@ by the former global scan. Short root setup/event tracks remain valid and are
 not filtered by duration. This audit does not assert that every retained track
 actually ran in-game.
 
+A fresh archive inventory confirms the intro still resolves to 13 root
+`SceneEvents` and 15 ordinary object `Events`; none of the 13 root choices is
+`Part_Fight` or `Part_Fight1`, and neither effect GAO owns an ordinary event
+track in this container. The many short `i` records from the old broad scan
+were dependency resources, not dozens of new cinematic scenes. If a build
+shows that larger list, it is using the pre-filter discovery path or an object
+event inspector rather than the root cutscene picker. The source-links fixture
+guards this distinction.
+
 The `SFX_colpag_cam_scp_loop` behavior is also previewed by a dedicated adapter
 in JadeView. It follows the callback's OVA object references and global camera
 reference, then derives visibility, particle rates, and camera-relative poses
