@@ -87,7 +87,7 @@ internal sealed partial class PcSceneLoader
         }
     }
 
-    internal static Result Read(byte[] bytes, string archivePath)
+    internal static Result Read(byte[] bytes, string archivePath, uint? worldListKey = null)
     {
         string path = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(archivePath))!, "jade.spe");
         if (!File.Exists(path))
@@ -104,7 +104,9 @@ internal sealed partial class PcSceneLoader
         var special = new HashSet<uint>();
         for (int offset = 0; offset < raw.Length; offset += 4)
             special.Add(Preview.U32(raw, offset));
-        return new PcSceneLoader(bytes, special).Run();
+        var result = new PcSceneLoader(bytes, special).Run();
+        result.OuterWorldListKey = worldListKey;
+        return result;
     }
 
     // Re-emit records in the exact dependency/cache order used by the PC loader.

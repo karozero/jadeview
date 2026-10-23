@@ -29,7 +29,7 @@ public static class SceneLoader
 
     public sealed record ChunkInfo(int Offset, int Size, uint Magic, bool IsSpecialTag);
 
-    public static SceneDocument Load(byte[] bytes, string containerName = "", string bfPath = "", string bfSha256 = "")
+    public static SceneDocument Load(byte[] bytes, string containerName = "", string bfPath = "", string bfSha256 = "", uint? worldListKey = null)
     {
         var doc = new SceneDocument
         {
@@ -46,7 +46,9 @@ public static class SceneLoader
 
         if (!string.IsNullOrEmpty(bfPath))
         {
-            var replay = PcSceneLoader.Read(bytes, bfPath);
+            var replay = PcSceneLoader.Read(bytes, bfPath, worldListKey);
+            if (replay.OrderedWorldRootKeys.Length > 0)
+                doc.WorldList = new GameWorldListDescriptor(replay.OuterWorldListKey, replay.OrderedWorldRootKeys);
             if (replay.Complete)
             {
                 doc.ReservedResourceKeys.UnionWith(replay.Records.Select(record => record.Key));
@@ -175,7 +177,7 @@ public static class SceneLoader
     public static SceneDocument Load(Archive archive, Entry entry)
     {
         byte[] bytes = archive.Read(entry);
-        return Load(bytes, entry.Name, archive.PathName, archive.Sha256);
+        return Load(bytes, entry.Name, archive.PathName, archive.Sha256, worldListKey: entry.Key);
     }
 
     public static SceneDocument Load(Archive archive, uint key)

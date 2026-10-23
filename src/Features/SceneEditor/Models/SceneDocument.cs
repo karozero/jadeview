@@ -7,6 +7,7 @@ public sealed class SceneDocument
     public string BaseBfPath { get; set; } = "";
     public string BaseBfSha256 { get; set; } = "";
     public string ContainerName { get; set; } = "";
+    public GameWorldListDescriptor? WorldList { get; internal set; }
     public List<WorldData> Worlds { get; } = [];
     public Dictionary<uint, AnimationClip> CinematicClips { get; } = [];
     internal Dictionary<CinematicScriptOwnerId, CinematicScriptOwner> CinematicScriptOwners { get; } = [];

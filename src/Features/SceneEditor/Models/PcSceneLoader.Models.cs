@@ -32,6 +32,8 @@ internal sealed partial class PcSceneLoader
     {
         public List<Record> Records = [];
         public List<Record> Worlds = [];
+        public uint[] OrderedWorldRootKeys = [];
+        public uint? OuterWorldListKey;
         public Dictionary<uint, Record> Resources = [];
         public int End, SpeSkipped, CachedSkipped;
         public string? Error;

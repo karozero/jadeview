@@ -6,6 +6,7 @@ internal sealed partial class PcSceneLoader
         try
         {
             var roots = ReadWorldRoots();
+            result.OrderedWorldRootKeys = roots.ToArray();
             var mergedWorldKeys = new HashSet<uint>();
             foreach (uint root in roots)
             {

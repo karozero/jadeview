@@ -12,6 +12,7 @@ string output = Path.GetFullPath(Environment.GetEnvironmentVariable("JADEVIEW_EX
 Directory.CreateDirectory(output);
 if (VerificationCommands.TryRun(args, output)) return;
 GameWorldUniverseReducerChecks.Verify();
+GameWorldListDescriptorChecks.Verify();
 GameScriptObjectFlagsChecks.Verify();
 PcCollisionResourceChecks.Verify();
 CinematicActionLibraryChecks.Verify();
