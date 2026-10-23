@@ -25,12 +25,7 @@ public sealed partial class EditorShell
 
         if (!_messageGateAnalysisCache.TryGetValue(gateOwner.Id, out var analysis))
         {
-            _messageGateReferencesCache ??= Document.Worlds
-                .SelectMany(world => world.Objects.Select(sceneObject => new CinematicScriptNamedReference(
-                    world.Key, sceneObject.GaoKey, sceneObject.Name, IsObject: true)))
-                .Concat(Document.CinematicScriptOwners.Values.Select(owner => new CinematicScriptNamedReference(
-                    owner.WorldKey, owner.OwnerKey, owner.Name, IsObject: false)))
-                .ToArray();
+            _messageGateReferencesCache ??= CinematicScriptNamedReferenceCatalog.ForDocument(Document);
             _messageGateTrackCache ??= Document.CinematicMessageTracks
                 .Concat(CinematicScriptMessageTrack.FromScriptEventTracks(
                     Document.CinematicScriptEventTracks.Values.SelectMany(tracks => tracks)))

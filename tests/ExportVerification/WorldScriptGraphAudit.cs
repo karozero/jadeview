@@ -29,13 +29,7 @@ internal static class WorldScriptGraphAudit
                 document.CinematicEmbeddedEventTracks.Values.SelectMany(eventLists => eventLists)))
             .Concat(CinematicScriptMessageTrack.FromActorClips(document.Worlds))
             .ToArray();
-        var namedReferences = document.Worlds
-            .SelectMany(sourceWorld => sourceWorld.Objects.Select(sceneObject =>
-                new CinematicScriptNamedReference(sourceWorld.Key, sceneObject.GaoKey,
-                    sceneObject.Name, IsObject: true)))
-            .Concat(allLoadedScriptOwners.Select(owner =>
-                new CinematicScriptNamedReference(owner.WorldKey, owner.OwnerKey, owner.Name, IsObject: false)))
-            .ToArray();
+        var namedReferences = CinematicScriptNamedReferenceCatalog.ForDocument(document);
         string? ResolveName(uint key, uint preferredWorldKey) =>
             CinematicScriptReferenceNameResolver.Resolve(key, preferredWorldKey, namedReferences)?.Name;
         var owners = worldScriptOwners

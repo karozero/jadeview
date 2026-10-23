@@ -10,15 +10,7 @@ internal static class CinematicScriptGraphAudit
         var document = SceneLoader.Load(archive.Read(entry), entry.Name, archivePath);
         if (!document.CinematicClips.TryGetValue(clipKey, out var clip))
             throw new InvalidDataException($"Cinematic {clipKey:X8} was not decoded from {containerId}.");
-        var namedReferences = document.Worlds
-            .SelectMany(world => world.Objects.Select(sceneObject =>
-                new CinematicScriptNamedReference(world.Key, sceneObject.GaoKey,
-                    sceneObject.Name, IsObject: true)))
-            .Concat(document.CinematicScriptOwners.Values.Select(owner =>
-                new CinematicScriptNamedReference(owner.WorldKey, owner.OwnerKey,
-                    owner.Name, IsObject: false)))
-            .DistinctBy(reference => (reference.WorldKey, reference.Key, reference.IsObject))
-            .ToArray();
+        var namedReferences = CinematicScriptNamedReferenceCatalog.ForDocument(document);
         var cinematicSourceWorld = document.Worlds.FirstOrDefault(world => world.Key == clip.CinematicWorldKey)
             ?? throw new InvalidDataException($"Cinematic world {clip.CinematicWorldKey:X8} is missing from {containerId}.");
         var assembledWorld = CinematicWorldAssembler.Assemble(document, cinematicSourceWorld);
@@ -84,12 +76,7 @@ internal static class CinematicScriptGraphAudit
                     slot.FunctionName
                 })
             }).ToArray();
-        var availableObjectReferences = document.Worlds.SelectMany(world => world.Objects
-                .Concat(world.Actors.SelectMany(actor => actor.Members))
-                .Select(sceneObject => new CinematicScriptNamedReference(world.Key,
-                    sceneObject.GaoKey, sceneObject.Name, IsObject: true)))
-            .DistinctBy(reference => (reference.WorldKey, reference.Key))
-            .ToArray();
+        var availableObjectReferences = namedReferences.Where(reference => reference.IsObject).ToArray();
         var assembledObjectKeys = assembledWorld.Objects.Select(sceneObject => sceneObject.GaoKey).ToHashSet();
         var sourceObjectDependencies = reachableScriptOwnerObjects.SelectMany(owner =>
                 CinematicScriptSourceObjectDependencyResolver.ResolveUniqueObjects(

@@ -1007,6 +1007,19 @@ internal static class CinematicScriptInspectorChecks
             && CinematicScriptReferenceNameResolver.Resolve(0x21, 0x100, namedReferences)?.Name == "unique linked object"
             && CinematicScriptReferenceNameResolver.Resolve(0x22, 0x100, namedReferences) == null,
             "Archive reference labels should prefer the current world, use only unique external matches, and leave cross-world key collisions unresolved");
+        var namedReferenceDocument = new SceneDocument();
+        var namedReferenceWorld = new WorldData { Key = 0x500 };
+        var actorRoot = new SceneObject { GaoKey = 0x501, Name = "scripted actor root" };
+        var actorMember = new SceneObject { GaoKey = 0x502, Name = "scripted actor component" };
+        namedReferenceWorld.Actors.Add(new SceneActor { Root = actorRoot, Members = [actorMember] });
+        namedReferenceDocument.Worlds.Add(namedReferenceWorld);
+        CinematicScriptNamedReference[] actorReferenceCatalog =
+            CinematicScriptNamedReferenceCatalog.ForDocument(namedReferenceDocument);
+        Check(CinematicScriptReferenceNameResolver.Resolve(0x501, 0x500, actorReferenceCatalog)?.Name
+                == "scripted actor root"
+            && CinematicScriptReferenceNameResolver.Resolve(0x502, 0x500, actorReferenceCatalog)?.Name
+                == "scripted actor component",
+            "Script reference catalogs should resolve actor roots and component meshes alongside standalone world objects");
         CinematicScriptOwnerReferenceCandidate[] scriptOwnerCandidates =
         [
             new("FF000001", 0x100, 0x20, "local script owner"),

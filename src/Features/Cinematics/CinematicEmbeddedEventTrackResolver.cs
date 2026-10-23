@@ -81,11 +81,7 @@ internal static class CinematicEmbeddedEventTrackResolver
 
     private static string DescribeTarget(uint targetKey, uint worldKey, SceneDocument document)
     {
-        var references = document.Worlds
-            .SelectMany(world => world.Objects.Select(sceneObject =>
-                new CinematicScriptNamedReference(world.Key, sceneObject.GaoKey, sceneObject.Name, IsObject: true)))
-            .Concat(document.CinematicScriptOwners.Values.Select(owner =>
-                new CinematicScriptNamedReference(owner.WorldKey, owner.OwnerKey, owner.Name, IsObject: false)));
+        var references = CinematicScriptNamedReferenceCatalog.ForDocument(document);
         var resolved = CinematicScriptReferenceNameResolver.Resolve(targetKey, worldKey, references);
         return resolved == null
             ? $"target {targetKey:X8}"

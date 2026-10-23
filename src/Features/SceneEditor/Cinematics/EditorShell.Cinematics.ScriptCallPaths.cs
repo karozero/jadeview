@@ -14,14 +14,9 @@ public sealed partial class EditorShell
         CinematicScriptMessageRoute[] messageRoutes = Document == null ? []
             : CinematicScriptMessageFlowResolver.Resolve(owner, Document.CinematicScriptOwners.Values);
         var sourceReferences = CinematicScriptReader.ReachableSourceReferences(owner);
-        var archiveReferences = Document?.Worlds
-            .SelectMany(world => world.Objects.Select(sceneObject =>
-                new CinematicScriptNamedReference(world.Key, sceneObject.GaoKey, sceneObject.Name, IsObject: true)))
-            .Concat(Document.CinematicScriptOwners.Values.Select(scriptOwner =>
-                new CinematicScriptNamedReference(scriptOwner.WorldKey, scriptOwner.OwnerKey,
-                    scriptOwner.Name, IsObject: false)))
-            .DistinctBy(reference => (reference.WorldKey, reference.Key, reference.IsObject))
-            .ToArray() ?? [];
+        var archiveReferences = Document == null
+            ? []
+            : CinematicScriptNamedReferenceCatalog.ForDocument(Document);
         if (paths.Length == 0 && schedulerOperations.Length == 0 && engineCallSummaries.Length == 0
             && messageReaders.Length == 0 && messageRoutes.Length == 0 && sourceReferences.Length == 0) return;
         if (!ImGui.CollapsingHeader($"Iris source evidence: callbacks, API calls, MSGSend ({paths.Length})")) return;
