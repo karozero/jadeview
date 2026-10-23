@@ -1057,12 +1057,21 @@ insufficient: the callback owns visibility, emission, and camera-relative
 placement, and—when the owner is activated and admitted to the EOT callback
 table—it runs as an AI update rather than being sampled from a standalone `i`
 clip. The static archive cannot establish that this owner was actually
-scheduled during a particular game run. JadeView's generic actor-motion
-fallback now requires a serialized owner `Events` or root cinematic
-`SceneEvents` link, so an unlinked `i` resource cannot become a motion only
-because one of its tracks targets the same GAO. The next reusable
-implementation step is a callback-preview adapter driven by resolved owner
-variables, capability state, camera samples, and an explicit deterministic
-time-step; it must not infer that an object-reference field itself activates a
-script or load request. This finding is specific to the source-confirmed
-callback; other compiled callbacks still need their own data/API evidence.
+scheduled during a particular game run. JadeView now has a callback-specific
+preview adapter. It binds the callback by name, resolves both effect objects
+from the owner's OVA fields, resolves the global camera reference, applies the
+owner's capability changes from the cinematic timeline, and updates force
+visibility, generator rates, transforms, and orientation on seek/playback.
+The mode's next random delay is not recoverable from a timeline alone, so the
+adapter uses the 2.5-second mean of Iris's `MATHRandFloat(1, 4)` interval. The
+in-game PRNG sequence, EOT scheduling, and whether the callback was activated
+remain unverified; this is a deterministic preview approximation, not full AI
+execution. The adapter does not treat an OVA object reference as an activation
+or resource-load request. The generic actor-motion fallback separately
+requires a serialized owner `Events` or root cinematic `SceneEvents` link, so
+an unlinked `i` resource cannot become a motion merely because one of its
+tracks targets the same GAO. Other compiled callbacks still need their own
+source/API evidence before JadeView can preview them. The implementation is in
+`CinematicCameraPagControllerReader.cs` and `CinematicCameraPagTimeline.cs`;
+`CinematicCameraPagChecks` covers owner binding, capability gating, camera
+placement, repeatable backward seeking, and allocation-free warmed evaluation.

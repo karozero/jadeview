@@ -18,6 +18,7 @@ public sealed partial class CinematicPlayback
     private readonly CinematicShockwaveTimeline shockwave;
     private readonly CinematicFlashTimeline flashes;
     private readonly CinematicLightningTimeline lightnings;
+    private readonly CinematicCameraPagTimeline cameraPags;
     private readonly CinematicParticleState particles;
     private readonly CinematicEventTrackPreview eventTrackPreview = new();
     private long allocatedByObjectState;
@@ -108,6 +109,7 @@ public sealed partial class CinematicPlayback
         flashes = new(sourceClip, world, document.CinematicFlashControllers);
         lightnings = new(sourceClip, world, document.CinematicLightningControllers);
         particles = new(sourceClip, world, resolver);
+        cameraPags = new(document.CinematicScriptOwners.Values, world, ScriptStateCalls);
         shutter = new(sourceClip, world, document);
         screenFade = new(sourceClip, world, document);
         afterEffects = new(sourceClip);
@@ -279,6 +281,7 @@ public sealed partial class CinematicPlayback
         eventTrackPreview.Clear();
         foreach (var actor in actorClips.Keys) actor.CinematicClockOwned = false;
         foreach (var track in objectTracks) track.Object.PreviewMatrix = null;
+        cameraPags.Clear();
         objectState.Clear();
         particles.Clear();
         shockwave.Clear();
@@ -319,6 +322,7 @@ public sealed partial class CinematicPlayback
         var shockwaves = shockwave.Evaluate(Time);
         allocationStart = CaptureAllocationDiagnostics ? GC.GetAllocatedBytesForCurrentThread() : 0;
         EvaluateActors();
+        cameraPags.Evaluate(Time);
         if (CaptureAllocationDiagnostics) allocatedByActors += GC.GetAllocatedBytesForCurrentThread() - allocationStart;
         allocationStart = CaptureAllocationDiagnostics ? GC.GetAllocatedBytesForCurrentThread() : 0;
         MaterialState.Evaluate(Time, attack.Evaluate(Time), shockwaves);
@@ -337,6 +341,7 @@ public sealed partial class CinematicPlayback
         var shockwaves = shockwave.Evaluate(Time);
         ResetFacialPlayback();
         EvaluateActors();
+        cameraPags.Evaluate(Time);
         MaterialState.Evaluate(Time, attack.Evaluate(Time), shockwaves);
         afterEffects.Evaluate(Time);
         AdvanceFacialPlayback(Time);

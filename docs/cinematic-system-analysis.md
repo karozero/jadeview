@@ -86,6 +86,16 @@ by the former global scan. Short root setup/event tracks remain valid and are
 not filtered by duration. This audit does not assert that every retained track
 actually ran in-game.
 
+The `SFX_colpag_cam_scp_loop` behavior is also previewed by a dedicated adapter
+in JadeView. It follows the callback's OVA object references and global camera
+reference, then derives visibility, particle rates, and camera-relative poses
+from the cinematic capability timeline. Its mode changes are deterministic:
+the source callback uses a random 1–4 second delay, while preview uses the
+2.5-second mean so seeking gives repeatable results. This does not execute the
+game's EOT callback scheduler or PRNG and does not prove that the callback is
+active in every scene containing its owner. Treat it as a tested approximation
+for this callback, not as a general script interpreter.
+
 ## Evidence from the retail PC archive
 
 The generated `artifacts/export-verification/archive-cinematic-census.json`

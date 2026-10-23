@@ -40,6 +40,7 @@ CinematicFrequencyChecks.Verify();
 CinematicScaleChecks.Verify(output);
 CinematicShutterChecks.Verify();
 CinematicFlashChecks.Verify();
+CinematicCameraPagChecks.Verify();
 CinematicLightningChecks.Verify();
 CinematicScreenFadeChecks.Verify();
 CinematicFacialSignalChecks.Verify();
