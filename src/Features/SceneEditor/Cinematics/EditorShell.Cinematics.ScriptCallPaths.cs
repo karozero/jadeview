@@ -149,6 +149,8 @@ public sealed partial class EditorShell
     {
         if (reference.Kind == "Function")
             return CinematicScriptReader.FunctionNameFor(reference.Key) ?? "function name not indexed";
+        if (CinematicObjectKey.SpecialActorSlotName(reference.Key) is { } actorSlotName)
+            return actorSlotName;
 
         var resolved = CinematicScriptReferenceNameResolver.Resolve(reference.Key, owner.WorldKey,
             archiveReferences);

@@ -1014,6 +1014,10 @@ internal static class CinematicScriptInspectorChecks
             && CinematicScriptReferenceNameResolver.Resolve(1, 0x100,
                 [new(0x100, 1, "not an archive object", IsObject: true)]) == null,
             "Archive reference labels should prefer the current world, use only unique external matches, and leave cross-world key collisions unresolved");
+        Check(CinematicObjectKey.SpecialActorSlotName(1) == "AI_MainActor slot 1"
+                && CinematicObjectKey.SpecialActorSlotName(2) == "AI_MainActor slot 2"
+                && CinematicObjectKey.SpecialActorSlotName(3) == null,
+            "AI object references should distinguish the two runtime actor slots from archive objects");
         var namedReferenceDocument = new SceneDocument();
         var namedReferenceWorld = new WorldData { Key = 0x500 };
         var actorRoot = new SceneObject { GaoKey = 0x501, Name = "scripted actor root" };
