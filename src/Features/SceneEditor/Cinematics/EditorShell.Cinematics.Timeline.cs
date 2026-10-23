@@ -378,6 +378,7 @@ public sealed partial class EditorShell
         }
 
         DrawCinematicScriptSchedulerEvidence(selected);
+        DrawCinematicEventSchedulerEvidence(selected);
         DrawCinematicScriptReferencedObjectCalls(selected);
         DrawCinematicScriptCallPaths(selected);
         DrawCinematicScriptIncomingReferences(selected, sceneScripts);

@@ -37,6 +37,15 @@ public sealed partial class EditorShell
             ImGui.TextWrapped(finding);
     }
 
+    private static void DrawCinematicEventSchedulerEvidence(CinematicScriptOwner owner)
+    {
+        string[] findings = CinematicEventSchedulerAnalyzer.Analyze(owner);
+        if (findings.Length == 0) return;
+
+        EditorUi.DrawCategoryTitle("World EVE event dispatch");
+        foreach (string finding in findings) ImGui.TextWrapped(finding);
+    }
+
     private void DrawUnmappedCinematicCallbacks(IEnumerable<CinematicScriptOwner> owners)
     {
         CinematicUnmappedCallback[] unmappedCallbacks = CinematicScriptCallbackCoverage.FindUnmapped(owners);

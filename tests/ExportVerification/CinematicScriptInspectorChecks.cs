@@ -1957,6 +1957,32 @@ internal static class CinematicScriptInspectorChecks
             + $"AI table {reportsAiCallbackTable}, world activation {reportsWorldActivation}, runtime caveat {retainsRuntimeUncertainty}, "
             + $"missing flag {reportsMissingAiTableFlag}, ordinary block {reportsOrdinaryActivationBlock}, "
             + $"special-time {reportsSpecialTimeActivation}, dispatch filters {reportsDispatchFilters}, raw-bit rejection {rejectsRawActivationBit}.");
+        var eventDispatchOwner = callbackRegistrationOwner with
+        {
+            EventsKey = 0xD9005D68,
+            SceneEventsKey = 0xD9005D69,
+            SerializedGaoFlags = 0x02000000
+        };
+        string[] eventDispatchFindings = CinematicEventSchedulerAnalyzer.Analyze(eventDispatchOwner);
+        string[] missingEventTableFlagFindings = CinematicEventSchedulerAnalyzer.Analyze(eventDispatchOwner with
+        {
+            SerializedGaoFlags = 0
+        });
+        bool reportsEventTableMembership = eventDispatchFindings.Any(finding =>
+            finding.Contains("eventGameObjectsTablePF", StringComparison.Ordinal)
+            && finding.Contains("0x02000000", StringComparison.Ordinal));
+        bool reportsIndependentRuntimeGates = eventDispatchFindings.Any(finding =>
+            finding.Contains("EVE_MainCall", StringComparison.Ordinal)
+            && finding.Contains("0x00400000", StringComparison.Ordinal)
+            && finding.Contains("extraFlag 0x4", StringComparison.Ordinal)
+            && finding.Contains("not proven", StringComparison.Ordinal));
+        bool reportsClearEventTableFlag = missingEventTableFlagFindings.Any(finding =>
+            finding.Contains("flag 0x02000000 is clear", StringComparison.Ordinal));
+        bool ignoresOwnersWithoutEvents = CinematicEventSchedulerAnalyzer.Analyze(
+            eventDispatchOwner with { EventsKey = uint.MaxValue, SceneEventsKey = uint.MaxValue }).Length == 0;
+        Check(reportsEventTableMembership && reportsIndependentRuntimeGates
+                && reportsClearEventTableFlag && ignoresOwnersWithoutEvents,
+            "EVE dispatch analysis should distinguish event-table eligibility from decoded event links and live execution");
         var configuredLipSyncOwner = new CinematicScriptOwner(0x801, 0, 0x902, 0x10,
             uint.MaxValue, 0x903, "lip-sync owner",
             ["Cine_lipsynch_auto_Lips_init", "Cine_lipsynch_auto_Lips_lecture_messages", "Cine_lipsynch_auto_Lips_morphing"],

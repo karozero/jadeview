@@ -85,6 +85,7 @@ public sealed partial class EditorShell
         }
 
         DrawCinematicScriptSchedulerEvidence(selectedOwner);
+        DrawCinematicEventSchedulerEvidence(selectedOwner);
         DrawCinematicScriptEventTracks(selectedOwner);
         DrawCinematicScriptEventTrackCalls(selectedOwner);
         DrawCinematicScriptActionKitMerges(selectedOwner);
