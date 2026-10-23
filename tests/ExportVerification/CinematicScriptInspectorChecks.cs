@@ -99,6 +99,18 @@ internal static class CinematicScriptInspectorChecks
             && indirectTrackPath.Path.Contains("in Cine_Events_cine_init at ai_bge/ai_compiledscripts_global_managers.c:4223", StringComparison.Ordinal)
             && indirectTrackPath.Path.Contains("if (v1->des_i_ripley == 1)", StringComparison.Ordinal),
             "Callback graph should resolve serialized source function-pointer fields to their assignment and guarded dispatch sites");
+        var soundCompletionOwner = new CinematicScriptOwner(0xD9005D69, 0, 0x71003F69, 0xFF005833,
+            uint.MaxValue, uint.MaxValue, "Sound completion callback fixture",
+            ["Cine_Events_Cine_exec_EndOfEvents"], [], [])
+        {
+            ModelFunctionNames = ["Cine_Events_Cine_exec_EndOfEvents", "Cine_Events_cine_test_fin_sons"]
+        };
+        var soundCompletionPath = CinematicScriptReader.NestedCallbackPaths(soundCompletionOwner)
+            .FirstOrDefault(path => path.FunctionName == "Cine_Events_cine_test_fin_sons");
+        Check(soundCompletionPath?.Path.Contains("replace-current-track", StringComparison.Ordinal) == true
+            && soundCompletionPath.Path.Contains("ai_compiledscripts_global_managers.c:6116", StringComparison.Ordinal)
+            && soundCompletionPath.Path.Contains("3500B021", StringComparison.Ordinal),
+            "The source call graph should preserve dynamically resolved sound-completion track transitions and their key/provenance");
         var sourceEngineCalls = CinematicScriptReader.ReachableEngineCalls(worldSchedulerCallback);
         Check(sourceEngineCalls.Any(call => call.Api == "GFXMaterialSet"
                 && call.FunctionName == "Cine_FigeleMonde_flm_fige"

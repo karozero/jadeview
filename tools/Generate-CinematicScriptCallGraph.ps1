@@ -25,7 +25,7 @@ function Get-LineNumberAtIndex([int[]]$lineStarts, [int]$index) {
     return $lineIndex + 1
 }
 
-function Get-MatchingBrace([string]$text, [int]$openIndex) {
+function Get-MatchingDelimiter([string]$text, [int]$openIndex, [char]$openDelimiter, [char]$closeDelimiter) {
     $depth = 0
     $state = 'code'
     $escaped = $false
@@ -52,8 +52,8 @@ function Get-MatchingBrace([string]$text, [int]$openIndex) {
         if ($current -eq '/' -and $next -eq '*') { $state = 'block-comment'; $position++; continue }
         if ($current -eq '"') { $state = 'string'; continue }
         if ($current -eq "'") { $state = 'character'; continue }
-        if ($current -eq '{') { $depth++ }
-        if ($current -eq '}') {
+        if ($current -eq $openDelimiter) { $depth++ }
+        if ($current -eq $closeDelimiter) {
             $depth--
             if ($depth -eq 0) { return $position }
         }
@@ -75,7 +75,7 @@ foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Filter 'ai_compile
         $functionName = $match.Groups[1].Value
         if (-not $knownFunctions.ContainsKey($functionName)) { continue }
         $openBrace = $match.Index + $match.Length - 1
-        $closeBrace = Get-MatchingBrace $text $openBrace
+        $closeBrace = Get-MatchingDelimiter $text $openBrace ([char]'{') ([char]'}')
         if ($closeBrace -lt 0) { continue }
         $bodyStart = $openBrace + 1
         $sourceFile = [System.IO.Path]::GetRelativePath($resolvedSource, $file.FullName).Replace('\', '/')
@@ -93,7 +93,7 @@ foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Filter 'ai_compile
 $fieldBindings = @{}
 $functionReferenceBindings = @{}
 $fieldAssignmentPattern = [regex]'(?m)(?<variable>[A-Za-z_][A-Za-z0-9_]*)\s*->\s*(?<field>[A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)\s*(?<expression>[^;{}]+);'
-$resolvedFunctionAssignmentPattern = [regex]'(?m)(?<variable>fctr_[A-Za-z_][A-Za-z0-9_]*)\s*=\s*\(int\)\s*AI_ul_RealResolveOneRefFunction\s*\(\s*(?<key>0x[0-9A-Fa-f]+)u?\s*\)\s*;'
+$resolvedFunctionAssignmentPattern = [regex]'(?m)(?<variable>fctr?_[A-Za-z_][A-Za-z0-9_]*)\s*=\s*\(int\)\s*AI_ul_RealResolveOneRefFunction\s*\(\s*(?<key>0x[0-9A-Fa-f]+)u?\s*\)\s*;'
 foreach ($functionName in $definitions.Keys) {
     $definition = $definitions[$functionName]
     $referencePattern = [regex]('\bfctr?_' + [regex]::Escape($functionName) + '_([A-Za-z_][A-Za-z0-9_]*)\b')
@@ -134,7 +134,7 @@ foreach ($functionName in $definitions.Keys) {
 }
 
 $edges = [System.Collections.Generic.List[object]]::new()
-$dispatchPattern = [regex]'(?s)AI_EvalFunc_(?<dispatch>[A-Za-z0-9_]+)_C\s*\((?<arguments>[^;]*?)\);'
+$dispatchPattern = [regex]'AI_EvalFunc_(?<dispatch>[A-Za-z0-9_]+)_C\s*\('
 foreach ($functionName in $definitions.Keys) {
     $definition = $definitions[$functionName]
     $body = $definition.Body
@@ -142,12 +142,17 @@ foreach ($functionName in $definitions.Keys) {
     foreach ($dispatch in $dispatchPattern.Matches($body)) {
         $dispatcher = $dispatch.Groups['dispatch'].Value
         if ($dispatcher -notmatch '^(AIExecute|AITrackChange|AITrackCurChange|AITrackCurChangeNow|AICBAdd|AICBDel)$') { continue }
-        $arguments = $dispatch.Groups['arguments'].Value
+        $openParenthesis = $dispatch.Index + $dispatch.Length - 1
+        $closeParenthesis = Get-MatchingDelimiter $body $openParenthesis ([char]'(') ([char]')')
+        if ($closeParenthesis -lt 0) { continue }
+        $argumentsStart = $openParenthesis + 1
+        $arguments = $body.Substring($argumentsStart, $closeParenthesis - $argumentsStart)
         $callTargets = [System.Collections.Generic.List[object]]::new()
         foreach ($reference in $referencePattern.Matches($arguments)) {
             $targetFunction = $reference.Groups[1].Value
             $binding = $null
-            if ($reference.Value.StartsWith('fctr_', [StringComparison]::Ordinal)) {
+            $isResolvedFunctionReference = $reference.Value.StartsWith('fct_', [StringComparison]::Ordinal) -or $reference.Value.StartsWith('fctr_', [StringComparison]::Ordinal)
+            if ($isResolvedFunctionReference) {
                 $binding = $functionReferenceBindings["$($definition.Source)|$($reference.Value)"]
                 if ($binding -eq $null -or $binding.Target -ne $targetFunction) { continue }
             }

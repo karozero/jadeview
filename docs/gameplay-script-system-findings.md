@@ -981,3 +981,33 @@ loop. The report is `artifacts/callback-driven-eve-audits/FF005833-BF00218E-scri
 the finding is specific evidence for a reusable rule: conditional appearance
 requires both the owner GAO and the runtime script state, not a blanket
 dependency expansion.
+
+### Nested native calls and sound-completion handoff
+
+The call-graph generator now balances nested C parentheses instead of treating
+the first semicolon as the end of an API call. The previous regex swallowed
+`AITrackCurChangeNow` when it appeared inside the condition containing nested
+`SNDGetStatusModifier` calls. It also now attaches resolved function keys to
+both `fct_` and `fctr_` locals. The regenerated index covers 681 functions and
+1,720 dispatch edges; verification checks the resolved sound-completion edge.
+
+The recovered `Cine_Events_cine_play_eventtrack` chain ends by executing
+`Cine_Events_Cine_exec_EndOfEvents` (function key `3500B726`). That function
+queries the three configured music, ambience, and voice sound modifiers. If
+any raw modifier status has bit `0x4`, it replaces the current AI track with
+`Cine_Events_cine_test_fin_sons` (key `3500B021`). That callback checks the
+same three statuses on subsequent AI updates. Once none has bit `0x4`, it
+sets the three stored fade-time values to `1.0`, calls `SND_i_TrackSeti` for
+IDs `0x3F2`, `0x3FC`, and `0x410` when any configured modifier ID is valid, and
+then either returns to track 2 through `f_track_init` when `des_i_ripley == 1`
+or destroys the cinematic script owner. If the initial status check has no
+`0x4` bit, `EndOfEvents` instead flushes the configured sound streams and
+continues its immediate end path.
+
+This is evidence that the cinematic's audio tail is controlled by live sound
+modifier state, not only by the EVE duration or the audio cue list. JadeView can
+now expose the source transition and key, but does not emulate the native sound
+modifier state machine or its track operations. Keep `0x4` as a raw PC Iris
+predicate in diagnostics: Jaded's desktop `SNDGetStatusModifier_C` returns a
+different state-mask value, so its implementation does not establish the
+meaning of that bit for the PC game build.
