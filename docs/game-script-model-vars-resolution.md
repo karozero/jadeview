@@ -35,3 +35,31 @@ any of the reported actor-pose defects. Synthetic ordered-reference fixtures
 cover replacement and absence of stale fields separately.
 
 A before/after comparison also checked callback keys and model/instance variable, object-reference and dialogue-line counts for 159 owners in FF005833, 204 in FF005520 and 248 in FF0045A2. All owner records matched. This establishes metadata stability on those fixtures, not runtime execution or a fix for the reported poses.
+
+## OFC inventory is not the native function array
+
+Iris `AI_ul_CallbackLoadModel` first counts every `.ofc` tag to allocate its
+function array. In its second pass, a zero key skips the entire entry; a nonzero
+`.ofc` key consumes the next function destination (`ai_common.c:1345-1381`).
+`LOA_MakeFileRef` treats `FFFFFFFF` specially: it clears the destination
+immediately and does not enqueue a request (`loading.c:257-277`). Therefore a
+zero-key tag still contributes allocated capacity without advancing the filled
+index, while an `FFFFFFFF` tag advances that index and clears its destination.
+Neither case supplies a callable function. Allocated count and successfully
+resolved function count must remain separate concepts.
+
+The immediate-clear behavior also matters for model OVA references. A sentinel
+clears the shared destination before queued references drain; an earlier valid
+queued OVA may subsequently write its resolved pointer there. Do not model a
+sentinel as a final delayed assignment that necessarily overrides earlier queued
+resources.
+
+JadeView's `Record.References` represents enqueued valid-key requests and excludes
+zero/`FFFFFFFF` keys. `FunctionResources` additionally deduplicates by key and sorts
+its diagnostic inventory. It is useful for payload inspection, but cannot be
+used as a native `funcs[]` index or as evidence of runtime assignment order.
+The raw owner fixture preserves all AIM key/tag entries separately, including
+null entries and duplicates. Reconstruct array destinations from that serialized
+list and the loader rules, not from the deduplicated inspector inventory.
+These are source-derived edge cases; the current retail fixtures do not exercise
+a zero/sentinel OFC entry and do not establish retail runtime parity for it.
