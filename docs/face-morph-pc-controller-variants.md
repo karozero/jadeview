@@ -85,3 +85,31 @@ head reference/channel layout. Do not attach a guessed mesh using its name.
 
 Follow-up: [source module mapping and head selection](face-morph-pc-module-binding.md)
 now resolves that head without a name-based search.
+
+## Cinematic automatic lip-sync variants
+
+The Iris source `external/irisEng/ai/ai_bge/ai_compiledscripts_lipsync_auto.c`
+defines seven explicit `des_i_type_acteur` branches in
+`Cine_lipsynch_auto_Lips_init`. JadeView now records each branch's 32-entry
+mouth-form sequence and `i_canal_tete_ouverture_bouche` channel, instead of
+accepting only type 2. Types 4 and 5 also assign `i_shape_canal_tete` to module
+selectors 3 and 4; the other branches retain that selector from their serialized
+instance data. The per-channel target factor, speed, cycle index, and auto flag
+are read from that instance, then the selected sequence is matched against
+loaded morph data before binding. Unknown types or mismatched meshes remain
+unbound rather than falling back to a character-name guess.
+
+`CinematicMouthVariantChecks` compares all seven exact channel/selector/sequence
+tuples against the decompiled Iris initializer. This establishes source-configured
+controller variants, not that every actor instance receives this callback or that
+the callback was active at a particular time. Message 53 still supplies speech
+timing, while the sequence itself is a fixed 32-form source cycle; the archive
+does not provide phoneme-level audio analysis.
+
+Archive verification on `sally_clean.bf` / `FF0045A2` found a concrete type-3
+controller on `Cine_PNJ_Journaleux.gao`; it now binds to
+`b_journaleux_tete.gao` (11 groups, 3 channels) using module selector 0 and
+channel 2. The same archive still binds type 2 on `Cine_PNJ_Secundo.gao` to
+`b_Crumble_TeteBD.gao` (13 groups, 5 channels), channel 3. The run also exported
+the synchronized cinematic GLB and passed visibility sampling for the selected
+clip. Report: `artifacts/export-verification/lipsync-variant-audit/FF0045A2-cinematic-playback.json`.

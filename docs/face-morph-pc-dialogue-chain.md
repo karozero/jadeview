@@ -320,6 +320,32 @@ embedded TXG/TXL mapping for this PC archive or proved that the 2003 retail
 dialogue path consumes those three fields. Treat this as a strong cross-version
 lead, not as a recovered retail behavior.
 
+The retail PC archive now provides a direct format comparison. IrisTool's
+`BFTextParser` reads an FD text catalogue as sequential embedded chunks: a TXG
+group list, each TXG's language references, then the selected TXI identifier
+table and TXS string pool. These child keys are not separate FAT entries.
+JadeView's existing `TextDocument` reader decodes the TXI values as byte offsets
+into the TXS pool and returns strings in table order. This interpretation is
+confirmed by `FD105833 / 3500A1C9`: the French first offsets are `0, 33, 79,
+127`, while the English `FD205833 / 3500A1C9` offsets are `0, 31, 75, 133`;
+both address the corresponding string starts, whose lengths differ by
+translation. The PC TXI/TXS pair contains no Jaded TXL `ul_SoundKey`,
+`c_FacialIdx`, `c_LipsIdx`, or `c_AnimIdx` record. The shared TXG/TXL naming
+does not make those wire layouts interchangeable.
+
+Jaded's source does establish a later-engine dialogue API: `TEXT_ToSound`,
+`TEXT_LipsIdxGet`, and `TEXT_FacialIdxGet` each resolve the same
+`TEXT_tdst_Eval` (`AIfunctions_text.c`); `SND_RequestPlayDialog` calls
+`TEXTToSound` and requests the resolved runtime sound index
+(`AIfunctions_snd.c`). The text loader separately loads the display language's
+facial/lip metadata and overlays the sound language's `ul_SoundKey`
+(`TEXTload.c`). This is useful architectural evidence for how a dialogue system
+can connect text, voice, face and animation. It is not evidence that the retail
+PC executable uses this later TXL record or those APIs. For current PC preview,
+keep explicit type-53 messages and the scene's WAD cues as separate decoded
+inputs until a PC-specific join is proven; do not derive mouth motion from the
+TXI offsets or string order.
+
 I also checked the installed retail `BGE.exe` (SHA-256
 `70ae232d58bafe5cbf5c27712538af91e8b13a98104ae1bf6aea6dcf3506f5db`) with
 Ghidra string searches for `FacialIdx`, `LipsIdx`, and `TEXT_FacialIdxGet`;
@@ -367,6 +393,46 @@ events are time-keyed, dialogue and facial messages have different types and
 recipients, and audio is handled by sound-manager code. Static archive evidence
 does not establish that all three requests occur on every line or that their
 timestamps are phoneme-synchronized.
+
+### `BF00218E` lane comparison (rechecked 2026-10-24)
+
+I regenerated the source motion audit from `sally_clean.bf` for
+`FF005833 / BF00218E` and compared the recovered message and morph-command
+lanes. The type-53 event times are:
+
+| Track context | Type-53 times (seconds) | Recovered mouth-cycle intent |
+| --- | --- | --- |
+| Sally `71003F5A` | 6.62, 10.23, 13.83, 17.25, 21.00, 27.53, 29.37, 44.70 | Source commands alternate automatic-cycle start/stop; the clip also has separate channel writes. |
+| Pey'j `9E001C75` | 24.10, 24.97, 26.68, 27.62 | Source commands start/stop automatic cycling with different authored speeds. |
+| Secundo `3500BDC4` | none on this type-53 lane | His face is driven by 20 direct channel-form writes, type-8263 (`OBJ_SetModuleChannelData`), from 2.20 to 15.10 s. |
+
+The same clip has 24 type-8263 face-channel writes on Sally (0–35.02 s) and
+15 on Pey'j (0–27.70 s). Type-30 line-selection messages occur on their own
+track and continue beyond several of these face-control intervals. This matches
+the source-level split: type 30 selects a dialogue table row and forwards audio
+metadata, while facial changes use separate messages and direct morph-channel
+events. It explains why the preview can have dialogue audio without a matching
+mouth cycle on every line. It does **not** prove which voice sample is paired
+with each message or that every static event passed its runtime owner/queue
+gates.
+
+The paired audio audit resolves six localized alternatives for the same
+`014_apres_m-disk` WAD (FR, DE, ES, IT, NL, US), each spanning the full
+44.78-second clip; one is selected for playback at a time. It also reads 31
+dialogue text references, whose inspected OVA sound IDs are zero. These are
+language variants of the clip's source bank, not 31 per-line voice assets. The
+separate text references do not identify which samples inside the WAD belong to
+which line.
+
+The result is reproducible with `--cinematic-motion-audit` and
+`--cinematic-audio-audit` against the original archive. `CinematicMotionAudit`
+records source keys and event payloads; it does not execute the dialogue queue or
+infer runtime speaker/audio timing.
+
+```powershell
+dotnet run --project tests/ExportVerification/ExportVerification.csproj -c Release --no-restore -- --cinematic-motion-audit "E:/SteamLibrary/steamapps/common/Beyond Good and Evil/sally_clean.bf" FF005833 BF00218E
+dotnet run --project tests/ExportVerification/ExportVerification.csproj -c Release --no-restore -- --cinematic-audio-audit "E:/SteamLibrary/steamapps/common/Beyond Good and Evil/sally_clean.bf" FF005833 BF00218E
+```
 
 ### Remaining limits
 
@@ -418,6 +484,26 @@ engine snapshot and remains a distinct, unconfirmed path for BGE 2003.
 The IrisTool comparison is useful for asset and animation inspection, but it
 explicitly lacks scripts and cutscene playback, so it cannot close trigger
 conditions by itself.
+
+### Facial message module targeting
+
+The Iris source initializes Sally's `o_module_tete` with
+`ANICanalGaoGet(0)` in `external/irisEng/ai/ai_bge/ai_compiledscripts_sally.c`
+(`Sally_sa_exec_get_modules`). Her type-53 cinematic-expression handler then
+updates facial channels through `o_module_tete`. The companion script also
+initializes its head module from selector 0 in
+`external/irisEng/ai/ai_bge/ai_compiledscripts_companion.c`. JadeView now
+routes the decoded Sally/companion type-53 morph and mouth commands through
+`SceneActor.FindModule(0)`, which uses the actor's active PC shape selector map.
+It no longer applies those facial effects to every morph-bearing part of the
+actor (for example, hair or equipment). Sally's explicit blink overlay is also
+bound to that source-selected module. If selector 0 cannot resolve to a preview
+mesh, the effect is skipped rather than broadcast to unrelated meshes.
+
+`CinematicFacialSignalChecks` covers this rule with a synthetic actor whose
+selector map points module 0 to a head mesh and module 1 to a separate morph
+mesh. This verifies JadeView's routing against the recovered source contract;
+it does not establish that all character scripts use the same module selector.
 
 The matching type-30 source and the `tMessage` field layout are in
 `external/irisEng/ai/ai_bge/ai_compiledscripts_global_managers.c` and

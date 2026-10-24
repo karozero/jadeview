@@ -40,7 +40,7 @@ public sealed partial class SceneActor
             }
 
             AccumulateBindingWeights(binding, sourcePositions, skinnedPositions, influencedVertices,
-                inverseMeshPose, bonePose, sceneObject.DrawFlags);
+                inverseMeshPose, bonePose, sceneObject.EffectiveDrawFlags);
         }
 
         RestoreUnweightedVertices(sourcePositions, skinnedPositions, influencedVertices);

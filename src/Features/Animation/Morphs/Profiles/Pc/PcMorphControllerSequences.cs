@@ -17,11 +17,31 @@ internal static class PcMorphControllerSequences
     internal const uint CinematicMouthInitializerKey = 0x3500B774;
     internal const uint CinematicMouthUpdateKey = 0x3500B77E;
     internal const uint CinematicMouthMessageKey = 0x3500B773;
-    internal static readonly IReadOnlyList<int> CinematicType2 = Array.AsReadOnly(new[]
-    {
-        7, 6, 7, 6, 6, 8, 6, 7, 8, 6, 9, 6, 7, 8, 6, 9,
-        7, 7, 6, 6, 8, 9, 6, 7, 6, 9, 6, 6, 8, 7, 8, 6
-    });
+    private static readonly IReadOnlyDictionary<int, PcMorphCinematicMouthVariant> CinematicMouthVariants =
+        new Dictionary<int, PcMorphCinematicMouthVariant>
+        {
+            [1] = Variant(4, null,
+                7, 6, 7, 6, 6, 8, 6, 7, 8, 6, 9, 6, 7, 8, 6, 9,
+                7, 7, 6, 6, 8, 9, 6, 7, 6, 8, 6, 9, 6, 7, 8, 6),
+            [2] = Variant(3, null,
+                7, 6, 7, 6, 6, 8, 6, 7, 8, 6, 9, 6, 7, 8, 6, 9,
+                7, 7, 6, 6, 8, 9, 6, 7, 6, 9, 6, 6, 8, 7, 8, 6),
+            [3] = Variant(2, null,
+                5, 0, 5, 0, 0, 3, 3, 0, 5, 3, 0, 4, 0, 5, 3, 3,
+                0, 4, 5, 5, 0, 0, 3, 3, 4, 0, 5, 0, 3, 3, 4, 0),
+            [4] = Variant(1, 3,
+                1, 0, 1, 0, 0, 3, 0, 1, 3, 0, 2, 0, 1, 3, 0, 2,
+                1, 1, 0, 0, 3, 2, 0, 1, 0, 3, 2, 0, 0, 1, 3, 0),
+            [5] = Variant(4, 4,
+                7, 6, 7, 6, 6, 8, 6, 7, 8, 6, 9, 6, 7, 8, 6, 9,
+                7, 7, 6, 6, 8, 9, 6, 7, 6, 9, 6, 6, 8, 8, 7, 6),
+            [6] = Variant(4, null,
+                9, 0, 9, 0, 0, 10, 0, 9, 10, 0, 11, 0, 9, 10, 0, 11,
+                9, 9, 0, 0, 10, 11, 0, 11, 0, 9, 0, 0, 10, 10, 11, 0),
+            [7] = Variant(4, null,
+                5, 0, 5, 0, 0, 4, 0, 5, 4, 0, 6, 0, 5, 4, 0, 6,
+                5, 5, 0, 0, 4, 6, 0, 6, 0, 5, 0, 0, 4, 4, 6, 0)
+        };
     private static readonly PcMorphControllerBinding FriendHead = new(SharedInitializerKey, SharedUpdateKey,
         Array.AsReadOnly(new[]
         {
@@ -38,6 +58,22 @@ internal static class PcMorphControllerSequences
         PcMorphTransitionCompletion.ProgressionThreshold);
 
     internal static PcMorphControllerBinding SharedHead(bool friend) => friend ? FriendHead : OtherHead;
+
+    internal static bool TryGetCinematicMouthVariant(int actorType,
+        out PcMorphCinematicMouthVariant variant)
+    {
+        if (CinematicMouthVariants.TryGetValue(actorType, out var matched))
+        {
+            variant = matched;
+            return true;
+        }
+
+        variant = null!;
+        return false;
+    }
+
+    private static PcMorphCinematicMouthVariant Variant(int channel, byte? forcedModuleSelector,
+        params int[] sequence) => new(channel, forcedModuleSelector, Array.AsReadOnly(sequence));
 
     internal static PcMorphControllerFamily Identify(IReadOnlySet<uint> codeKeys)
     {

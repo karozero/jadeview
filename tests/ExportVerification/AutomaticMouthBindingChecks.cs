@@ -7,6 +7,11 @@ internal static class AutomaticMouthBindingChecks
         WorldData world, ResourceResolver resolver, string output, string prefix)
     {
         var definition = preview.MouthCycleDefinition ?? throw new InvalidOperationException("Known shared controller was not automatically bound");
+        int initialBindingCount = preview.ControllerDataBindingCount;
+        for (int attempt = 0; attempt < 8; attempt++)
+            FaceMorphPreview.Get(head, preview.Geometry);
+        Check(preview.ControllerDataBindingCount == initialBindingCount,
+            "Repeated skinning lookups revalidated the immutable morph controller data.");
         Check(actor.FindModule(0) == head && definition.Completion == PcMorphTransitionCompletion.ProgressionThreshold,
             "Source controller bound the wrong module or completion rule");
         Check(definition.FormSequence[0] == (prefix == "military" ? 6 : 4), "Instance friend override selected the wrong initializer branch");
@@ -32,6 +37,11 @@ internal static class AutomaticMouthBindingChecks
         var genericGeometry = new Geometry { Key = 0xDEADBEEF, Positions = preview.Geometry.Positions };
         var genericPreview = FaceMorphPreview.Get(genericHead, genericGeometry)!;
         Check(genericPreview.MouthCycleDefinition != null, "Controller discovery still depends on a known geometry key or character name");
+        int genericBindingCount = genericPreview.ControllerDataBindingCount;
+        for (int attempt = 0; attempt < 8; attempt++)
+            FaceMorphPreview.Get(genericHead, genericGeometry);
+        Check(genericPreview.ControllerDataBindingCount == genericBindingCount,
+            "Morph-based controller matching repeated expensive sequence validation after the first lookup.");
         controllerProperty.SetValue(genericActor, null);
         FaceMorphPreview.Get(genericHead, genericGeometry);
         Check(genericPreview.MouthCycleDefinition == null, "Unknown controller inherited a guessed mouth sequence");

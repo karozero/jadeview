@@ -3,6 +3,11 @@ namespace JadeView;
 public sealed partial class FaceMorphPreview
 {
     private PcMorphControllerBinding? boundController;
+    private PcMorphControllerBinding? cachedControllerDataSource;
+    private PcMorphMouthCycleDefinition? cachedControllerData;
+    private string? cachedControllerDataFailure;
+    private bool hasCachedControllerData;
+    internal int ControllerDataBindingCount { get; private set; }
     public PcMorphMouthCycleDefinition? MouthCycleDefinition { get; private set; }
     public string? ControllerBindingDiagnostic { get; private set; }
 
@@ -11,7 +16,7 @@ public sealed partial class FaceMorphPreview
         var actor = member.Actor;
         var binding = actor?.MouthController;
         bool moduleMatches = binding != null && actor!.FindModule(binding.ModuleSelector) == member;
-        var geometryBinding = binding?.MatchMorphData == true ? binding.Bind(Data) : null;
+        var geometryBinding = binding?.MatchMorphData == true ? ResolveControllerData(binding) : null;
         bool geometryMatches = geometryBinding != null;
         var controller = moduleMatches || geometryMatches ? binding : null;
         ControllerBindingDiagnostic = binding == null ? "No source controller binding was discovered."
@@ -23,12 +28,24 @@ public sealed partial class FaceMorphPreview
         {
             StopMouthCycle();
             boundController = controller;
-            MouthCycleDefinition = controller?.Bind(Data);
+            MouthCycleDefinition = controller == null ? null : ResolveControllerData(controller);
         }
         if (controller != null && MouthCycleDefinition == null)
         {
-            controller.TryBind(Data, out var bindFailure);
-            if (bindFailure != null) ControllerBindingDiagnostic += $" Mouth preview unavailable: {bindFailure}.";
+            if (cachedControllerDataFailure != null)
+                ControllerBindingDiagnostic += $" Mouth preview unavailable: {cachedControllerDataFailure}.";
         }
+    }
+
+    private PcMorphMouthCycleDefinition? ResolveControllerData(PcMorphControllerBinding binding)
+    {
+        if (hasCachedControllerData && ReferenceEquals(binding, cachedControllerDataSource))
+            return cachedControllerData;
+
+        cachedControllerDataSource = binding;
+        cachedControllerData = binding.TryBind(Data, out cachedControllerDataFailure);
+        hasCachedControllerData = true;
+        ControllerDataBindingCount++;
+        return cachedControllerData;
     }
 }

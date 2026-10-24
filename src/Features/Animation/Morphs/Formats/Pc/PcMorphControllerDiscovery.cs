@@ -67,22 +67,23 @@ internal static class PcMorphControllerDiscovery
             var instanceBytes = origin(instance).AsSpan(instance.Offset, instance.Size);
             int actorType = PcScalarVariableReader.ReadOverlay(modelBytes, instanceBytes,
                 "des_i_type_acteur", PcVariableFormat.IntegerType);
-            if (actorType != 2)
+            if (!PcMorphControllerSequences.TryGetCinematicMouthVariant(actorType, out var variant))
             {
                 diagnostic = $"Lip-sync controller actor type {actorType} is not yet supported.";
                 return null;
             }
 
-            int module = PcScalarVariableReader.ReadOverlay(modelBytes, instanceBytes,
-                "i_shape_canal_tete", PcVariableFormat.IntegerType);
+            int module = variant.ForcedModuleSelector
+                ?? PcScalarVariableReader.ReadOverlay(modelBytes, instanceBytes,
+                    "i_shape_canal_tete", PcVariableFormat.IntegerType);
             int automatic = PcScalarVariableReader.ReadOverlay(modelBytes, instanceBytes,
                 "i_expr_bouche_auto", PcVariableFormat.IntegerType);
             int sequenceIndex = PcScalarVariableReader.ReadOverlay(modelBytes, instanceBytes,
                 "i_expr_bouche_blabla_id", PcVariableFormat.IntegerType);
             float factor = PcFloatArrayVariableReader.ReadOverlay(modelBytes, instanceBytes,
-                "f_expr_factor_target", 3);
+                "f_expr_factor_target", variant.Channel);
             float speed = PcFloatArrayVariableReader.ReadOverlay(modelBytes, instanceBytes,
-                "f_expr_speed", 3);
+                "f_expr_speed", variant.Channel);
             if (module is < 0 or > byte.MaxValue || sequenceIndex is < 0 or >= 32)
             {
                 diagnostic = "Lip-sync controller module or sequence index is outside the supported range.";
@@ -96,12 +97,13 @@ internal static class PcMorphControllerDiscovery
                 ? factor : FaceMorphMouthCycleSettings.DefaultFactor;
             float defaultSpeed = float.IsFinite(speed) && speed > 0 && speed <= FaceMorphMouthCycleSettings.MaximumSpeed
                 ? speed : FaceMorphMouthCycleSettings.DefaultSpeed;
-            diagnostic = $"Lip-sync type 2 bound to module {module}, channel 3; auto={automatic != 0}, factor={factor}, speed={speed}, sequence index={sequenceIndex}.";
+            diagnostic = $"Lip-sync type {actorType} bound to module {module}, channel {variant.Channel}; auto={automatic != 0}, factor={factor}, speed={speed}, sequence index={sequenceIndex}.";
             return new(PcMorphControllerSequences.CinematicMouthInitializerKey,
                 PcMorphControllerSequences.CinematicMouthUpdateKey,
-                PcMorphControllerSequences.CinematicType2,
+                variant.FormSequence,
                 PcMorphTransitionCompletion.ProgressionThreshold,
-                (byte)module, 3, autoStart, defaultFactor, defaultSpeed, sequenceIndex, MatchMorphData: true);
+                (byte)module, variant.Channel, autoStart, defaultFactor, defaultSpeed, sequenceIndex,
+                MatchMorphData: true);
         }
         catch (InvalidDataException error)
         {
