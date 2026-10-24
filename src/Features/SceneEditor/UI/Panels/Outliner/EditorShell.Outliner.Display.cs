@@ -19,6 +19,8 @@ public sealed partial class EditorShell
         ImGui.Checkbox("Colliders", ref Renderer.ShowColliders);
         ImGui.Checkbox("Transform gizmo", ref Renderer.ShowGizmo);
         ImGui.Checkbox("Skeleton badges", ref Renderer.ShowSkeletonBadges);
+        ImGui.Checkbox("Dynamic lighting", ref Renderer.DynamicLighting);
+        DrawHelpMarker("Preview the supported Omni, Direct and Spot diffuse lights. Specular, native sector culling and some script-driven light changes are still incomplete. This viewport switch does not change BF data or export settings.");
         ImGui.Checkbox("Game-hidden objects", ref Renderer.ShowGameHidden);
         ImGui.Unindent();
     }

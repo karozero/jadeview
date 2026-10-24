@@ -122,6 +122,8 @@ public sealed partial class EditorShell
         {
             ImGui.TextDisabled("No material (default/fallback used).");
         }
+
+        DrawInitialScriptActivation(obj);
     }
 
     #endregion

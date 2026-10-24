@@ -40,7 +40,17 @@ internal static class OutlinerRowChecks
             && rows[1] == new OutlinerRow(OutlinerRowKind.ActorComponent, matchingComponent),
             "Revealing a selected actor component should expand its group and include that row.");
 
-        Console.WriteLine("PASS: Outliner filtered rows, actor expansion, selected-component reveal and standalone objects");
+        OutlinerRowBuilder.Build(world, MatchesFilter, expandedActors, null, rows, matches,
+            OutlinerContentKind.Actors);
+        Require(rows.Count == 2 && rows.All(row => row.Kind != OutlinerRowKind.SceneObject),
+            "The Actors category should hide standalone objects.");
+
+        OutlinerRowBuilder.Build(world, MatchesFilter, expandedActors, null, rows, matches,
+            OutlinerContentKind.StandaloneObjects);
+        Require(rows.Count == 1 && rows[0].Object == standalone,
+            "The Objects category should show only standalone objects.");
+
+        Console.WriteLine("PASS: Outliner categories, filtered rows, actor expansion, selected-component reveal and standalone objects");
     }
 
     private static void Require(bool condition, string message)

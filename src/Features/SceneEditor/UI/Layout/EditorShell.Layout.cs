@@ -14,7 +14,7 @@ public sealed partial class EditorShell
         float splitterSize = 7 * _scale;
         float bodyHeight = Math.Max(1, available.Y - 30 * _scale);
         float usableHeight = Math.Max(1, bodyHeight - splitterSize);
-        float browserHeight = panelLayout.GetBrowserHeight(usableHeight, _scale);
+        float browserHeight = panelLayout.GetBrowserHeight(usableHeight, _scale, _cutsceneMode);
         float sceneHeight = Math.Max(1, usableHeight - browserHeight);
 
         ImGui.BeginChild("SceneWorkspace", new Vector2(available.X, sceneHeight));
@@ -39,11 +39,11 @@ public sealed partial class EditorShell
         // Place the horizontal handle without automatic item spacing around it.
         ImGui.SetCursorPosY(ImGui.GetCursorPosY() - ImGui.GetStyle().ItemSpacing.Y);
         float verticalDelta = DrawPanelSplitter("BrowserSplitter", new Vector2(available.X, splitterSize), false);
-        if (verticalDelta != 0) panelLayout.ResizeBrowser(usableHeight, _scale, verticalDelta);
-        if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) panelLayout.ResetBrowser();
+        if (verticalDelta != 0) panelLayout.ResizeBrowser(usableHeight, _scale, verticalDelta, _cutsceneMode);
+        if (ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left)) panelLayout.ResetBrowser(_cutsceneMode);
         ImGui.SetCursorPosY(ImGui.GetCursorPosY() - ImGui.GetStyle().ItemSpacing.Y);
         ImGui.BeginChild("ContentBrowserPanel", new Vector2(available.X, browserHeight), ImGuiChildFlags.Borders);
-        if (_cutsceneMode) DrawCinematicBrowser();
+        if (_cutsceneMode) DrawCinematicBottomWorkspace();
         else DrawContentBrowser();
         ImGui.EndChild();
     }

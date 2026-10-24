@@ -7,9 +7,13 @@ internal sealed class EditorPanelLayout
     private const float DefaultViewportFraction = .47f;
     private const float DefaultInspectorFraction = .30f;
     private const float DefaultBrowserFraction = .27f;
+    private const float DefaultCinematicBrowserFraction = .38f;
+    private const float DefaultCinematicTimelineFraction = .55f;
     private float viewportFraction = DefaultViewportFraction;
     private float inspectorFraction = DefaultInspectorFraction;
     private float browserFraction = DefaultBrowserFraction;
+    private float cinematicBrowserFraction = DefaultCinematicBrowserFraction;
+    private float cinematicTimelineFraction = DefaultCinematicTimelineFraction;
 
     internal Vector3 GetWidths(float width, float scale)
     {
@@ -19,11 +23,19 @@ internal sealed class EditorPanelLayout
         return new(viewport, inspector, Math.Max(minimum, width - viewport - inspector));
     }
 
-    internal float GetBrowserHeight(float height, float scale)
+    internal float GetBrowserHeight(float height, float scale, bool cinematicMode = false)
     {
         float minimumBrowser = Math.Min(110 * scale, height * .3f);
         float minimumScene = Math.Min(240 * scale, height * .6f);
-        return Math.Clamp(height * browserFraction, minimumBrowser, height - minimumScene);
+        float fraction = cinematicMode ? cinematicBrowserFraction : browserFraction;
+        return Math.Clamp(height * fraction, minimumBrowser, height - minimumScene);
+    }
+
+    internal float GetCinematicTimelineHeight(float height, float scale)
+    {
+        float minimumTimeline = Math.Min(96 * scale, height * .35f);
+        float minimumBrowser = Math.Min(96 * scale, height * .35f);
+        return Math.Clamp(height * cinematicTimelineFraction, minimumTimeline, height - minimumBrowser);
     }
 
     internal void ResizeColumns(float width, float scale, float delta, bool firstBoundary)
@@ -44,8 +56,18 @@ internal sealed class EditorPanelLayout
         inspectorFraction = sizes.Y / width;
     }
 
-    internal void ResizeBrowser(float height, float scale, float delta) =>
-        browserFraction = Math.Clamp((GetBrowserHeight(height, scale) - delta) / height, 0, 1);
+    internal void ResizeBrowser(float height, float scale, float delta, bool cinematicMode = false)
+    {
+        float resizedFraction = Math.Clamp((GetBrowserHeight(height, scale, cinematicMode) - delta) / height, 0, 1);
+        if (cinematicMode) cinematicBrowserFraction = resizedFraction;
+        else browserFraction = resizedFraction;
+    }
+
+    internal void ResizeCinematicTimeline(float height, float scale, float delta) =>
+        cinematicTimelineFraction = Math.Clamp(
+            (GetCinematicTimelineHeight(height, scale) + delta) / height, 0, 1);
+
+    internal void ResetCinematicTimeline() => cinematicTimelineFraction = DefaultCinematicTimelineFraction;
 
     internal void ResetColumns()
     {
@@ -53,5 +75,9 @@ internal sealed class EditorPanelLayout
         inspectorFraction = DefaultInspectorFraction;
     }
 
-    internal void ResetBrowser() => browserFraction = DefaultBrowserFraction;
+    internal void ResetBrowser(bool cinematicMode = false)
+    {
+        if (cinematicMode) cinematicBrowserFraction = DefaultCinematicBrowserFraction;
+        else browserFraction = DefaultBrowserFraction;
+    }
 }

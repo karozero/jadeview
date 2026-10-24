@@ -30,6 +30,24 @@ public sealed partial class EditorShell
             DrawDetails();
             ImGui.EndTabItem();
         }
+        CinematicScriptOwner? scriptOwner = ResolveSelectedScriptOwner();
+        if (scriptOwner != null && ImGui.BeginTabItem("Script"))
+        {
+            DrawSelectedScriptOwner(scriptOwner);
+            ImGui.EndTabItem();
+        }
+        if (SelectedObject.LightResourceKey is not (0 or uint.MaxValue)
+            && ImGui.BeginTabItem("Light"))
+        {
+            DrawLightComponent(SelectedObject);
+            ImGui.EndTabItem();
+        }
+        if (Document?.CollisionResources?.TryGet(SelectedObject, out _) == true
+            && ImGui.BeginTabItem("Collision"))
+        {
+            DrawCollisionResourceInspector(SelectedObject);
+            ImGui.EndTabItem();
+        }
         if (SelectedObject.Actor != null && ImGui.BeginTabItem("Animation"))
         {
             DrawAnimationControls();

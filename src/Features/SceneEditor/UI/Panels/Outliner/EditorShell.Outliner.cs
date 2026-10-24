@@ -34,6 +34,7 @@ public sealed partial class EditorShell
             return;
         }
 
+        DrawOutlinerContentTabs(ActiveWorld);
         BuildOutlinerRows(ActiveWorld);
         ImGui.BeginChild("OutlinerList", Vector2.Zero, ImGuiChildFlags.None);
         int revealIndex = FindRevealedOutlinerRow();
@@ -58,7 +59,26 @@ public sealed partial class EditorShell
     private void BuildOutlinerRows(WorldData world)
     {
         OutlinerRowBuilder.Build(world, MatchesOutlinerFilter, _expandedOutlinerActors,
-            _revealOutliner, _outlinerRows, _outlinerMatches);
+            _revealOutliner, _outlinerRows, _outlinerMatches, _outlinerContentKind);
+    }
+
+    private void DrawOutlinerContentTabs(WorldData world)
+    {
+        int actorCount = world.Actors.Count(actor => actor.Members.Any(MatchesOutlinerFilter));
+        int objectCount = world.Objects.Count(sceneObject => sceneObject.Actor == null && MatchesOutlinerFilter(sceneObject));
+        if (!ImGui.BeginTabBar("OutlinerContentTabs")) return;
+        DrawOutlinerTab(OutlinerContentKind.All, $"All objects ({world.Objects.Count(MatchesOutlinerFilter)})");
+        DrawOutlinerTab(OutlinerContentKind.Actors, $"Actors ({actorCount})");
+        DrawOutlinerTab(OutlinerContentKind.StandaloneObjects, $"Objects ({objectCount})");
+        ImGui.EndTabBar();
+    }
+
+    private void DrawOutlinerTab(OutlinerContentKind kind, string label)
+    {
+        ImGuiTabItemFlags flags = _outlinerContentKind == kind ? ImGuiTabItemFlags.SetSelected : ImGuiTabItemFlags.None;
+        if (!BeginTabItemWithFlags(label, flags)) return;
+        _outlinerContentKind = kind;
+        ImGui.EndTabItem();
     }
 
     private int FindRevealedOutlinerRow()
