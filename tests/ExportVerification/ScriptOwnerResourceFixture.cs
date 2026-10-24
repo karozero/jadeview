@@ -93,7 +93,10 @@ internal static class ScriptOwnerResourceFixture
             resources.Add(new(key.ToString("X8"), world.ToString("X8"), record?.LoadWorldKey.ToString("X8"),
                 kind.ToString(), record?.Kind.ToString(), record?.Name, record?.Offset, record?.Size,
                 status, resolved.Failure, file, payload == null ? null : Convert.ToHexString(SHA256.HashData(payload)))
-                { Payload = payload });
+                {
+                    Payload = payload,
+                    OvaSummary = record?.Kind == 't' && payload != null ? ScriptOvaFixtureSummary.Read(payload) : null
+                });
             links.Add(new(role, order, key.ToString("X8"), world.ToString("X8"), status, file));
             return status == "Resolved" ? record : null;
         }
@@ -117,5 +120,6 @@ internal static class ScriptOwnerResourceFixture
         string? File, string? Sha256)
     {
         [JsonIgnore] public byte[]? Payload { get; init; }
+        public ScriptOvaFixtureSummary.Summary? OvaSummary { get; init; }
     }
 }
