@@ -8,30 +8,12 @@ namespace JadeView;
 /// </summary>
 internal static class PcScriptCallbackSlotResolver
 {
-    private const char VariableResourceKind = 't';
-
     internal static CinematicScriptCallbackSlot[]? Resolve(PcSceneLoader.Record model,
         PcSceneResourceIndex resources,
         IReadOnlyDictionary<PcSceneLoader.Record, byte[]> origins,
         IReadOnlyDictionary<uint, string> functionNames)
     {
-        CinematicScriptCallbackSlot[]? effectiveSlots = null;
-        foreach (uint variableKey in model.References
-                     .Where(reference => reference.Kind == VariableResourceKind)
-                     .Select(reference => reference.Key))
-        {
-            PcSceneLoader.Record? record = resources.Resolve(variableKey, model.LoadWorldKey);
-            if (record?.Kind != VariableResourceKind
-                || !origins.TryGetValue(record, out byte[]? bytes)
-                || record.Offset < 0 || record.Size < 0
-                || record.Offset > bytes.Length - record.Size)
-                return null;
-
-            CinematicScriptCallbackSlot[]? slots = PcScriptCallbackSlotReader.Read(
-                bytes.AsSpan(record.Offset, record.Size), functionNames);
-            if (slots == null) return null;
-            effectiveSlots = slots;
-        }
-        return effectiveSlots;
+        ReadOnlyMemory<byte>? payload = PcScriptModelVariableResourceResolver.ResolveModel(model, resources, origins);
+        return payload is { } bytes ? PcScriptCallbackSlotReader.Read(bytes.Span, functionNames) : null;
     }
 }

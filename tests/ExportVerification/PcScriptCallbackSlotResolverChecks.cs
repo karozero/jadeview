@@ -5,6 +5,7 @@ internal static class PcScriptCallbackSlotResolverChecks
 {
     internal static void Verify()
     {
+        VerifyEffectiveVariableResources();
         const uint modelWorld = 0x100;
         var model = new PcSceneLoader.Record(1, 's', 0, 0)
         {
@@ -89,6 +90,67 @@ internal static class PcScriptCallbackSlotResolverChecks
         byte[] bytes = new byte[12 + 5 * sizeof(uint)];
         for (int index = 0; index < keys.Length; index++)
             BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(12 + index * sizeof(uint)), keys[index]);
+        return bytes;
+    }
+
+    private static void VerifyEffectiveVariableResources()
+    {
+        const uint modelWorld = 0x100;
+        const uint ownerWorld = 0x200;
+        byte[] oldBytes = ScalarObject("removed_model_field", 11);
+        byte[] finalBytes = ScalarObject("current_field", 22);
+        byte[] instanceBytes = ScalarObject("current_field", 33);
+        var model = new PcSceneLoader.Record(1, 's', 0, 0)
+        {
+            LoadWorldKey = modelWorld, References = [new(2, 't'), new(3, 't')]
+        };
+        var oldModel = Record(2, 't', modelWorld, oldBytes);
+        var finalModel = Record(3, 't', modelWorld, finalBytes);
+        var instance = Record(3, 't', ownerWorld, instanceBytes);
+        var origins = new Dictionary<PcSceneLoader.Record, byte[]>
+        {
+            [oldModel] = oldBytes, [finalModel] = finalBytes, [instance] = instanceBytes
+        };
+        var resources = new PcSceneResourceIndex([oldModel, finalModel, instance]);
+        ReadOnlyMemory<byte> resolvedModel = PcScriptModelVariableResourceResolver
+            .ResolveModel(model, resources, origins)!.Value;
+        ReadOnlyMemory<byte> resolvedInstance = PcScriptModelVariableResourceResolver
+            .ResolveInstance(3, ownerWorld, resources, origins)!.Value;
+        var modelVariables = PcVariableSnapshotReader.Read(resolvedModel.Span, "model");
+        var instanceVariables = PcVariableSnapshotReader.Read(resolvedInstance.Span, "instance");
+        Require(modelVariables.Length == 1 && modelVariables[0].Name == "current_field"
+            && !modelVariables.Any(variable => variable.Name == "removed_model_field")
+            && modelVariables[0].Value != instanceVariables[0].Value,
+            "Replaced model fields survived or model/instance world scopes were conflated.");
+        var references = PcObjectReferenceListReader.ReadOverlayBlocks([resolvedModel], resolvedInstance.Span);
+        Require(references.Length == 1 && references[0].VariableName == "current_field"
+            && references[0].TargetKey == 33 && references[0].Source == "instance",
+            "Effective model replacement changed the existing model/instance reference overlay.");
+
+        byte[] truncatedTail = oldBytes[..^sizeof(uint)];
+        var truncatedModel = Record(2, 't', modelWorld, truncatedTail);
+        origins[truncatedModel] = truncatedTail;
+        var truncatedResources = new PcSceneResourceIndex([truncatedModel, finalModel, instance]);
+        Require(PcScriptModelVariableResourceResolver.ResolveModel(model, truncatedResources, origins) == null,
+            "A later valid OVA erased an earlier model OVA's truncated required callback table.");
+        Require(PcScriptModelVariableResourceResolver.ResolveInstance(2, modelWorld, truncatedResources, origins) != null,
+            "Model-only callback-tail validation changed instance variable-storage semantics.");
+        origins[finalModel] = [0];
+        Require(PcScriptModelVariableResourceResolver.ResolveModel(model, resources, origins) == null
+            && PcScriptModelVariableResourceResolver.ResolveInstance(3, ownerWorld, resources, origins) != null,
+            "An invalid final model OVA resurrected earlier defaults or erased valid instance evidence.");
+    }
+
+    private static byte[] ScalarObject(string name, uint key)
+    {
+        byte[] bytes = new byte[12 + 12 + 30 + sizeof(uint) + 5 * sizeof(uint)];
+        BinaryPrimitives.WriteInt32LittleEndian(bytes, 12);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(8), 1);
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(12), PcVariableFormat.ObjectReferenceType);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(16), 30);
+        System.Text.Encoding.ASCII.GetBytes(name).CopyTo(bytes, 20);
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(50), sizeof(uint));
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(54), key);
         return bytes;
     }
 

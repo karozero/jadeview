@@ -494,24 +494,23 @@ internal static class CinematicScriptReader
     }
 
     private static CinematicScriptCallbackSlot[]? ReadCallbackSlots(PcSceneLoader.Record model,
-        PcSceneResourceIndex resources, IReadOnlyDictionary<PcSceneLoader.Record, byte[]> origins) =>
-        PcScriptCallbackSlotResolver.Resolve(model, resources, origins, FunctionNames.Value);
+        PcSceneResourceIndex resources,
+        IReadOnlyDictionary<PcSceneLoader.Record, byte[]> origins)
+    {
+        return PcScriptCallbackSlotResolver.Resolve(model, resources, origins, FunctionNames.Value);
+    }
 
     private static CinematicDialogueLine[] ReadDialogueLines(PcSceneLoader.Record model, uint instanceKey,
         uint ownerWorldKey, PcSceneResourceIndex resources,
         IReadOnlyDictionary<PcSceneLoader.Record, byte[]> origins)
     {
-        PcSceneLoader.Record? instanceVariables = resources.Resolve(instanceKey, ownerWorldKey);
-        ReadOnlySpan<byte> instanceBytes = instanceVariables?.Kind == 't'
-            ? origins[instanceVariables].AsSpan(instanceVariables.Offset, instanceVariables.Size) : [];
+        ReadOnlyMemory<byte> instanceBytes = PcScriptModelVariableResourceResolver.ResolveInstance(
+            instanceKey, ownerWorldKey, resources, origins) ?? ReadOnlyMemory<byte>.Empty;
         try
         {
-            ReadOnlyMemory<byte>[] modelBlocks = model.References.Where(reference => reference.Kind == 't')
-                .Select(reference => resources.Resolve(reference.Key, model.LoadWorldKey))
-                .Where(record => record?.Kind == 't').OfType<PcSceneLoader.Record>()
-                .Select(record => (ReadOnlyMemory<byte>)origins[record].AsMemory(record.Offset, record.Size))
-                .ToArray();
-            return PcDialogueLineTableReader.ReadOverlayBlocks(modelBlocks, instanceBytes.ToArray()) ?? [];
+            ReadOnlyMemory<byte>? modelBytes = PcScriptModelVariableResourceResolver.ResolveModel(model, resources, origins);
+            return PcDialogueLineTableReader.ReadOverlayBlocks(
+                modelBytes is { } bytes ? [bytes] : [], instanceBytes) ?? [];
         }
         catch (InvalidDataException)
         {
@@ -524,19 +523,17 @@ internal static class CinematicScriptReader
         IReadOnlyDictionary<PcSceneLoader.Record, byte[]> origins)
     {
         var variables = new List<CinematicScriptVariable>();
-        foreach (var variableRecord in model.References.Where(reference => reference.Kind == 't')
-            .Select(reference => resources.Resolve(reference.Key, model.LoadWorldKey)).OfType<PcSceneLoader.Record>())
-            Append(variableRecord, "model");
-        if (resources.Resolve(instanceKey, ownerWorldKey) is { Kind: 't' } instanceVariables)
-            Append(instanceVariables, "instance");
+        Append(PcScriptModelVariableResourceResolver.ResolveModel(model, resources, origins), "model");
+        Append(PcScriptModelVariableResourceResolver.ResolveInstance(
+            instanceKey, ownerWorldKey, resources, origins), "instance");
         return variables.ToArray();
 
-        void Append(PcSceneLoader.Record record, string source)
+        void Append(ReadOnlyMemory<byte>? payload, string source)
         {
+            if (payload is not { } bytes) return;
             try
             {
-                var bytes = origins[record].AsSpan(record.Offset, record.Size);
-                variables.AddRange(PcVariableSnapshotReader.Read(bytes, source));
+                variables.AddRange(PcVariableSnapshotReader.Read(bytes.Span, source));
             }
             catch (InvalidDataException)
             {
@@ -551,14 +548,10 @@ internal static class CinematicScriptReader
     {
         try
         {
-            ReadOnlyMemory<byte>[] modelBlocks = model.References.Where(reference => reference.Kind == 't')
-                .Select(reference => resources.Resolve(reference.Key, model.LoadWorldKey)).OfType<PcSceneLoader.Record>()
-                .Select(record => (ReadOnlyMemory<byte>)origins[record].AsMemory(record.Offset, record.Size))
-                .ToArray();
-            PcSceneLoader.Record? instanceVariables = resources.Resolve(instanceKey, ownerWorldKey);
-            ReadOnlySpan<byte> instanceBytes = instanceVariables?.Kind == 't'
-                ? origins[instanceVariables].AsSpan(instanceVariables.Offset, instanceVariables.Size) : [];
-            return PcObjectReferenceListReader.ReadOverlayBlocks(modelBlocks, instanceBytes)
+            ReadOnlyMemory<byte>? modelBytes = PcScriptModelVariableResourceResolver.ResolveModel(model, resources, origins);
+            ReadOnlyMemory<byte> instanceBytes = PcScriptModelVariableResourceResolver.ResolveInstance(
+                instanceKey, ownerWorldKey, resources, origins) ?? ReadOnlyMemory<byte>.Empty;
+            return PcObjectReferenceListReader.ReadOverlayBlocks(modelBytes is { } bytes ? [bytes] : [], instanceBytes.Span)
                 .Where(reference => reference.TargetKey is > 0 and < uint.MaxValue
                     && (reference.TargetKey <= 2 || resources.Resolve(reference.TargetKey, ownerWorldKey) != null))
                 .Select(reference => new CinematicScriptObjectReference(reference.VariableName,
