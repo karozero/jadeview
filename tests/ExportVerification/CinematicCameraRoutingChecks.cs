@@ -85,7 +85,66 @@ internal static class CinematicCameraRoutingChecks
         }
         VerifySharedSourceReceivers(output, world, clip);
         VerifyHierarchicalCameraPose();
+        VerifyViewportCameraPoseReset();
         Console.WriteLine("PASS: source camera/target routing, actor references, no-target orientation, unscaled cut offsets, reverse seek and matching GLB poses");
+    }
+
+    private static void VerifyViewportCameraPoseReset()
+    {
+        using var renderer = new SceneRenderer();
+        SceneRenderer.ViewportCameraState stockCamera = renderer.CaptureViewportCameraState();
+        var sourceRotation = Quaternion.CreateFromYawPitchRoll(.7f, -.25f, .1f);
+        var sourcePosition = new Vector3(12, 5, -8);
+        var sourcePose = Matrix4x4.CreateFromQuaternion(sourceRotation)
+            * Matrix4x4.CreateTranslation(sourcePosition);
+        const float sourceFov = 62;
+        if (!renderer.TrySetCameraPose(sourcePose, sourceFov))
+            throw new InvalidDataException("A valid source camera pose could not be applied before detaching.");
+        Vector3 expectedForward = Vector3.Normalize(Vector3.Transform(-Vector3.UnitZ, sourceRotation));
+        Vector3 actualForward = Vector3.Normalize(renderer.Camera.Target - renderer.Camera.Position);
+        if (Vector3.Distance(renderer.Camera.Position, sourcePosition) > .0001f
+            || Vector3.Distance(actualForward, expectedForward) > .0001f
+            || renderer.CinematicHorizontalFov != sourceFov)
+            throw new InvalidDataException("Following the source camera did not apply its pose and lens.");
+
+        renderer.Camera.Up = Vector3.Transform(Vector3.UnitY, sourceRotation);
+        renderer.SynchronizeManualCameraOrientation();
+        Vector3 manualForward = Vector3.Normalize(renderer.Camera.Target - renderer.Camera.Position);
+        Vector3 trackedAnglesForward = new(MathF.Sin(renderer.Yaw) * MathF.Cos(renderer.Pitch),
+            MathF.Sin(renderer.Pitch), MathF.Cos(renderer.Yaw) * MathF.Cos(renderer.Pitch));
+        if (renderer.Camera.Up != Vector3.UnitY
+            || Vector3.Distance(manualForward, trackedAnglesForward) > .0001f
+            || MathF.Abs(Vector3.Distance(renderer.Camera.Position, renderer.Camera.Target) - 1) > .0001f)
+            throw new InvalidDataException("Detaching from a rolled source view must synchronize yaw/pitch and restore the editor world-up free-look basis.");
+
+        Vector3 manualPosition = renderer.Camera.Position;
+        renderer.ApplyManualCameraLook(new(80, -25));
+        if (renderer.Camera.Position != manualPosition
+            || Vector3.Distance(Vector3.Normalize(renderer.Camera.Target - renderer.Camera.Position), manualForward) < .01f)
+            throw new InvalidDataException("Manual RMB look must rotate view direction from the camera position instead of orbiting its target.");
+
+        renderer.Camera.Position += Vector3.UnitX * 3;
+        renderer.Camera.Target += Vector3.UnitX * 3;
+        renderer.RestoreViewportCameraState(stockCamera);
+        if (renderer.Camera.Position != stockCamera.Camera.Position
+            || renderer.Camera.Target != stockCamera.Camera.Target
+            || renderer.Yaw != stockCamera.Yaw
+            || renderer.Pitch != stockCamera.Pitch
+            || renderer.MoveSpeed != stockCamera.MoveSpeed
+            || renderer.CinematicHorizontalFov != stockCamera.CinematicHorizontalFov)
+            throw new InvalidDataException("Reset viewport view must restore the captured stock framing without restoring the source view.");
+
+        if (!renderer.TrySetCameraPose(sourcePose, sourceFov)
+            || Vector3.Distance(renderer.Camera.Position, sourcePosition) > .0001f
+            || renderer.CinematicHorizontalFov != sourceFov)
+            throw new InvalidDataException("Re-enabling source follow must restore the source camera after manual navigation/reset.");
+
+        var invalidPose = default(Matrix4x4);
+        var previousCamera = renderer.Camera;
+        if (renderer.TrySetCameraPose(invalidPose)
+            || renderer.Camera.Position != previousCamera.Position
+            || renderer.Camera.Target != previousCamera.Target)
+            throw new InvalidDataException("An invalid source pose changed the viewport camera.");
     }
 
     private static void VerifyHierarchicalCameraPose()

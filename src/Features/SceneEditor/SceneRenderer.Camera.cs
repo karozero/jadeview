@@ -10,6 +10,9 @@ namespace JadeView;
 
 public sealed partial class SceneRenderer
 {
+    public readonly record struct ViewportCameraState(Camera3D Camera, float Yaw, float Pitch,
+        float MoveSpeed, float? CinematicHorizontalFov);
+
     public SceneRenderer()
     {
         InitCamera();
@@ -28,6 +31,81 @@ public sealed partial class SceneRenderer
         Vector3 dir = Vector3.Normalize(Camera.Target - Camera.Position);
         Yaw = MathF.Atan2(dir.X, dir.Z);
         Pitch = MathF.Asin(Math.Clamp(dir.Y, -0.99f, 0.99f));
+    }
+
+    public ViewportCameraState CaptureViewportCameraState() =>
+        new(Camera, Yaw, Pitch, MoveSpeed, CinematicHorizontalFov);
+
+    public void RestoreViewportCameraState(ViewportCameraState state)
+    {
+        Camera = state.Camera;
+        Yaw = state.Yaw;
+        Pitch = state.Pitch;
+        MoveSpeed = state.MoveSpeed;
+        CinematicHorizontalFov = state.CinematicHorizontalFov;
+    }
+
+    /// <summary>Synchronizes the free-look camera basis with its current view direction.</summary>
+    public void SynchronizeManualCameraOrientation()
+    {
+        Vector3 forward = Camera.Target - Camera.Position;
+        if (forward.LengthSquared() < 1e-6f) return;
+        forward = Vector3.Normalize(forward);
+        Camera.Up = Vector3.UnitY;
+        Camera.Target = Camera.Position + forward;
+        Yaw = MathF.Atan2(forward.X, forward.Z);
+        Pitch = MathF.Asin(Math.Clamp(forward.Y, -.99f, .99f));
+    }
+
+    public void ApplyManualCameraLook(Vector2 mouseDelta)
+    {
+        Yaw -= mouseDelta.X * .003f;
+        Pitch = Math.Clamp(Pitch - mouseDelta.Y * .003f, -1.52f, 1.52f);
+        Vector3 forward = new(MathF.Sin(Yaw) * MathF.Cos(Pitch),
+            MathF.Sin(Pitch), MathF.Cos(Yaw) * MathF.Cos(Pitch));
+        Camera.Target = Camera.Position + forward;
+        Camera.Up = Vector3.UnitY;
+    }
+
+    private void UpdateFlyingCamera(float deltaTime)
+    {
+        Vector2 mouseDelta = Raylib.GetMouseDelta();
+        ApplyManualCameraLook(mouseDelta);
+        MoveSpeed = Math.Clamp(MoveSpeed * MathF.Pow(1.25f, Raylib.GetMouseWheelMove()), 0.05f, 2000.0f);
+        Vector3 forward = Vector3.Normalize(Camera.Target - Camera.Position);
+        Vector3 right = Vector3.Normalize(Vector3.Cross(forward, Vector3.UnitY));
+        float speed = MoveSpeed * deltaTime * (Raylib.IsKeyDown(KeyboardKey.LeftShift) ? 3.5f : 1.0f);
+        if (Raylib.IsKeyDown(KeyboardKey.W)) Camera.Position += forward * speed;
+        if (Raylib.IsKeyDown(KeyboardKey.S)) Camera.Position -= forward * speed;
+        if (Raylib.IsKeyDown(KeyboardKey.D)) Camera.Position += right * speed;
+        if (Raylib.IsKeyDown(KeyboardKey.A)) Camera.Position -= right * speed;
+        if (Raylib.IsKeyDown(KeyboardKey.E)) Camera.Position += Vector3.UnitY * speed;
+        if (Raylib.IsKeyDown(KeyboardKey.Q)) Camera.Position -= Vector3.UnitY * speed;
+        Camera.Target = Camera.Position + forward;
+        Camera.Up = Vector3.UnitY;
+    }
+
+    /// <summary>Applies a world-space camera pose while preserving the current viewing distance.</summary>
+    public bool TrySetCameraPose(Matrix4x4 pose, float? horizontalFov = null)
+    {
+        float determinant = pose.GetDeterminant();
+        if (!float.IsFinite(determinant) || MathF.Abs(determinant) < 1e-8f
+            || !Matrix4x4.Decompose(pose, out _, out var rotation, out var position)
+            || rotation.LengthSquared() < 1e-6f
+            || !float.IsFinite(position.X) || !float.IsFinite(position.Y) || !float.IsFinite(position.Z)) return false;
+        Vector3 forward = Vector3.Transform(-Vector3.UnitZ, rotation);
+        Vector3 up = Vector3.Transform(Vector3.UnitY, rotation);
+        if (forward.LengthSquared() < 1e-6f || up.LengthSquared() < 1e-6f) return false;
+
+        float distance = Math.Clamp(Vector3.Distance(Camera.Position, Camera.Target), 1, 1000);
+        forward = Vector3.Normalize(forward);
+        Camera.Position = position;
+        Camera.Target = position + forward * distance;
+        Camera.Up = Vector3.Normalize(up);
+        CinematicHorizontalFov = horizontalFov;
+        Yaw = MathF.Atan2(forward.X, forward.Z);
+        Pitch = MathF.Asin(Math.Clamp(forward.Y, -.99f, .99f));
+        return true;
     }
 
     /// Преобразование экранных координат мыши во вьюпорте в 3D Ray.
@@ -254,26 +332,7 @@ public sealed partial class SceneRenderer
 
         if (IsFlying)
         {
-            Vector2 mouseDelta = Raylib.GetMouseDelta();
-            Yaw -= mouseDelta.X * 0.003f;
-            Pitch = Math.Clamp(Pitch - mouseDelta.Y * 0.003f, -1.52f, 1.52f);
-
-            MoveSpeed = Math.Clamp(MoveSpeed * MathF.Pow(1.25f, Raylib.GetMouseWheelMove()), 0.05f, 2000.0f);
-
-            Vector3 forward = new(MathF.Sin(Yaw) * MathF.Cos(Pitch), MathF.Sin(Pitch), MathF.Cos(Yaw) * MathF.Cos(Pitch));
-            Vector3 right = Vector3.Normalize(Vector3.Cross(forward, Vector3.UnitY));
-            Vector3 up = Vector3.UnitY;
-
-            float speed = MoveSpeed * dt * (Raylib.IsKeyDown(KeyboardKey.LeftShift) ? 3.5f : 1.0f);
-
-            if (Raylib.IsKeyDown(KeyboardKey.W)) Camera.Position += forward * speed;
-            if (Raylib.IsKeyDown(KeyboardKey.S)) Camera.Position -= forward * speed;
-            if (Raylib.IsKeyDown(KeyboardKey.D)) Camera.Position += right * speed;
-            if (Raylib.IsKeyDown(KeyboardKey.A)) Camera.Position -= right * speed;
-            if (Raylib.IsKeyDown(KeyboardKey.E)) Camera.Position += up * speed;
-            if (Raylib.IsKeyDown(KeyboardKey.Q)) Camera.Position -= up * speed;
-
-            Camera.Target = Camera.Position + forward;
+            UpdateFlyingCamera(dt);
         }
         else if (isHovered)
         {
@@ -461,26 +520,7 @@ public sealed partial class SceneRenderer
 
         if (IsFlying)
         {
-            Vector2 mouseDelta = Raylib.GetMouseDelta();
-            Yaw -= mouseDelta.X * 0.003f;
-            Pitch = Math.Clamp(Pitch - mouseDelta.Y * 0.003f, -1.52f, 1.52f);
-
-            MoveSpeed = Math.Clamp(MoveSpeed * MathF.Pow(1.25f, Raylib.GetMouseWheelMove()), 0.05f, 2000.0f);
-
-            Vector3 forward = new(MathF.Sin(Yaw) * MathF.Cos(Pitch), MathF.Sin(Pitch), MathF.Cos(Yaw) * MathF.Cos(Pitch));
-            Vector3 right = Vector3.Normalize(Vector3.Cross(forward, Vector3.UnitY));
-            Vector3 up = Vector3.UnitY;
-
-            float speed = MoveSpeed * dt * (Raylib.IsKeyDown(KeyboardKey.LeftShift) ? 3.5f : 1.0f);
-
-            if (Raylib.IsKeyDown(KeyboardKey.W)) Camera.Position += forward * speed;
-            if (Raylib.IsKeyDown(KeyboardKey.S)) Camera.Position -= forward * speed;
-            if (Raylib.IsKeyDown(KeyboardKey.D)) Camera.Position += right * speed;
-            if (Raylib.IsKeyDown(KeyboardKey.A)) Camera.Position -= right * speed;
-            if (Raylib.IsKeyDown(KeyboardKey.E)) Camera.Position += up * speed;
-            if (Raylib.IsKeyDown(KeyboardKey.Q)) Camera.Position -= up * speed;
-
-            Camera.Target = Camera.Position + forward;
+            UpdateFlyingCamera(dt);
         }
         else
         {

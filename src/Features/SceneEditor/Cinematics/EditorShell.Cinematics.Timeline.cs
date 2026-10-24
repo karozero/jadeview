@@ -583,7 +583,11 @@ public sealed partial class EditorShell
             _soundPlaying = false;
         }
         if (Renderer.IsFlying) _followCinematicCamera = false;
-        if (_followCinematicCamera && !Renderer.IsFlying) ApplyCinematicCamera(_cinematicPlayback);
+        bool shouldFollowCamera = _followCinematicCamera && !Renderer.IsFlying;
+        if (_cinematicCameraWasFollowing && !shouldFollowCamera)
+            Renderer.SynchronizeManualCameraOrientation();
+        _cinematicCameraWasFollowing = shouldFollowCamera;
+        if (shouldFollowCamera) ApplyCinematicCamera(_cinematicPlayback);
     }
 
 }

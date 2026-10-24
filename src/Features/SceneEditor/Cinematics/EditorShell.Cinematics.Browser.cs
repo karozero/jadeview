@@ -104,7 +104,10 @@ public sealed partial class EditorShell
         _cinematicPlayback?.Activate();
         Renderer.ShowGameHidden = false;
         _followCinematicCamera = true;
+        _cinematicCameraWasFollowing = false;
+        Renderer.CinematicHorizontalFov = null;
         if (SelectedObject != null) Renderer.FrameAll();
+        _cinematicViewportCamera = Renderer.CaptureViewportCameraState();
         _statusMessage = $"Cinematic scene loaded: {cinematicWorld.Name} · shared tracks: {_cinematicPlayers.Length}";
     }
 }

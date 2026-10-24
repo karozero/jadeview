@@ -99,13 +99,15 @@ shake messages are kept separate from lens commands.
 Native positional transition dynamics, offsets during those transitions and shake
 are not reconstructed. Supported source lens commands follow the shared clock.
 GLB exports bake routed views into separate camera nodes, preserving actor motion.
-Hold RMB or disable **Follow source camera** to
-inspect the scene freely. **Reset to source pose** restores the selected source
-camera's position, orientation and lens at the current playhead while leaving
-follow disabled, so playback does not immediately take control again. Enable
-follow to keep the viewport synchronized with the camera track. The reset uses
-the source camera pose; it does not frame the scene or restore the editor's
-initial free-camera preset.
+Disable **Follow source camera** to control the viewport camera manually. Hold
+RMB to look around from its current position; use WASD/QE to move, Shift to move
+faster and the wheel to change movement speed. The handoff synchronizes yaw and
+pitch with the followed view and restores a world-up basis, so manual rotation
+uses the editor's normal free-look controls even when the source camera is rolled.
+**Reset viewport view** restores the Frame All camera snapshot captured after the
+cinematic world loads, before the source camera takes control, and keeps Follow
+disabled. Enable Follow again to return to the source camera at the current
+playhead. Releasing RMB does not warp the cursor back to its capture point.
 
 Animation and body-action lane labels in the Event Timeline select their
 uniquely resolved GAO in the cinematic scene. Clicking one of its timeline

@@ -1,4 +1,3 @@
-using System.Numerics;
 using ImGuiNET;
 using static JadeView.EditorUi;
 
@@ -6,22 +5,14 @@ namespace JadeView;
 
 public sealed partial class EditorShell
 {
+    private SceneRenderer.ViewportCameraState? _cinematicViewportCamera;
+    private bool _cinematicCameraWasFollowing;
+
     private void ApplyCinematicCamera(CinematicPlayback playback)
     {
         if (playback.Camera is not { } camera) return;
         var pose = camera.RenderPose(playback.Time);
-        if (!Matrix4x4.Decompose(pose, out _, out var rotation, out var position)) return;
-        Vector3 forward = Vector3.Transform(-Vector3.UnitZ, rotation);
-        Vector3 up = Vector3.Transform(Vector3.UnitY, rotation);
-        if (forward.LengthSquared() < 1e-6f || up.LengthSquared() < 1e-6f) return;
-
-        float distance = Math.Clamp(Vector3.Distance(Renderer.Camera.Position, Renderer.Camera.Target), 1, 1000);
-        Renderer.Camera.Position = position;
-        Renderer.Camera.Target = position + Vector3.Normalize(forward) * distance;
-        Renderer.Camera.Up = Vector3.Normalize(up);
-        Renderer.CinematicHorizontalFov = camera.Lens?.Evaluate(playback.Time);
-        Renderer.Yaw = MathF.Atan2(forward.X, forward.Z);
-        Renderer.Pitch = MathF.Asin(Math.Clamp(forward.Y, -.99f, .99f));
+        Renderer.TrySetCameraPose(pose, camera.Lens?.Evaluate(playback.Time));
     }
 
     private bool _followCinematicCamera = true;
@@ -31,9 +22,14 @@ public sealed partial class EditorShell
         DrawCategoryTitle("Camera");
         ImGui.Checkbox("Follow source camera", ref _followCinematicCamera);
         var playback = _cinematicPlayback!;
+        ImGui.BeginDisabled(_followCinematicCamera || _cinematicViewportCamera is null);
+        if (ImGui.Button("Reset viewport view", new System.Numerics.Vector2(-1, 0))
+            && _cinematicViewportCamera is { } stockCamera)
+            Renderer.RestoreViewportCameraState(stockCamera);
+        ImGui.EndDisabled();
         if (playback.Cameras.Length == 0)
         {
-            ImGui.TextDisabled("No source camera track found. Use RMB to explore.");
+            ImGui.TextDisabled("No source camera track found. RMB controls the viewport camera.");
             return;
         }
         int cameraIndex = playback.CameraIndex;
@@ -44,6 +40,6 @@ public sealed partial class EditorShell
             playback.CameraIndex = cameraIndex;
         ImGui.TextDisabled(playback.Camera?.FromSourceEvent == true
             ? "Camera routing: source message 60" : "Camera/target pair: helper-name fallback");
-        ImGui.TextWrapped("Disable camera follow to inspect with RMB. Source position/target switches and lens commands follow the timeline. Native transition dynamics and shake are not reconstructed.");
+        ImGui.TextWrapped("Disable follow to control the viewport camera: hold RMB to look around from its current position; use WASD/QE to move, Shift to move faster and the wheel to change speed. Reset viewport view restores the scene framing captured when this cinematic loaded and stays in manual control. Enable follow to return to the source camera. Native transition dynamics and shake are not reconstructed.");
     }
 }

@@ -35,6 +35,8 @@ public sealed partial class EditorShell
 
     private void ClearCinematicPlayback()
     {
+        _cinematicCameraWasFollowing = false;
+        _cinematicViewportCamera = null;
         Renderer.CinematicShutter = null;
         Renderer.CinematicFlashes = [];
         Renderer.CinematicLightnings = [];

@@ -22,7 +22,9 @@ public sealed partial class EditorShell
         Vector3 widths = panelLayout.GetWidths(columnWidth, _scale);
         ImGui.BeginChild("CentralViewportContainer", new Vector2(widths.X, 0), ImGuiChildFlags.Borders,
             ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse);
-        DrawPanelTitle("VIEWPORT", "Explore the scene in 3D. Hold RMB and use WASD/QE to fly; Shift moves faster, and the wheel changes flight speed. Click to select; F frames the selection. Drag panel dividers to resize them.");
+        DrawPanelTitle("VIEWPORT", _cutsceneMode
+            ? "Hold RMB to look around from the current camera position; use WASD/QE to move and Shift to move faster. Click to select; F frames the selection."
+            : "Explore the scene in 3D. Hold RMB and use WASD/QE to fly; Shift moves faster, and the wheel changes flight speed. Click to select; F frames the selection. Drag panel dividers to resize them.");
         Renderer.DrawViewport("MainViewport", ImGui.GetContentRegionAvail());
         ImGui.EndChild();
         DrawColumnSplitter("ViewportInspectorSplitter", columnWidth, splitterSize, true);
