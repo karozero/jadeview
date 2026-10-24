@@ -151,7 +151,7 @@ internal static class CinematicSceneAudit
     private static string[] SummarizeControllerDiagnostics(SceneDocument document) =>
         document.Diagnostics.Where(message =>
             message.Contains("Lip-sync controller", StringComparison.Ordinal)
-            || message.Contains("Lip-sync type 2", StringComparison.Ordinal)
+            || message.Contains("Lip-sync type ", StringComparison.Ordinal)
             || message.Contains("Cinematic object", StringComparison.Ordinal)
             || message.Contains("No qualified facial controller", StringComparison.Ordinal))
             .ToArray();

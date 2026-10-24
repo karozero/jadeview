@@ -46,7 +46,8 @@ internal static class CinematicVideoTriggerAudit
             Samples = eventTimes.Select(time => new
             {
                 Time = time,
-                State = videoTimeline.Evaluate(textureKey, time)
+                State = videoTimeline.Evaluate(textureKey, time),
+                Status = videoTimeline.Describe(textureKey, time)
             }).ToArray()
         }).ToArray();
 

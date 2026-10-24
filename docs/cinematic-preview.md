@@ -7,10 +7,30 @@ camera use the same clip time. **Export synchronized actors** creates a GLB with
 the selected actor animation, animated scene objects, camera transform and
 sampled facial morph curves for Blender.
 
+Large cinematic scenes upload visible geometry progressively to keep frame time
+bounded. The renderer now always attempts at least one uncached visible geometry
+upload per frame before applying its 2 ms upload budget; otherwise a long scene
+preparation pass could defer every new mesh indefinitely. On
+`FF0045A2 / 3500B8EA` at 15.18 s, the frame audit's warm-up fell from 149 to 43
+frames and then rendered all 30 visible objects from 44 cached geometries. This
+addresses incomplete first-playback frames caused by geometry upload starvation;
+it does not claim full parity for every scripted visual effect.
+
 Actor transforms, camera motion and facial weights for the same source clip are
 exported as a single glTF animation. Blender therefore imports them into the
 same animation track, so selecting the cutscene enables all participants together.
 Manual morph previews remain separate actions.
+
+Body-action playback combines actions embedded in the cinematic clip with calls
+from explicitly included script-owner EVE tracks. At one timestamp, `ACTKitMerge`
+and `ACTKitMergeOver` are applied before body-action requests so a slot added by
+the selected EVE owner can be resolved at the clip's first frame. Iris source
+confirms that these functions mutate the actor's action kit; exact execution order
+between independent clip and EVE tracks at equal timestamps is not yet verified
+against the retail scheduler. This is a deterministic preview rule, not proof that
+the game activates that owner. Timeline intervals are bounded by the next action
+handoff without truncating the outgoing root-motion sample used to calculate a
+native-style transition blend.
 
 ### Inspecting script links
 
@@ -23,12 +43,48 @@ and event data. Function references show their source path and, when available,
 the resolved function key and dispatch site. These links establish configured
 or source-reachable relationships, not that the game scheduled or executed the
 callback. The full script VM and current save state are not simulated.
+Script-owned EVE previews can expose a **Flag** start action when the selected
+clip is an independent source whose direct events satisfy the owner's
+recognized start-flag tests. A callback-linked owner cannot use its own
+`SceneEvents` clip as a start signal: that clip is decoded from the same event
+resource the callback would start, so its writes are outputs of the list, not
+evidence of prior activation. Those same writes are excluded from that owner's
+gate-state estimate; prior save/runtime flag values stay unknown. The preview
+combines an independent clip signal time with source-configured `Cine_Events`
+delays and applies the resulting offset to the owner's linked channels;
+synchronized export uses the same offset. When a `Cine_Events` owner has a
+positive `des_f_duree_totale`, preview and synchronized export stop its tracks
+at that duration after the assumed/estimated start. A zero duration maps to the
+Iris sentinel timeout and does not impose a practical stop. This is a
+what-if alignment for the authored data, not proof that the owner was active,
+that the save already held the required initial flags, or that the callback ran.
+Iris also stops playback if owner custom bit `0x4000` clears before the timer
+expires. JadeView does not yet synthesize that early stop from other scripts,
+because the bit can be changed by callbacks and event tracks outside the
+selected preview's resolved timeline. Jaded's generic `TRAStopAll` clears each
+track's running state without resetting its event cursor, and Jaded advances
+EVE before AI callbacks; a callback-issued stop therefore affects a later EVE
+pass. JadeView uses the authored timer deadline as a deterministic preview
+boundary and does not add a guessed frame of latency. Exact retail callback
+cadence and early-exit state remain runtime-dependent. Iris's interruption
+callback can clear that bit when another owner wins the priority check or when
+all enabled exit tests pass (collision, actor activity, capabilities and/or a
+saved special flag); these tests require live world/save state and are not
+reconstructed by the preview.
 Enable **Include game-hidden objects** when exporting actors that appear later
-than the current playhead. Supported visibility events for scene props are
-sampled into the GLB animation by collapsing/restoring their scale at source
-event boundaries. Actor-component visibility, script-spawned objects, and
-material/lighting callbacks are not baked yet; the original event records remain
-available as source metadata.
+than the current playhead. Visibility commands for scene props and actor
+components are sampled into the GLB animation by collapsing/restoring the
+renderable node's scale at source event boundaries. This includes
+`OBJ_FlagInvisibleSet` / `OBJ_FlagInactiveSet` control state and bit `0x8`
+changes from `OBJDrawMaskSet`; meshes hidden in the source mask are still
+included when a selected cinematic clip changes that bit. Actor-component
+visibility is isolated on a render child so hiding a mesh does not scale its
+skeleton joint. Actor-root visibility uses a wrapper above the rig so the
+skeletal joint transforms remain intact. Other draw-mask bits update the
+viewport's effective visual flags during playback but their per-frame
+transitions are not serialized to glTF. Script-spawned objects and
+material/lighting callbacks are not baked yet; the original event records
+remain available as source metadata.
 
 Cinematic actor root tracks use absolute scene coordinates. Gameplay root motion
 continues to use offsets from the initial pose. The Camera section selects an
@@ -44,7 +100,18 @@ Native positional transition dynamics, offsets during those transitions and shak
 are not reconstructed. Supported source lens commands follow the shared clock.
 GLB exports bake routed views into separate camera nodes, preserving actor motion.
 Hold RMB or disable **Follow source camera** to
-inspect the scene freely; enable it again to return to the selected source camera.
+inspect the scene freely. **Reset to source pose** restores the selected source
+camera's position, orientation and lens at the current playhead while leaving
+follow disabled, so playback does not immediately take control again. Enable
+follow to keep the viewport synchronized with the camera track. The reset uses
+the source camera pose; it does not frame the scene or restore the editor's
+initial free-camera preset.
+
+Animation and body-action lane labels in the Event Timeline select their
+uniquely resolved GAO in the cinematic scene. Clicking one of its timeline
+segments also selects that GAO and seeks to the segment start. Ambiguous or
+unresolved object keys remain non-selectable; ordinary timeline scrubbing still
+seeks to the pointer time.
 
 Interpolation uses decoded `EVE_InterKeyType_Time` factor curves when present,
 shared between actor bones, root movement, camera/object and facial-helper
@@ -58,13 +125,25 @@ scene objects, cameras and exported animations; reversing it causes backwards
 travel and speed spikes near curve boundaries.
 
 Scene assembly includes actors referenced by source tracks or literal message
-object arguments, scoped to the selected cinematic world, and the matching
-environment world (`<scene>_cine` / `<scene>`), rather than every inventory/menu
-setup world. Environment matching currently follows these world-name roles;
-cross-container scenery streaming is not reconstructed.
+object arguments, serialized owner object references, and uniquely resolvable
+literal GAO references in source-reachable owner callbacks. Source constants are
+resolved only when their object key is unique across the loaded archive; ambiguous
+cross-world keys are left out. A source-referenced object is only included as a
+scene dependency; this does not execute its callback or prove its branch became
+active. Nonresident actors remain hidden by default and can be inspected with
+**Show hidden / conditional objects (debug)**. Assembly is scoped to the selected
+cinematic world and the matching environment world (`<scene>_cine` / `<scene>`),
+rather than every inventory/menu setup world. Environment matching currently
+follows these world-name roles; cross-container scenery streaming is not
+reconstructed.
 
 Runtime visibility uses the saved GAO control flags and literal
 `OBJ_FlagsControlSet`, `OBJ_FlagInvisibleSet` and `OBJ_FlagInactiveSet` commands.
+`OBJDrawMaskSet` separately updates the visual object's draw mask using
+`(oldMask | setMask) & ~clearMask`. Bit `0x8` affects rendering visibility;
+other mask bits are passed to the viewport renderer. The native renderer also
+uses a per-frame allowed-mask intersection, so this preview does not reproduce
+all platform-specific draw-mask filtering.
 The two-mask `OBJ_FlagsControlSet` operation follows the engine formula: apply the
 set mask, then clear the requested bits from the previous flags.
 `GRP_FlagInvisibleSet` and `GRP_FlagInactiveSet` visit the explicit source group
@@ -76,11 +155,12 @@ them for inspection. The overlay is removed when leaving Cutscenes. Arbitrary
 script conditions, spawning, particle scheduling and the full script VM remain
 unsupported; an inactive flag alone is not treated as an invisible flag.
 
-Literal `MAT_MT_EnableLevel`, `MAT_MT_SetLocalAlpha` and `MAT_MT_SetAlphaTresh`
-commands now control viewport material passes on the source clock. Native material
-keys and submaterial indices are resolved separately; alpha and threshold retain
-their native five-bit/six-bit packing. Seeking reconstructs the state without
-changing source bytes. These commands are not baked into GLB material animation.
+Literal `MAT_MT_EnableLevel`, `MATEnableMltxtLvlMT`, `MAT_MT_SetLocalAlpha` and
+`MAT_MT_SetAlphaTresh` commands now control viewport material passes on the
+source clock. The `MT` variant resolves the explicit multi-material child and
+texture-level index; alpha and threshold retain their native five-bit/six-bit
+packing. Seeking reconstructs the state without changing source bytes. These
+commands are not baked into GLB material animation.
 The local-alpha value is read from bits 11–15 and normalized as a five-bit value;
 additive passes also attenuate RGB because their native `ONE/ONE` blend factors do
 not use framebuffer alpha. Global RLI colors are still only an approximation: the
@@ -229,26 +309,36 @@ usable loop range repeat the full decoded sound. Type-30 dialogue messages and
 the OVA field `des_ai_son_associe` are separate from a resolved dialogue WAVE
 key. Jaded's `SND_RequestPlayDialog` calls `TEXTToSound` with the text-group key
 and line ID, then reads `ul_SoundKey` from the loaded language TXL record before
-requesting playback. IrisTool's PC text-group parser instead follows per-language
-`.txi` identifier and `.txs` string resources; its identifier parser reads text
-IDs and its string parser reads text, neither exposing Jaded's TXL sound key.
-IrisTool's source also clarifies why those references are absent from the BF
-FAT: for binarized text containers, `BFDataFileClass.parseAllFromKeyFIFO`
-keeps reading sequential child chunks from the current reader instead of
-opening each child key as a separate FAT entry. Jaded's route is distinct:
-world text-group keys are loaded once for display language and again for sound
-language; the TXG selects the language-specific TXL, whose per-line records
-include `ul_SoundKey` and facial/lips/animation indices. `TEXTToSound` resolves
-the requested text ID through that selected TXL entry. The next missing piece
-is therefore parsing the world TXG/TXL linkage and the corresponding PC-retail
-record layout, not guessing a WAD key from `des_ai_son_associe` or the TXI/TXS
-references.
+requesting playback. Jaded also exposes `TEXT_LipsIdxGet` and
+`TEXT_FacialIdxGet` for that text reference (`AIfunctions_text.c`). These are
+later-engine APIs, not a proven PC-retail mapping.
+
+The retail PC text resources are now decoded further. A language `FD...bin`
+contains sequential `.txg` chunks; each TXG references `.txi` and `.txs` child
+keys embedded in the same stream, not separate FAT entries. The PC TXI table
+stores byte offsets into its TXS string pool. For example, `FD105833` contains
+group `3500A1C9`, with French TXI `C10093D4` and TXS `35008DC1`; its first
+offsets are `0, 33, 79, 127`. The corresponding English `FD205833` has
+different offsets (`0, 31, 75, 133`) because translated strings have different
+byte lengths. IrisTool's `BFTextParser` and `BFTextGroupParser` follow these
+embedded chunks in stream order. JadeView decodes the strings in TXI ordinal
+order.
+
+This is structurally different from Jaded's later TXL loader, whose records
+include per-line `ul_SoundKey`, `c_FacialIdx`, `c_LipsIdx`, and `c_AnimIdx`.
+Those TXL fields cannot be inferred from the PC TXI offsets or strings. For
+`FF005833/BF00218E`, the 12 explicit type-53 facial messages and the selected
+44.78-second voice WAD are independently present, but the PC text/TXI/TXS data
+does not prove a per-line audio-to-mouth link. Continue to resolve explicit PC
+event and script paths; do not synthesize lip weights from string order or
+reuse Jaded TXL metadata as if it were present in the retail PC archive.
 For `FF005833/BF00218E`, JadeView finds text group `3500A1C9` with 35 lines and
-12 resource-reference pairs, but the current archive reader cannot resolve
-those references to per-line voice keys. Therefore an OVA associated-sound
-value of zero does not prove that a line has no voice, and it must not be treated
-as a WAD key. Per-line voice-to-WAD mapping remains unresolved; explicit
-cinematic WAD cues continue to play independently.
+12 language resource-reference pairs. Its first language TXI/TXS pair is now
+resolved inside the FD stream, so its localized strings are available by line
+ordinal. The PC text resources still expose no per-line sound or facial index;
+an OVA associated-sound value of zero does not prove that a line has no voice,
+and it must not be treated as a WAD key. Per-line voice-to-WAD mapping remains
+unresolved; explicit cinematic WAD cues continue to play independently.
 Runtime pitch randomization,
 spatialization, reverb, conditional callback execution and the global dialogue
 sound-slot map are not reconstructed. While source audio is active, its
@@ -449,6 +539,15 @@ checks that these tracks import into Blender.
 conditional-visibility fixture. `--cinematic-audio-audit <archive.bf> FF0045A2
 3500B8EA` writes a source-timed WAV and a JSON cue/state report for offline checks.
 
+The visual frame audit must let progressive geometry uploads drain before taking
+its screenshot; a one-frame capture can otherwise be black even though playback
+continues to prepare meshes. In the current `sally_clean.bf` capture, the source
+camera frames mostly sky at 0–5 s, brings a tree into view by 10 s, and shows the
+shoreline and actors by 23.68 s. The warmed samples report zero deferred geometry.
+This establishes the current renderer's camera and scene progression at those
+times; it does not establish that the same early framing matches the retail game,
+or that a separately running JadeView process contains the current build.
+
 ### BF00218E playback corrections (2026-10-20)
 
 Camera/object sampling now holds the last authored component across empty
@@ -585,12 +684,28 @@ synchronous decoder-process round trip during frame rendering. Uncontrolled
 materials still sample from cinematic time. This
 is a source-event preview, not execution of the full AI callback VM: later live
 switch changes, saved-game gates and conditional callback execution remain
-unresolved. The inspector reports trigger and decoder status. The bridge uses
+unresolved. For an ordinary `mpegplayer_init` path with a uniquely resolved
+switch and no configured save-flag or sound-status gate, the preview also
+applies the source-derived initial visibility to the screen owner and follows
+serialized video start/stop/toggle requests. This prevents a loaded but
+inactive monitor from appearing before its script starts it. Callback cases
+with unresolved gates use the same disclosed fallback as the video material,
+so the screen owner and its Bink frame do not drift into contradictory states;
+the inspector labels the initial state estimated.
+The inspector reports trigger and decoder status. The bridge uses
 the retail DLL installed with the game; it is not shipped with JadeView.
 
 Run `--cinematic-video-trigger-audit <archive.bf> <container> <clip-key>` to
 write the discovered procedural textures and their evaluated trigger states
 to a JSON report for an archive/clip pair.
+Run `--archive-bink-frame-audit <archive.bf> <media-key> <frame-index>` to
+decode a representative frame directly from a BIG archive using the installed
+game decoder; the extracted BIK is temporary and the PNG is written under
+`artifacts/export-verification`.
+For `sally_clean.bf / 61006334`, frame 0 decoded as a 128×128 Alpha logo at
+29.971 FPS (1836 frames total). This verifies the archive-to-decoder path and
+frame contents; it does not prove the game's live callback gates or
+post-cinematic screen lifecycle.
 In the verified `FF005833/BF00218E` example, the monitor's toggle is stamped at
 the clip endpoint (`44.783333s`). The editor now keeps the final cinematic pose
 and advances the triggered Bink track after the source clip ends. Post-roll is

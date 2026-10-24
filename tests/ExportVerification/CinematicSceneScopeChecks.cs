@@ -20,6 +20,9 @@ internal static class CinematicSceneScopeChecks
         var target = new SceneObject { GaoKey = 9, Name = "Referenced target" };
         var scriptDependency = new SceneObject { GaoKey = 91, Name = "Script dependency" };
         var unrelatedScriptDependency = new SceneObject { GaoKey = 92, Name = "Unrelated script dependency" };
+        var callbackLiteralDependency = Actor(0x5E006934);
+        callbackLiteralDependency.Root.Name = "Callback literal actor";
+        setup.Actors.Add(callbackLiteralDependency);
         setup.Objects.Add(target);
         setup.Objects.AddRange([scriptDependency, unrelatedScriptDependency]);
         var environment = new SceneObject { GaoKey = 61 };
@@ -57,8 +60,11 @@ internal static class CinematicSceneScopeChecks
         document.CinematicEnvironmentControllers.Add(new(baseWorld.Key, 70), new(70, baseWorld.Key, [71]));
         document.CinematicEnvironmentControllers.Add(new(other.Key, 160), new(160, other.Key, [161]));
         document.CinematicScriptOwners[new(current.Key, 1200)] = new(1200, 0, 0, current.Key,
-            uint.MaxValue, source.Key, "Sequence owner", [],
-            [new("des_o_actor", scriptLinked.Root.GaoKey, "instance", scriptLinked.Root.Name)], []);
+            uint.MaxValue, source.Key, "Sequence owner", ["Cine_FigeleMonde_flm_fige"],
+            [new("des_o_actor", scriptLinked.Root.GaoKey, "instance", scriptLinked.Root.Name)], [])
+        {
+            ModelFunctionNames = ["Cine_FigeleMonde_flm_fige"]
+        };
         document.CinematicScriptOwners[new(setup.Key, scriptLinked.Root.GaoKey)] = new(
             scriptLinked.Root.GaoKey, 0, 0, setup.Key, uint.MaxValue, uint.MaxValue,
             "Linked actor brain", [],
@@ -73,6 +79,7 @@ internal static class CinematicSceneScopeChecks
         if (!assembled.Actors.Contains(required) || !assembled.Actors.Contains(grouped)
             || !assembled.Actors.Contains(scriptLinked) || assembled.Actors.Contains(unrelated)
             || !assembled.Objects.Contains(target) || !assembled.Objects.Contains(scriptDependency)
+            || !assembled.Actors.Contains(callbackLiteralDependency)
             || assembled.Objects.Contains(unrelatedScriptDependency) || !assembled.Objects.Contains(environment)
             || !assembled.Objects.Contains(unusedEnvironment)
             || assembled.Objects.Contains(unrelatedWorldCycleTarget) || !assembled.Objects.Contains(variantLandmark)

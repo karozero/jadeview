@@ -71,6 +71,8 @@ public static class CinematicWorldAssembler
         IReadOnlyCollection<AnimationClip> clips, uint preferredWorldKey, SceneDocument document)
     {
         var owners = document.CinematicScriptOwners.Values.ToArray();
+        CinematicScriptNamedReference[] availableReferences = CinematicScriptNamedReferenceCatalog
+            .ForDocument(document);
         var ownerIds = new HashSet<CinematicScriptOwnerId>();
         var pendingKeys = new Queue<(uint Key, uint WorldKey)>(targetKeys
             .Where(IsValidObjectKey).Select(key => (key, preferredWorldKey)));
@@ -100,6 +102,15 @@ public static class CinematicWorldAssembler
                 if (!IsValidObjectKey(reference.TargetKey)) continue;
                 if (targetKeys.Add(reference.TargetKey))
                     pendingKeys.Enqueue((reference.TargetKey, owner.WorldKey));
+            }
+
+            CinematicScriptNamedReference[] sourceDependencies =
+                CinematicScriptSourceObjectDependencyResolver.ResolveUniqueObjects(
+                    CinematicScriptReader.ReachableSourceReferences(owner), availableReferences);
+            foreach (CinematicScriptNamedReference dependency in sourceDependencies)
+            {
+                if (targetKeys.Add(dependency.Key))
+                    pendingKeys.Enqueue((dependency.Key, dependency.WorldKey));
             }
         }
 

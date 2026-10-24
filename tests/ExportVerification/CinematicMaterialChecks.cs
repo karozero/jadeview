@@ -5,29 +5,37 @@ internal static class CinematicMaterialChecks
 {
     internal static void Verify()
     {
-        const uint materialKey = 0x47000001, rootKey = 0x47000002;
+        const uint materialKey = 0x47000001, rootKey = 0x47000002, secondMaterialKey = 0x47000003;
         byte[] bytes = new byte[76];
+        byte[] secondMaterialBytes = new byte[76];
         BitConverter.GetBytes(5).CopyTo(bytes, 0);
+        BitConverter.GetBytes(5).CopyTo(secondMaterialBytes, 0);
         for (int level = 0; level < 2; level++)
         {
             BitConverter.GetBytes((ushort)0xf860).CopyTo(bytes, 38 + level * 20);
             BitConverter.GetBytes(0x00010c00u).CopyTo(bytes, 40 + level * 20);
+            BitConverter.GetBytes((ushort)0xf860).CopyTo(secondMaterialBytes, 38 + level * 20);
+            BitConverter.GetBytes(0x00010c00u).CopyTo(secondMaterialBytes, 40 + level * 20);
         }
         var materials = new Dictionary<uint, ResolvedMaterial>
         {
             [materialKey] = new() { Id = new(materialKey), Type = 5, SourceBytes = bytes },
+            [secondMaterialKey] = new() { Id = new(secondMaterialKey), Type = 5, SourceBytes = secondMaterialBytes },
             [rootKey] = new() { Id = new(rootKey), Type = 4 }
         };
         materials[rootKey].SubMaterialKeys.Add(materialKey);
+        materials[rootKey].SubMaterialKeys.Add(secondMaterialKey);
         var world = new WorldData();
         world.Objects.Add(new() { GaoKey = 7, MaterialKey = rootKey });
         var clip = new AnimationClip
         {
             Tracks = [new() { Target = 7, Bone = -1, Keys =
             [CinematicTestEvents.Call(1, 7, 15006, materialKey, 1, 1),
-             CinematicTestEvents.Call(2, 7, 15008, 3, 1, 101), // Native modulo submaterial lookup.
+             CinematicTestEvents.Call(2, 7, 15008, 2, 1, 101), // Native modulo submaterial lookup.
              CinematicTestEvents.Call(3, 7, 15010, materialKey, 1, 255),
-             CinematicTestEvents.Call(4, 7, 15006, materialKey, 1, 0)] }]
+             CinematicTestEvents.Call(4, 7, 15006, materialKey, 1, 0),
+             CinematicTestEvents.Call(5, 7, 15013, rootKey, 1, 1, 1),
+             CinematicTestEvents.Call(6, 7, 15013, rootKey, 1, 1, 0)] }]
         };
         var state = new CinematicMaterialState(clip, world, materials);
         var original = JadeMaterialLayer.Read(bytes)[1];
@@ -39,6 +47,17 @@ internal static class CinematicMaterialChecks
         Require(state.Apply(materialKey, 0, original) == original, "A command changed an unrelated layer.");
         state.Evaluate(4.5f);
         Require(state.Apply(materialKey, 1, original).Disabled, "Material disable event was ignored.");
+        var secondOriginal = JadeMaterialLayer.Read(secondMaterialBytes)[1];
+        state.Evaluate(5.5f);
+        Require(!state.Apply(secondMaterialKey, 1, secondOriginal).Disabled
+            && state.Apply(materialKey, 1, original).Disabled,
+            "MATEnableMltxtLvlMT must resolve its explicit submaterial and enable only the selected texture level.");
+        state.Evaluate(6.5f);
+        Require(state.Apply(secondMaterialKey, 1, secondOriginal).Disabled,
+            "MATEnableMltxtLvlMT with enable=0 must set the native inactive bit on the selected level.");
+        state.Evaluate(5.5f);
+        Require(!state.Apply(secondMaterialKey, 1, secondOriginal).Disabled,
+            "Rewinding must remove MATEnableMltxtLvlMT changes after the playhead.");
         state.Evaluate(.5f);
         Require(state.Apply(materialKey, 1, original) == original && JadeMaterialLayer.Read(bytes)[1] == original,
             "Material reverse seek or immutable source state was lost.");
@@ -48,7 +67,7 @@ internal static class CinematicMaterialChecks
         VerifyWorldLightingHeader();
         VerifySimpleMaterialOpacity();
         VerifySpriteAlpha();
-        Console.WriteLine("PASS: timed material activation, native key/index lookup, packed alpha/threshold, layer isolation and reverse seek");
+        Console.WriteLine("PASS: timed material activation, explicit multi-material routing, packed alpha/threshold, layer isolation and reverse seek");
     }
 
     private static void VerifyNestedMaterialCommands(WorldData world,

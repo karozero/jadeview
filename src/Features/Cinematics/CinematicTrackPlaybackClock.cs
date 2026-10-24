@@ -108,6 +108,10 @@ internal sealed class CinematicTrackPlaybackClock
                     paused = false;
                     runIndex++;
                     break;
+                case "EVEOwnerLoopReset" when running:
+                    localTime = 0;
+                    runIndex++;
+                    break;
             }
 
             if (IsStateCommand(command.Operation))
@@ -230,7 +234,8 @@ internal sealed class CinematicTrackPlaybackClock
     private static bool IsStateCommand(string operation) => operation is
         "TRAPlay" or "TRAPlayAll" or "TRAStop" or "TRAStopAll"
         or "TRAPause" or "TRAPauseAll" or "TRAUnPause" or "TRAUnPauseAll"
-        or "TRASetEnd" or "TRASetTime" or "TRAReinit" or "TRAReinitAll";
+        or "TRASetEnd" or "TRASetTime" or "TRAReinit" or "TRAReinitAll"
+        or "EVEOwnerLoopReset";
 
     internal bool TryMap(float timelineTime, out float localTime)
     {

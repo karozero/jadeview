@@ -103,6 +103,51 @@ internal static class CinematicBodyChecks
             || nestedBodyTimeline.Diagnostics.Count != 0)
             throw new InvalidDataException("Nested SceneEvents action-kit merges and body actions must resolve on the shared cinematic clock.");
 
+        var equalTimeMergeSource = new AnimationClip
+        {
+            Duration = 2,
+            Tracks = [new() { Bone = -1, Target = root.GaoKey, Keys = [SetAction(0, 201)] }]
+        };
+        var equalTimeMergeTimeline = CinematicBodyTimeline.Create(equalTimeMergeSource, actor, 7,
+            new Dictionary<(uint WorldKey, uint OwnerKey), Dictionary<int, CinematicAction>>
+            {
+                [(7, root.GaoKey)] = [],
+                [(7, 44)] = new() { [201] = Action(10) }
+            }, [(0, new CinematicLiteralCall(root.GaoKey, 0x3398, [44, 201, 201]))]);
+        if (equalTimeMergeTimeline.ActionCount != 1 || equalTimeMergeTimeline.Diagnostics.Count != 0)
+            throw new InvalidDataException("Same-time script action-kit initialization must be applied before the cinematic body action request.");
+        var missingActionBaseline = CinematicBodyTimeline.Create(equalTimeMergeSource, actor, 7,
+            new Dictionary<(uint WorldKey, uint OwnerKey), Dictionary<int, CinematicAction>>
+            {
+                [(7, root.GaoKey)] = []
+            });
+        string[] resolvedActionContribution = CinematicOwnerActionContributionResolver
+            .FindResolvedRequests(actor, missingActionBaseline, equalTimeMergeTimeline);
+        string[] repeatedActionContribution = CinematicOwnerActionContributionResolver
+            .FindResolvedRequests(actor, equalTimeMergeTimeline, equalTimeMergeTimeline);
+        if (resolvedActionContribution.Length != 1
+            || !resolvedActionContribution[0].Contains("action 201", StringComparison.Ordinal)
+            || repeatedActionContribution.Length != 0)
+            throw new InvalidDataException("Shared owner-action comparison must report only newly resolved body requests.");
+        Console.WriteLine("PASS: owner SceneEvents diagnostics report only newly resolved actor action requests");
+
+        var boundedActionSource = new AnimationClip
+        {
+            Duration = 2,
+            Tracks = [new() { Bone = -1, Target = root.GaoKey,
+                Keys = [SetAction(0, 200), SetAction(1, 201)] }]
+        };
+        var boundedActionTimeline = CinematicBodyTimeline.Create(boundedActionSource, actor, 7,
+            new Dictionary<(uint WorldKey, uint OwnerKey), Dictionary<int, CinematicAction>>
+            {
+                [(7, root.GaoKey)] = new() { [200] = Action(0), [201] = Action(10) }
+            });
+        var boundedSegments = boundedActionTimeline.TimelineSegments(2).ToArray();
+        if (boundedSegments.Length != 2 || boundedSegments[0].Start != 0 || boundedSegments[0].End != 1
+            || boundedSegments[1].Start != 1 || boundedSegments[1].End != 2)
+            throw new InvalidDataException("Body action segments must end when a later action replaces them.");
+        Console.WriteLine("PASS: same-time action-kit setup precedes body requests and replaced action segments close at their handoff");
+
         var nestedFrameEvent = CinematicActionEvent.FromLiteralCall(3,
             new(root.GaoKey, 0x339B, [200, 24]));
         var nestedFrequencyEvent = CinematicActionEvent.FromLiteralCall(4,

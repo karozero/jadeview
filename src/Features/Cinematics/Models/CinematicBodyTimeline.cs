@@ -8,11 +8,15 @@ public sealed partial class CinematicBodyTimeline
     public IReadOnlyList<string> Diagnostics => diagnostics;
     private readonly List<string> diagnostics = [];
     public int ActionCount => segments.Count;
+    internal void AddDiagnostics(IEnumerable<string> entries) => diagnostics.AddRange(entries);
     public float? FirstActionTime => segments.FirstOrDefault()?.Start;
     internal IEnumerable<(float Start, float End, string Label)> TimelineSegments(float maximumTime) =>
-        segments.Where(segment => segment.Start <= maximumTime)
-            .Select(segment => (segment.Start, Math.Min(segment.End, maximumTime),
-                $"Action {segment.ActionId}"));
+        segments.Select((segment, index) => (Segment: segment,
+                NextStart: index + 1 < segments.Count ? segments[index + 1].Start : maximumTime))
+            .Where(item => item.Segment.Start <= maximumTime)
+            .Select(item => (item.Segment.Start,
+                Math.Min(Math.Min(item.Segment.End, item.NextStart), maximumTime),
+                $"Action {item.Segment.ActionId}"));
     internal IEnumerable<uint> ShapeKeys => segments
         .SelectMany(segment => segment.Action.Items)
         .Select(item => item.ShapeKey)
@@ -42,6 +46,7 @@ public sealed partial class CinematicBodyTimeline
         var kit = initialKit != null ? new Dictionary<int, CinematicAction>(initialKit) : [];
         CinematicActionEvent[] events = ReadActorEvents(source, actor, additionalCalls)
             .OrderBy(action => action.Time)
+            .ThenBy(action => IsActionKitMerge(action) ? 0 : 1)
             .ToArray();
         foreach (var action in events)
         {
@@ -137,6 +142,9 @@ public sealed partial class CinematicBodyTimeline
 
     private static bool IsActorTarget(uint target, SceneActor actor) =>
         target == actor.Root.GaoKey || actor.Members.Any(member => member.GaoKey == target);
+
+    private static bool IsActionKitMerge(CinematicActionEvent action) =>
+        action.Selector is 0x3398 or 0x3399;
 
     private void MergeKit(Dictionary<int, CinematicAction> destination, CinematicActionEvent action,
         Func<uint, CinematicActionKitResolution> resolveKit)

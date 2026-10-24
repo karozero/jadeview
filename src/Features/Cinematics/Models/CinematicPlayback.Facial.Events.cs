@@ -179,7 +179,10 @@ public sealed partial class CinematicPlayback
         if (facialEvent.Mouth is { } mouthEvent)
         {
             if (mouthEvent.BlinkRequested && playback.SallyBlinkStartTime == null)
+            {
                 playback.SallyBlinkStartTime = facialEvent.Time;
+                playback.SallyBlinkTarget = ResolveTargetModule(playback, mouthEvent);
+            }
             ApplyMouthEvent(playback, mouthEvent);
             ApplyChannelCommands(playback, mouthEvent);
         }
@@ -222,8 +225,12 @@ public sealed partial class CinematicPlayback
 
     private static void ApplyMouthEvent(FacialPlayback playback, CinematicFacialEvent facialEvent)
     {
+        SceneObject? targetModule = ResolveTargetModule(playback, facialEvent);
+        if (facialEvent.TargetModuleSelector != null && targetModule == null) return;
+
         foreach (var snapshot in playback.Previews)
         {
+            if (targetModule != null && snapshot.Target != targetModule) continue;
             if (snapshot.Preview.MouthCycleDefinition == null) continue;
             if (facialEvent.AutomaticMouth == true)
             {
@@ -240,15 +247,34 @@ public sealed partial class CinematicPlayback
 
     private static void ApplyChannelCommands(FacialPlayback playback, CinematicFacialEvent facialEvent)
     {
+        SceneObject? targetModule = ResolveTargetModule(playback, facialEvent);
+        PreviewSnapshot? targetPreview = facialEvent.TargetModuleSelector is null
+            ? null
+            : playback.Previews.FirstOrDefault(snapshot => snapshot.Target == targetModule);
+        if (facialEvent.TargetModuleSelector != null && targetPreview == null) return;
+
         foreach (var command in facialEvent.Commands)
         {
             if (command == null) continue;
-            foreach (var snapshot in playback.Previews)
+            if (targetPreview != null)
             {
-                var transition = snapshot.Preview.BeginChannelTransition(
-                    command.Channel, command.Group, command.Factor, command.Speed);
-                if (transition != null) snapshot.Transitions[command.Channel] = transition;
+                BeginTransition(targetPreview, command);
+                continue;
             }
+
+            foreach (var snapshot in playback.Previews) BeginTransition(snapshot, command);
+        }
+
+        static void BeginTransition(PreviewSnapshot snapshot, CinematicMorphCommand command)
+        {
+            var transition = snapshot.Preview.BeginChannelTransition(
+                command.Channel, command.Group, command.Factor, command.Speed);
+            if (transition != null) snapshot.Transitions[command.Channel] = transition;
         }
     }
+
+    private static SceneObject? ResolveTargetModule(FacialPlayback playback, CinematicFacialEvent facialEvent) =>
+        facialEvent.TargetModuleSelector is { } selector
+            ? playback.Actor.FindModule((byte)selector)
+            : null;
 }

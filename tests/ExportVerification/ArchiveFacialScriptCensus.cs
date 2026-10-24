@@ -327,7 +327,7 @@ internal static class ArchiveFacialScriptCensus
     {
         var loader = typeof(SceneActor).Assembly.GetType("JadeView.PcSceneLoader")!;
         var read = loader.GetMethod("Read", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
-        object replay = read.Invoke(null, [bytes, archivePath])!;
+        object replay = read.Invoke(null, [bytes, archivePath, null])!;
         string? error = (string?)GetField(replay, "Error");
         if (error != null) throw new InvalidDataException(error);
         return replay;

@@ -6,6 +6,19 @@ namespace JadeView;
 // glTF 2.0 / GLB, right-handed Y-up. No temporary image files or GPU context required.
 public sealed partial class SceneExporter
 {
+    private CinematicObjectState CreateCinematicObjectState(AnimationClip clip, WorldData world)
+    {
+        (float Time, CinematicLiteralCall Call)[] nestedCommands = NestedCinematicEvents(clip, world).Commands;
+        CinematicVideoPlaybackTimeline? videoPlayback = null;
+        if (options.CinematicDocument is { } document)
+        {
+            if (!cinematicVideoCache.TryGetValue((world, clip.Key), out videoPlayback))
+                cinematicVideoCache[(world, clip.Key)] = videoPlayback =
+                    new(clip, world, document, resolver, nestedCommands);
+        }
+        return new(clip, world, world.Actors, nestedCommands, videoPlayback);
+    }
+
     private readonly ResourceResolver resolver;
     private readonly SceneExportOptions options;
     private readonly MemoryStream binary = new();
@@ -20,8 +33,10 @@ public sealed partial class SceneExporter
     private readonly Dictionary<(WorldData World, uint ClipKey), CinematicSightSetTimeline> cinematicSightSetCache = [];
     private readonly Dictionary<(WorldData World, uint ClipKey), CinematicLocalRotationTimeline> cinematicRotationCache = [];
     private readonly Dictionary<(WorldData World, uint ClipKey), CinematicGameScriptMoveTimeline> cinematicMoveCache = [];
+    private readonly Dictionary<(WorldData World, uint ClipKey), CinematicVideoPlaybackTimeline> cinematicVideoCache = [];
     private readonly HashSet<(SceneActor Actor, uint ClipKey)> cinematicActorOrientationsWritten = [];
     private HashSet<SceneObject> animatedCinematicObjects = [];
+    private HashSet<SceneObject> cinematicVisibilityObjects = [];
     private int empties;
     private Matrix4x4 originOffset = Matrix4x4.Identity;
     private WorldLighting? worldLighting;
@@ -53,6 +68,7 @@ public sealed partial class SceneExporter
         exporter.CaptureDiffuseLighting(world, objects);
         exporter.ResolveCinematicCameras(world);
         exporter.animatedCinematicObjects = exporter.FindCinematicObjects(world, objects);
+        exporter.cinematicVisibilityObjects = exporter.FindCinematicVisibilityObjects(world);
         exporter.SetOrigin(objects, selected);
         exporter.ExportObjects(objects);
         exporter.WriteRoutedCameras(world, objects);
@@ -76,8 +92,8 @@ public sealed partial class SceneExporter
         var targetKeys = clips
             .SelectMany(clip => CinematicTracks(clip, world))
             .Where(track => track.Bone < 0).Select(track => track.Target).ToHashSet();
-        var visibilityTargets = clips.SelectMany(clip =>
-            new CinematicObjectState(clip, world, world.Actors).VisibilityTargets).ToHashSet();
+        var visibilityTargets = clips.SelectMany(clip => CreateCinematicObjectState(clip, world)
+            .VisibilityTargets).ToHashSet();
         var orientTargets = clips.SelectMany(clip => CinematicOrientTo(clip, world).OrientedObjects).ToHashSet();
         var sightSetTargets = clips.SelectMany(clip => CinematicSightSets(clip, world).Participants).ToHashSet();
         var rotationTargets = clips.SelectMany(clip => CinematicLocalRotations(clip, world).Targets).ToHashSet();
@@ -94,6 +110,11 @@ public sealed partial class SceneExporter
                 || moveTargets.Contains(sceneObject)
                 || scriptHierarchyTargets.Contains(sceneObject.GaoKey))).ToHashSet();
     }
+
+    private HashSet<SceneObject> FindCinematicVisibilityObjects(WorldData world) =>
+        SelectedCinematicClips(world, options)
+            .SelectMany(clip => CreateCinematicObjectState(clip, world).VisibilityTargets)
+            .ToHashSet();
 
     private IEnumerable<CinematicScriptHierarchyCommand> ScriptHierarchyCommands(
         AnimationClip clip, WorldData world) => CinematicLiteralCall.ReadTimeline(clip)

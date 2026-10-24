@@ -4,7 +4,8 @@ namespace JadeView;
 
 internal sealed class CinematicMaterialState
 {
-    private const int EnableLevel = 15006, SetAlpha = 15008, SetThreshold = 15010;
+    private const int EnableLevel = 15006, EnableLevelBySubMaterial = 15013,
+        SetAlpha = 15008, SetThreshold = 15010;
     private sealed record Change(float Time, uint Material, int Level, int Selector, uint Value);
     private readonly Change[] changes;
     private readonly Dictionary<(uint Material, int Level), JadeMaterialLayer> source = [];
@@ -80,7 +81,7 @@ internal sealed class CinematicMaterialState
             var layer = evaluated.GetValueOrDefault(key) ?? original;
             evaluated[key] = change.Selector switch
             {
-                EnableLevel => layer with
+                EnableLevel or EnableLevelBySubMaterial => layer with
                 {
                     Flags = change.Value != 0 ? layer.Flags & ~JadeMaterialFlags.Disabled
                     : layer.Flags | JadeMaterialFlags.Disabled
@@ -138,18 +139,31 @@ internal sealed class CinematicMaterialState
     private static Change? Decode(float time, CinematicLiteralCall? call,
         WorldData world, IReadOnlyDictionary<uint, ResolvedMaterial> materials)
     {
-        bool supported = call?.Selector is EnableLevel or SetAlpha or SetThreshold;
-        if (!supported || call!.Arguments.Length != 3 || !float.IsFinite(time)) return null;
+        bool enableLevelBySubMaterial = call?.Selector == EnableLevelBySubMaterial;
+        bool supported = enableLevelBySubMaterial || call?.Selector is EnableLevel or SetAlpha or SetThreshold;
+        int expectedArgumentCount = enableLevelBySubMaterial ? 4 : 3;
+        if (!supported || call!.Arguments.Length != expectedArgumentCount || !float.IsFinite(time)) return null;
         uint materialSelector = call.Arguments[0];
-        uint key = materialSelector;
-        if ((materialSelector & 0xff000000) == 0)
-        {
-            key = world.Objects.FirstOrDefault(item => item.GaoKey == call.Target)?.MaterialKey ?? 0;
-            if (materials.TryGetValue(key, out var root) && root.Type == 4)
-                key = root.SubMaterialKeys.Count > 0 ? root.SubMaterialKeys[(int)(materialSelector % root.SubMaterialKeys.Count)] : 0;
-        }
+        uint key = ResolveMaterialKey(materialSelector, call.Target, world, materials);
+        if (key is 0 or uint.MaxValue) return null;
         if (materials.TryGetValue(key, out var selected) && selected.Type == 4)
-            key = selected.SubMaterialKeys.FirstOrDefault();
-        return new(time, key, unchecked((int)call.Arguments[1]), call.Selector, call.Arguments[2]);
+        {
+            uint serializedSubMaterialIndex = enableLevelBySubMaterial ? call.Arguments[2] : 0;
+            if (serializedSubMaterialIndex >= selected.SubMaterialKeys.Count) return null;
+            int subMaterialIndex = (int)serializedSubMaterialIndex;
+            key = selected.SubMaterialKeys[subMaterialIndex];
+        }
+        uint value = enableLevelBySubMaterial ? call.Arguments[3] : call.Arguments[2];
+        return new(time, key, unchecked((int)call.Arguments[1]), call.Selector, value);
+    }
+
+    private static uint ResolveMaterialKey(uint selector, uint objectKey, WorldData world,
+        IReadOnlyDictionary<uint, ResolvedMaterial> materials)
+    {
+        if ((selector & 0xff000000) != 0) return selector;
+        uint objectMaterial = world.Objects.FirstOrDefault(item => item.GaoKey == objectKey)?.MaterialKey ?? 0;
+        if (!materials.TryGetValue(objectMaterial, out var root) || root.Type != 4) return objectMaterial;
+        if (root.SubMaterialKeys.Count == 0) return 0;
+        return root.SubMaterialKeys[(int)(selector % root.SubMaterialKeys.Count)];
     }
 }

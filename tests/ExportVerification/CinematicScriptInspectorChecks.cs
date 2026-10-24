@@ -1752,6 +1752,39 @@ internal static class CinematicScriptInspectorChecks
                 && CinematicScriptMessageAnalyzer.Describe(companionStatusMessage with
                     { ExecutionObjectKey = unrelatedOwner.OwnerKey }, [unrelatedOwner], unrelatedOwner.WorldKey) == null,
             "Companion type-49 messages should expose source-confirmed status/action/placement fields only when the assigned callback graph reaches the receiver");
+        var crochaxCinematicOwner = new CinematicScriptOwner(0xA10, 0, 0xB10, 0x20,
+            uint.MaxValue, uint.MaxValue, "Crochax cinematic receiver",
+            ["Crochax_3_Cro3_mode_cine"], [], [])
+        {
+            ModelFunctionNames = ["Crochax_3_Cro3_mode_cine"]
+        };
+        string? crochaxType49Finding = CinematicScriptMessageAnalyzer.Describe(
+            companionStatusMessage with
+            {
+                ExecutionObjectKey = crochaxCinematicOwner.OwnerKey,
+                Float2 = 2.5f
+            },
+            [crochaxCinematicOwner], crochaxCinematicOwner.WorldKey);
+        var secundoSfxOwner = new CinematicScriptOwner(0xA11, 0, 0xB11, 0x20,
+            uint.MaxValue, uint.MaxValue, "Secundo SFX receiver",
+            ["SFX_Secundo_SFX_Secundo_Reflex"], [], [])
+        {
+            ModelFunctionNames = ["SFX_Secundo_SFX_Secundo_Reflex"]
+        };
+        string? secundoType49Finding = CinematicScriptMessageAnalyzer.Describe(
+            companionStatusMessage with
+            {
+                ExecutionObjectKey = secundoSfxOwner.OwnerKey,
+                Float1 = 0.4f,
+                Float2 = 0.75f
+            }, [secundoSfxOwner], secundoSfxOwner.WorldKey);
+        Check(crochaxType49Finding?.Contains("Crochax cinematic callback consumes message 49", StringComparison.Ordinal) == true
+                && crochaxType49Finding.Contains("Float2=2.5 sets the receiver's scale", StringComparison.Ordinal)
+                && !crochaxType49Finding.Contains("deferred companion action", StringComparison.Ordinal)
+                && secundoType49Finding?.Contains("Secundo SFX callback consumes message 49", StringComparison.Ordinal) == true
+                && secundoType49Finding.Contains("Float2=0.75 is stored as the external light factor", StringComparison.Ordinal)
+                && secundoType49Finding.Contains("Float1=0.4 as local alpha", StringComparison.Ordinal),
+            $"Message 49 semantics should be resolved per receiver family. Crochax: {crochaxType49Finding ?? "<none>"}; Secundo: {secundoType49Finding ?? "<none>"}");
         var cameraTrackOwner = new CinematicScriptOwner(0x71003F56, 0, 0x71003F55, 0x7100108B,
             uint.MaxValue, uint.MaxValue, "camera track owner",
             ["camera_cam_exec_cine", "camera_cam_1_mainloop"], [], []);
@@ -2172,8 +2205,9 @@ internal static class CinematicScriptInspectorChecks
         string[] modelReferencedCineFindings = CinematicScriptBehaviorAnalyzer.Analyze(modelReferencedCineOwner);
         Check(modelReferencedCineFindings.Any(finding => finding.Contains("derived by cine_init (mask 0x80)", StringComparison.Ordinal))
                 && modelReferencedCineFindings.Any(finding => finding.Contains("TRAPlayAll", StringComparison.Ordinal))
-                && modelReferencedCineFindings.Any(finding => finding.Contains("effective owner callback slots are separate data", StringComparison.Ordinal)),
-            "Cine_Events model references should expose source-confirmed lifecycle capability without presenting model functions as assigned owner slots");
+                && modelReferencedCineFindings.Any(finding => finding.Contains("effective callback enters Cine_Events_cine_firstinit", StringComparison.Ordinal)
+                    && finding.Contains("Assignment shows availability of the start path, not callback dispatch", StringComparison.Ordinal)),
+            "Cine_Events lifecycle reporting should recognize the assigned firstinit entry point without presenting it as proof of callback dispatch");
         var cinematicAudioOwner = modelReferencedCineOwner with
         {
             ModelFunctionNames = [.. modelReferencedCineOwner.ModelFunctionNames,
@@ -2648,6 +2682,17 @@ internal static class CinematicScriptInspectorChecks
             && flagLinks[0].Flag == 2777 && flagLinks[0].Direction.Contains("related owner writes des_i_SPFlag_set01", StringComparison.Ordinal)
             && flagLinks[0].Direction.Contains("this owner reads des_i_specialFlag_test1", StringComparison.Ordinal),
             "Cinematic gate owners should link to matching trigger writers by decoded flag value, while excluding a different flag");
+        var possibleFlagWriters = CinematicScriptFlagFlowAnalyzer.PotentialWritersForFlag(flagLinks, 2777);
+        Check(possibleFlagWriters.Length == 1
+            && possibleFlagWriters[0].RelatedOwner.OwnerKey == matchingFlagWriter.OwnerKey
+            && CinematicScriptFlagFlowAnalyzer.PotentialWritersForFlag(flagLinks, 2778).Length == 0,
+            "Unknown saved-flag gates should expose only matching writer candidates, without promoting them to timeline state");
+        var writerPerspectiveFlagLinks = CinematicScriptFlagFlowAnalyzer.FindRelatedOwners(matchingFlagWriter,
+            [cineFlagReader, matchingFlagWriter, mismatchedFlagWriter]);
+        Check(writerPerspectiveFlagLinks.Length == 1
+            && writerPerspectiveFlagLinks[0].Relation == CinematicScriptFlagLinkRelation.ThisOwnerWrites
+            && CinematicScriptFlagFlowAnalyzer.PotentialWritersForFlag(writerPerspectiveFlagLinks, 2777).Length == 0,
+            "Writer-perspective links must not be mislabeled as other potential writers");
         var eventFlagWriter = new CinematicScriptOwner(0xD0002E30, 0, 0x350091C3, 0xBF000127,
             uint.MaxValue, uint.MaxValue, "event flag writer", [], [], []);
         var eventFlagTrack = new CinematicScriptEventTrack(eventFlagWriter.WorldKey, eventFlagWriter.OwnerKey,

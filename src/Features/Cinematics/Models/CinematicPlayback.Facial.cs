@@ -67,6 +67,7 @@ public sealed partial class CinematicPlayback
             playback.LastTime = 0;
             playback.ActivePreview = null;
             playback.SallyBlinkStartTime = null;
+            playback.SallyBlinkTarget = null;
             foreach (var snapshot in playback.Previews)
             {
                 snapshot.Preview.ClearCinematicBlinkOverlay();
@@ -84,6 +85,7 @@ public sealed partial class CinematicPlayback
         foreach (var playback in facialPlaybacks)
         {
             playback.SallyBlinkStartTime = null;
+            playback.SallyBlinkTarget = null;
             foreach (var snapshot in playback.Previews)
                 snapshot.Preview.ClearCinematicBlinkOverlay();
         }
@@ -126,12 +128,13 @@ public sealed partial class CinematicPlayback
         if (!float.IsFinite(phase) || phase >= FaceMorphBlinkCurve.PhaseLimit)
         {
             playback.SallyBlinkStartTime = null;
+            playback.SallyBlinkTarget = null;
             return;
         }
 
-        foreach (var snapshot in playback.Previews)
-            if (snapshot.Preview.SupportsSallyBlink)
-                snapshot.Preview.ApplyCinematicBlinkOverlay(phase);
+        var targetPreview = playback.Previews.FirstOrDefault(snapshot =>
+            snapshot.Target == playback.SallyBlinkTarget && snapshot.Preview.SupportsSallyBlink);
+        targetPreview?.Preview.ApplyCinematicBlinkOverlay(phase);
     }
 
     private static void AdvanceFacialState(FacialPlayback playback, float delta)
@@ -216,6 +219,7 @@ public sealed partial class CinematicPlayback
         internal float LastTime { get; set; }
         internal FaceMorphPreview? ActivePreview { get; set; }
         internal float? SallyBlinkStartTime { get; set; }
+        internal SceneObject? SallyBlinkTarget { get; set; }
     }
 
     private const float FacialSampleRate = 60;

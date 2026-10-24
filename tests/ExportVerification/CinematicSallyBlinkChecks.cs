@@ -23,7 +23,7 @@ internal static class CinematicSallyBlinkChecks
             GeometryKey = geometryKey,
             Modifiers = [new(4, SallyMorphPayload(geometry.Positions.Length))]
         };
-        var actor = new SceneActor { Root = actorRoot, Members = [actorRoot] };
+        var actor = new SceneActor { Root = actorRoot, Members = [actorRoot], Bones = [actorRoot] };
         actorRoot.Actor = actor;
         var camera = new SceneObject { GaoKey = cameraKey, Name = "Camera" };
         var clip = new AnimationClip

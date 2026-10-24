@@ -26,7 +26,7 @@ I inspected the existing export `artifacts/light-component-integration/intro-sce
 | `OBJ_FlagInactiveSet` (`0x1FD9`) | 15 | Evaluated as inactive state. |
 | `OBJ_ScaleSet` (`0x1FBE`) | 13 | Converts vector calls into transform scale tracks used in playback/export. |
 | `IoPafSet` (`0x1B63`) | 12 | Named in the selector catalog; no cinematic export evaluator was found in this audit. |
-| `OBJDrawMaskSet` (`0x1FF1`) | 11 | Named in the selector catalog; no corresponding cinematic draw-mask evaluator was found. |
+| `OBJDrawMaskSet` (`0x1FF1`) | 11 | `CinematicObjectState` applies the source set/clear masks to preview draw flags; bit `0x8` drives scene-prop visibility and GLB scale channels. Other draw-mask bits update the viewport only. |
 | `GRPInvisibleSet` (`0x3BC4`) | 6 | Evaluated against explicit group members by `CinematicObjectState`. |
 | `ARRGlobalIntFlagSet` (`0x2916`) | 6 | Timeline flag analyzer reports writes/gates; the exporter does not run arbitrary script branches from them. |
 | `SNDPlayModifier` (`0x2F1A`) | 5 | Consumed by the audio cue builder if the target/modifier resolves. |
@@ -62,11 +62,15 @@ The function-selector counts are decoded from the second-last word-pair row and 
 
 The export has two distinct paths. Actor/object transforms are sampled into glTF channels; source event payloads are copied into `extras.jadeViewSourceRecords`. A glTF importer does not execute those extras. Existing evaluators cover selected state (destroy/visibility, supported scale, action-kit/body motion, camera, facial messages, and limited screen fades), but engine callbacks, unknown message types, unsupported branches, and runtime gates are not generically executed by export. Therefore “all source bytes retained” is true for this artifact, while “all game effects reproduced in Blender” is false.
 
+## Representative archive verification
+
+The `ExportVerification` archive audit was run against the supplied `sally_clean.bf`, container `FF0045A2`, clip `3500B8EA`. It assembled 85 actor rigs and 8 shared clips, produced `FF0045A2-cinematic-synchronized.glb` (about 210 MB), and passed its checks for source-timed scene-prop visibility transitions, nested transforms, cameras, and facial tracks. The visibility assertion includes both control-state visibility and draw-mask bit `0x8`. This verifies JadeView's parsed/exported representation; it does not compare rendered pixels against a running BGE capture.
+
 ## Export metadata implementation and next step
 
 Implemented: each exported animation now carries `extras.jadeViewCinematicEvents` schema version 1 with `clipKey`, `rawRecordCount`, `decodedRecordCount`, `unknownRecordCount`, `nonEventRecordCount`, `events[]`, and an interpretation note. Each event includes `sourceRecordIndex`, track/key, time/duration, execution context, kind, and `status=decoded_not_executed_by_exporter`; literal calls carry target, selector, catalog name and argument words; messages carry message type and the decoded message fields. Raw source metadata schema version 2 adds the linked `sourceRecordIndex`. The replacement warning distinguishes decoded/unknown/non-event counts and states that GLB extras do not execute game behavior.
 
-This is a decode inventory, not a coverage proof: `decodedRecordCount` does not say an owner, receiver, target, or action kit resolved, and does not mean the callback was simulated. A next slice should add a separate evaluator outcome/status layer for domain-specific preview resolution (evaluated, gated, unresolved, unsupported) and only then make narrowly tested standard glTF tracks for exact resolved visual state, such as supported `OBJDestroy`/visibility transitions. Preserve the raw source record and do not ask Blender to run game callbacks.
+This is a decode inventory, not a coverage proof: `decodedRecordCount` does not say an owner, receiver, target, or action kit resolved, and does not mean the callback was simulated. `OBJDrawMaskSet` is evaluated through the same source-timed preview state for scene props and actor components: bit `0x8` affects viewport visibility and is sampled into a GLB scale channel. Component mesh visibility is isolated from the skeleton joint; actor-root visibility uses a wrapper above the rig. Other draw-mask bits remain viewport-only. A synthetic actor-rig export fixture verifies component and root nodes, source times, reveal and hide transitions. Continue adding domain evaluators with explicit evaluated/gated/unresolved/unsupported outcomes, preserving the raw source record and never asking Blender to run game callbacks. Script-spawned assets and arbitrary branch execution remain unresolved.
 
 ## Source map and bounds
 

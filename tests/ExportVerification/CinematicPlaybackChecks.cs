@@ -51,9 +51,11 @@ internal static class CinematicPlaybackChecks
         var playback = CinematicPlayback.Discover(document, world, resolver).Single();
         CinematicNleTimelineLane[] nleLanes = CinematicNleTimelineBuilder.Build(playback, world, document);
         if (!nleLanes.Any(lane => lane.Kind == CinematicNleLaneKind.Animation
-                && lane.Name == root.Name && lane.Items.Any(item => item.Start == 0 && item.End == 2))
+                && lane.Name == root.Name && lane.ObjectKey == root.GaoKey
+                && lane.Items.Any(item => item.Start == 0 && item.End == 2
+                    && item.ObjectKey == root.GaoKey))
             || !nleLanes.Any(lane => lane.Name == camera.Name))
-            throw new InvalidDataException("The NLE timeline should show source animation lanes and their key ranges.");
+            throw new InvalidDataException("The NLE timeline should show source animation lanes, selectable GAO keys and their key ranges.");
         VerifyNleEventTrackAttribution();
         playback.Activate();
         Near(root.PreviewMatrix!.Value.Translation, new(100, 20, 5), "Initial cinematic world position");

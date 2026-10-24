@@ -31,6 +31,7 @@ internal static class CinematicNestedEventTransformTracks
             .ToArray();
         var callbackOwners = callbackStartsByOwner.Select(item => item.Owner.Id).ToArray();
         var callbackOwnerIds = callbackOwners.ToHashSet();
+        var callbackOwnersById = callbackStartsByOwner.ToDictionary(item => item.Owner.Id);
         var previewableOwners = FindPreviewableSceneEventOwners(sourceClip, world, document, sceneLists)
             .Where(item => !callbackOwnerIds.Contains(item.Owner.Id)).ToArray();
         var previewableOwnerIds = previewableOwners.Select(item => item.Owner.Id).ToHashSet();
@@ -69,21 +70,29 @@ internal static class CinematicNestedEventTransformTracks
                 "Preview scheduling does not evaluate live runtime activation, callback timing, or game state."));
             if (ownerHasExplicitPreviewControl || callbackOwnerWasDisabled) continue;
 
+            bool hasCallbackOwner = callbackOwnersById.TryGetValue(ownerId, out var callbackOwner);
+            float callbackStartTime = hasCallbackOwner
+                ? previewedSceneEventStartTimes?.GetValueOrDefault(ownerId) ?? 0 : 0;
+            float? ownerStopTime = hasCallbackOwner
+                ? CinematicOwnerStartTimingEstimator.PreviewStopTime(callbackOwner.Owner, callbackStartTime)
+                : null;
             Schedule(list, channel, 0, 0,
                 new HashSet<CinematicNestedEventTrackIdentity>(), commands,
-                CinematicOwnerExecutionRoute.RunningInit);
+                CinematicOwnerExecutionRoute.RunningInit,
+                ownerStopTime is null ? null : ownerId, ownerStopTime);
         }
 
         foreach (var (owner, starts) in callbackStartsByOwner)
         {
             bool callbackDisabled = disabledCallbackOwners?.Contains(owner.Id) == true;
+            float previewStartTime = previewedSceneEventStartTimes?.GetValueOrDefault(owner.Id) ?? 0;
             var callbackChannels = starts.SelectMany(invocation => invocation.Tracks)
                 .DistinctBy(channel => channel.Index).Select(channel => channel.Index).Order().ToArray();
             executionLedger.Add(new(owner.Id, sourceClip.Key,
                 CinematicOwnerExecutionRoute.CallbackReachability,
                 callbackDisabled ? CinematicOwnerPreviewStatus.Disabled : CinematicOwnerPreviewStatus.Included,
                 CinematicRuntimeGateStatus.Unknown, callbackChannels,
-                callbackDisabled ? null : 0,
+                callbackDisabled ? null : previewStartTime,
                 "A source-reachable callback resolves a TRAPlay or TRAPlayAll operation to this SceneEvents list.",
                 "Call reachability is static evidence; callback dispatch, start gates, and live timing are not executed.")
             {
@@ -95,9 +104,10 @@ internal static class CinematicNestedEventTransformTracks
 
             foreach (var invocation in starts)
             foreach (var channel in invocation.Tracks)
-                Schedule(invocation.EventList, channel, 0, 0,
+                Schedule(invocation.EventList, channel, previewStartTime, 0,
                     new HashSet<CinematicNestedEventTrackIdentity>(), commands,
-                    CinematicOwnerExecutionRoute.CallbackReachability);
+                CinematicOwnerExecutionRoute.CallbackReachability,
+                owner.Id, CinematicOwnerStartTimingEstimator.PreviewStopTime(owner, previewStartTime));
         }
 
         foreach (var (owner, list) in previewableOwners.Where(item =>
@@ -125,7 +135,9 @@ internal static class CinematicNestedEventTransformTracks
                 previewedSceneEventStartTimes?.GetValueOrDefault(owner.Id) ?? 0,
                 0,
                 new HashSet<CinematicNestedEventTrackIdentity>(), commands,
-                CinematicOwnerExecutionRoute.ManualPreview);
+                CinematicOwnerExecutionRoute.ManualPreview,
+                owner.Id, CinematicOwnerStartTimingEstimator.PreviewStopTime(owner,
+                    previewedSceneEventStartTimes?.GetValueOrDefault(owner.Id) ?? 0));
 
         foreach (var (startTime, call) in commands)
         {
@@ -183,7 +195,8 @@ internal static class CinematicNestedEventTransformTracks
         void Schedule(CinematicEmbeddedEventTrackList list, CinematicEmbeddedEventTrack channel,
             float startTime, int depth, HashSet<CinematicNestedEventTrackIdentity> ancestry,
             IReadOnlyList<(float Time, CinematicLiteralCall Call)> lifecycleCommands,
-            CinematicOwnerExecutionRoute executionRoute)
+            CinematicOwnerExecutionRoute executionRoute,
+            CinematicScriptOwnerId? durationOwnerId = null, float? ownerStopTime = null)
         {
             bool invalidScheduleRange = !float.IsFinite(startTime) || startTime < 0
                 || startTime > sourceClip.Duration || !float.IsFinite(channel.Duration) || channel.Duration < 0;
@@ -202,16 +215,19 @@ internal static class CinematicNestedEventTransformTracks
                         : "A nested EVE TRAPlay/TRAPlayAll command resolves to this channel.",
                     "The resolved command is previewed on the shared cinematic clock; live queue and runtime gate state are not simulated."));
 
+            float? channelOwnerStopTime = durationOwnerId == new CinematicScriptOwnerId(list.WorldKey, list.OwnerKey)
+                ? ownerStopTime : null;
             var parentPlaybackClock = CreatePlaybackClock(lifecycleCommands, list, channel,
-                startTime, sourceClip.Duration);
+                startTime, sourceClip.Duration, ownerStopTime: channelOwnerStopTime);
             var absoluteChannelCommands = channel.Calls
                 .SelectMany(item => MapChannelCommandTimes(item.Time, startTime, parentPlaybackClock)
                     .Select(time => (Time: time, item.Call))).ToArray();
             var channelLifecycleCommands = lifecycleCommands.Concat(absoluteChannelCommands).ToArray();
             CinematicTrackPlaybackClock? playbackClock = CreatePlaybackClock(channelLifecycleCommands, list, channel,
-                startTime, sourceClip.Duration);
+                startTime, sourceClip.Duration, ownerStopTime: channelOwnerStopTime);
             var stateClock = playbackClock ?? CreatePlaybackClock(channelLifecycleCommands, list, channel,
-                startTime, sourceClip.Duration, createWithoutInterruption: true)!;
+                startTime, sourceClip.Duration, createWithoutInterruption: true,
+                ownerStopTime: channelOwnerStopTime)!;
             channelExecutions.Add(new(new(list.WorldKey, list.OwnerKey), list.EventKey,
                 channel.Index, executionRoute, stateClock));
             AddLocalRotationCommands(channel, startTime, playbackClock);
@@ -258,7 +274,7 @@ internal static class CinematicNestedEventTransformTracks
                 foreach (var nestedChannel in nestedChannels)
                     Schedule(nestedList, nestedChannel, nestedStartTime, depth + 1,
                         nextAncestry, channelLifecycleCommands,
-                        CinematicOwnerExecutionRoute.NestedEventCall);
+                        CinematicOwnerExecutionRoute.NestedEventCall, durationOwnerId, ownerStopTime);
             }
 
             void AddLocalRotationCommands(CinematicEmbeddedEventTrack sourceChannel,
@@ -419,7 +435,8 @@ internal static class CinematicNestedEventTransformTracks
     private static CinematicTrackPlaybackClock? CreatePlaybackClock(
         IReadOnlyList<(float Time, CinematicLiteralCall Call)> commands,
         CinematicEmbeddedEventTrackList list, CinematicEmbeddedEventTrack channel,
-        float startTime, float timelineDuration, bool createWithoutInterruption = false)
+        float startTime, float timelineDuration, bool createWithoutInterruption = false,
+        bool includeOwnerLoopResets = true, float? ownerStopTime = null)
     {
         var selectedTrackIndices = new HashSet<int> { channel.Index };
         var lifecycleCommands = commands
@@ -440,10 +457,35 @@ internal static class CinematicNestedEventTransformTracks
                 ) && (item.Operation != "TRASetTime"
                     || item.Value is >= 0 and <= CinematicTrackPlaybackClock.MaximumUnwrappedSetTimeSeconds
                         && float.IsFinite(item.Value.Value)))
-            .ToArray();
+            .ToList();
+        if (ownerStopTime is { } stopTime && float.IsFinite(stopTime)
+            && stopTime >= startTime && stopTime <= timelineDuration)
+            lifecycleCommands.Add(new(stopTime, "TRAStopAll"));
+        if (includeOwnerLoopResets)
+        {
+            foreach (var rootChannel in list.Tracks.Where(track => track.Index != channel.Index
+                         && track.Bone == 255
+                         && (track.ChannelFlags & CinematicEventTrackFlags.AutoLoop) != 0))
+            {
+                float rootStartTime = (rootChannel.ChannelFlags & CinematicEventTrackFlags.RunningInit) != 0
+                    ? 0
+                    : startTime;
+                var rootClock = CreatePlaybackClock(commands, list, rootChannel, rootStartTime,
+                    timelineDuration, createWithoutInterruption: true, includeOwnerLoopResets: false);
+                if (rootClock == null) continue;
+
+                foreach (float loopTime in rootClock.Transitions
+                             .Where(transition => transition.Operation == "AutoLoop")
+                             .Select(transition => transition.Time)
+                             .Distinct())
+                    lifecycleCommands.Add(new(loopTime, "EVEOwnerLoopReset"));
+            }
+        }
+
         bool hasInterruption = lifecycleCommands.Any(item => item.Operation is "TRAStop" or "TRAStopAll"
             or "TRAPause" or "TRAPauseAll" or "TRAUnPause" or "TRAUnPauseAll"
             or "TRASetEnd" or "TRAReinit" or "TRAReinitAll" or "TRASetTime"
+            or "EVEOwnerLoopReset"
             || item.Operation is "TRAPlay" or "TRAPlayAll"
                 && item.Time >= startTime + channel.Duration);
         bool autoLoops = (channel.ChannelFlags & CinematicEventTrackFlags.AutoLoop) != 0;

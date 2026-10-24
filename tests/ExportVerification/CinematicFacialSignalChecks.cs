@@ -61,6 +61,7 @@ internal static class CinematicFacialSignalChecks
         Console.WriteLine("PASS: continuous facial helper from separate event/transform tracks, shared clock, seek and cleanup");
         VerifyDirectChannelCalls();
         VerifyNestedTimelineMessagesUseScheduledClock();
+        VerifyFacialMessageCommandsTargetTheSourceModule();
 
         void VerifyWeight(float time, float expected)
         {
@@ -216,7 +217,8 @@ internal static class CinematicFacialSignalChecks
                 {
                     ObjectReferences = [new("des_o_acteur", 1, "instance", "AI_MainActor slot 1")]
                 }) != null
-            || Channels(companionFacial) != "0,1,4" || Channels(sallyFacial) != "0,1,2,3,4")
+            || Channels(companionFacial) != "0,1,4" || Channels(sallyFacial) != "0,1,2,3,4"
+            || companionFacial?.TargetModuleSelector != 0 || sallyFacial?.TargetModuleSelector != 0)
             throw new InvalidDataException($"Nested type-53 EVE messages must retain their clock, resolve the callback-specific target, and decode only fields used by the receiver. time={message.Time}; actor={message.Message.Gao:X8}; auto={Channels(facial)}; companion={Channels(companionFacial)}; sally={Channels(sallyFacial)}.");
         playback.Activate();
         playback.Seek(1.5f);
@@ -257,6 +259,89 @@ internal static class CinematicFacialSignalChecks
     private static string Channels(CinematicFacialEvent? facialEvent) => facialEvent == null
         ? "none"
         : string.Join(',', facialEvent.Commands.Where(command => command != null).Select(command => command!.Channel));
+
+    private static void VerifyFacialMessageCommandsTargetTheSourceModule()
+    {
+        const uint worldKey = 0x211;
+        const uint clipKey = 0x212;
+        const uint eventOwnerKey = 0x213;
+        const uint actorKey = 0x214;
+        const uint cameraKey = 0x215;
+        const uint shapeKey = 0x216;
+        var actorRoot = MorphMember(actorKey);
+        var headModule = MorphMember(0x217);
+        var hairModule = MorphMember(0x218);
+        var actor = new SceneActor
+        {
+            Root = actorRoot,
+            Members = [actorRoot, headModule, hairModule],
+            Bones = [headModule, hairModule],
+            DefaultShape = shapeKey,
+            Shapes = { [shapeKey] = [2, 0, 0, 0, 1, 1, 0] }
+        };
+        foreach (var member in actor.Members) member.Actor = actor;
+        actor.ApplyShape(shapeKey);
+        if (actor.FindModule(0) != headModule || actor.FindModule(1) != hairModule)
+            throw new InvalidDataException("Facial module fixture did not resolve the source selector map.");
+
+        var camera = new SceneObject { GaoKey = cameraKey, Name = "Camera" };
+        var eventOwner = new SceneObject { GaoKey = eventOwnerKey };
+        var clip = new AnimationClip
+        {
+            Loaded = true,
+            Key = clipKey,
+            Duration = 4,
+            CinematicWorldKey = worldKey,
+            Cinematic = true,
+            SceneMotion = true,
+            Tracks =
+            [
+                new() { Bone = -1, Target = actorKey, Keys = [new() { Duration = 4 }] },
+                new() { Bone = -1, Target = cameraKey, Keys = [new() { Duration = 4, Position = Vector3.UnitZ }] },
+                new() { Bone = -1, Target = eventOwnerKey, Keys = [CinematicTestEvents.Call(1, eventOwnerKey, 0x3B64, 0)] }
+            ]
+        };
+        var message = new CinematicTimelineMessage(.5f, actorKey, actorKey, 0,
+            new Vector3(1800, 0, 0), new Vector3(0, 0, 0), 3, 3, 3, 0, 53);
+        var eventChannel = new CinematicEmbeddedEventTrack(0, actorKey, -1, 0, 1, 2)
+        {
+            Messages = [(.5f, message)]
+        };
+        var document = new SceneDocument();
+        document.CinematicClips.Add(clipKey, clip);
+        document.CinematicEmbeddedEventTracks[(worldKey, eventOwnerKey)] =
+            [new(eventOwnerKey, "test owner", worldKey, "SceneEvents", clipKey, [eventChannel])];
+        var sallyOwner = new CinematicScriptOwner(actorKey, 0, 0, worldKey, uint.MaxValue,
+            clipKey, "facial actor", ["Sally_sa_exec_message_read"], [], []);
+        document.CinematicScriptOwners[sallyOwner.Id] = sallyOwner;
+        var world = new WorldData { Key = worldKey };
+        world.Objects.AddRange([actorRoot, headModule, hairModule, camera, eventOwner]);
+        world.Actors.Add(actor);
+        world.CinematicClips.Add(clipKey, clip);
+        var resolver = new ResourceResolver();
+        ((Dictionary<uint, Geometry>)typeof(ResourceResolver)
+            .GetField("_geometries", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(resolver)!)
+            .Add(100, new Geometry { Key = 100, Positions = [Vector3.Zero] });
+
+        var playback = CinematicPlayback.Discover(document, world, resolver).Single();
+        playback.Activate();
+        playback.Seek(1.7f);
+        bool headChanged = headModule.MorphPreview?.ChannelsActive == true
+            && headModule.MorphPreview.GetChannel(0).Weight > 0;
+        bool rootUnchanged = actorRoot.MorphPreview?.ChannelsActive != true;
+        bool hairUnchanged = hairModule.MorphPreview?.ChannelsActive != true;
+        playback.Deactivate();
+        if (!headChanged || !rootUnchanged || !hairUnchanged)
+            throw new InvalidDataException($"Sally type-53 expression must drive only source module 0 (head); head={headModule.MorphPreview?.GetChannel(0)}; root active={actorRoot.MorphPreview?.ChannelsActive}; hair active={hairModule.MorphPreview?.ChannelsActive}.");
+        Console.WriteLine("PASS: source type-53 facial commands target actor module selector 0 without affecting other morph meshes");
+
+        static SceneObject MorphMember(uint key) => new()
+        {
+            GaoKey = key,
+            GeometryKey = 100,
+            Modifiers = [new(4, MorphPreviewChecks.Payload(1))]
+        };
+    }
 
     private static AnimationOpaquePayload ChannelCall(int selector, float value)
     {

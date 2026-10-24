@@ -228,7 +228,27 @@ internal static class CinematicFrameAudit
                 if (focus.Actor != null) renderWorld.Actors.Add(focus.Actor);
                 Console.WriteLine($"FOCUS OBJECT: {focus.Name} ({focus.GaoKey:X8}) draw={focus.DrawFlags:X8}; visibility=inspection override");
             }
+            const int maximumGeometryWarmupFrames = 600;
+            int geometryWarmupFrames = 0;
+            for (; geometryWarmupFrames < maximumGeometryWarmupFrames; geometryWarmupFrames++)
+            {
+                playback.Seek(time);
+                renderer.Render(960, 540, document, renderWorld, null, resolver);
+                if (renderer.StatDeferredGeometryObjects == 0)
+                {
+                    geometryWarmupFrames++;
+                    break;
+                }
+            }
+            playback.Seek(time);
             renderer.Render(960, 540, document, renderWorld, null, resolver);
+            if (renderer.StatDeferredGeometryObjects != 0)
+                throw new InvalidOperationException(
+                    $"Cannot capture a trustworthy cinematic frame: {renderer.StatDeferredGeometryObjects} visible geometry objects "
+                    + $"remain deferred after {geometryWarmupFrames} warm-up frames (limit {maximumGeometryWarmupFrames}).");
+            Console.WriteLine($"FRAME AUDIT WARMUP: frames={geometryWarmupFrames}; "
+                + $"deferred={renderer.StatDeferredGeometryObjects}; visible={renderer.StatVisibleObjects}; "
+                + $"cachedGeometries={renderer.StatCachedGeometries}; cap={maximumGeometryWarmupFrames}");
             var displayTarget = (RenderTexture2D)(typeof(SceneRenderer)
                 .GetMethod("RenderCinematicAfterEffects", System.Reflection.BindingFlags.Instance
                     | System.Reflection.BindingFlags.NonPublic)!.Invoke(renderer, null)!);

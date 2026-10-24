@@ -1,3 +1,4 @@
+using System.Globalization;
 using JadeView;
 
 internal static class CinematicVideoPlaybackChecks
@@ -63,6 +64,9 @@ internal static class CinematicVideoPlaybackChecks
                 mediaLoadFailed: false, mediaMetadataAvailable: false, mediaReachedEnd: false),
             "Post-roll must respect continuous-video playback and stop events independently of decoder state.");
 
+        VerifyMpegPlayerInitializationSourceGate();
+        VerifyMpegOwnerVisibilityFollowsPlayback();
+
         for (int sampleIndex = 0; sampleIndex < 32; sampleIndex++)
             _ = timeline.Evaluate(sampleIndex / 60f);
         long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
@@ -71,6 +75,93 @@ internal static class CinematicVideoPlaybackChecks
         long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
         Require(allocatedBytes == 0,
             $"Evaluating a video trigger track must not allocate per frame; got {allocatedBytes} bytes.");
+    }
+
+    private static void VerifyMpegPlayerInitializationSourceGate()
+    {
+        const uint ownerKey = 0x3500A101;
+        const uint switchKey = 0x3500A102;
+        var switchObject = new SceneObject { GaoKey = switchKey, Name = "video switch", InitialCapabilities = 0 };
+        var owner = CreateOwner(ownerKey, switchKey, serializedPlaying: 1);
+        CinematicVideoInitialPlaybackState offState = CinematicVideoPlaybackTimeline
+            .ResolveInitialPlaybackState(owner, switchObject);
+        Require(offState.IsResolved && !offState.InitiallyPlaying
+            && offState.Evidence.Contains("i_Play is overwritten", StringComparison.Ordinal),
+            "The normal Iris init path must derive initial playback from switch capability, not stale serialized i_Play.");
+
+        switchObject.InitialCapabilities = 0x100;
+        CinematicVideoInitialPlaybackState onState = CinematicVideoPlaybackTimeline
+            .ResolveInitialPlaybackState(CreateOwner(ownerKey, switchKey, serializedPlaying: 0), switchObject);
+        Require(onState.IsResolved && onState.InitiallyPlaying,
+            "The normal Iris init path must start when the resolved switch has capability 0x100, even if i_Play is zero.");
+
+        CinematicVideoInitialPlaybackState savedFlagState = CinematicVideoPlaybackTimeline
+            .ResolveInitialPlaybackState(CreateOwner(ownerKey, switchKey, serializedPlaying: 0,
+                savedFlagSwitch: 42), switchObject);
+        Require(!savedFlagState.IsResolved && savedFlagState.InitiallyPlaying
+            && savedFlagState.Evidence.Contains("saved flag 42", StringComparison.Ordinal),
+            "A save-flag controlled start must stay estimated while preserving the legacy preview fallback.");
+
+        CinematicVideoInitialPlaybackState soundGateState = CinematicVideoPlaybackTimeline
+            .ResolveInitialPlaybackState(CreateOwner(ownerKey, switchKey, serializedPlaying: 0,
+                soundModifier: 1), switchObject);
+        Require(!soundGateState.IsResolved && soundGateState.InitiallyPlaying
+            && soundGateState.Evidence.Contains("sound modifier 1", StringComparison.Ordinal),
+            "A nonzero MPEG sound-status gate must be labeled estimated while retaining the switch-based visual fallback.");
+
+        static CinematicScriptOwner CreateOwner(uint scriptOwnerKey, uint targetSwitchKey,
+            int serializedPlaying, int savedFlagSwitch = 0, int soundModifier = 0) => new(scriptOwnerKey, 0, 0, 0, 0, 0,
+            "mpeg player", ["mpegplayer_init"],
+            [new("des_o_Interrupteur", targetSwitchKey, "instance", "video switch")],
+            [new("i_Play", 0, "instance", serializedPlaying.ToString(CultureInfo.InvariantCulture)),
+             new("des_i_sf_modifier_vrai", 0, "instance", "0"),
+             new("des_i_sf_jesuisla", 0, "instance", "0"),
+             new("des_i_sf_on_off", 0, "instance", savedFlagSwitch.ToString(CultureInfo.InvariantCulture)),
+             new("des_i_SND_modifier", 0, "instance", soundModifier.ToString(CultureInfo.InvariantCulture))]);
+    }
+
+    private static void VerifyMpegOwnerVisibilityFollowsPlayback()
+    {
+        const uint videoOwnerKey = 0x3500A201;
+        var owner = new SceneObject { GaoKey = videoOwnerKey, Name = "screen" };
+        var world = new WorldData();
+        world.Objects.Add(owner);
+        var track = new CinematicVideoPlaybackTrack(videoOwnerKey,
+            new CinematicVideoInitialPlaybackState(true, true, "normal init path"),
+            [new(2, CinematicVideoControl.Toggle)]);
+        var videoPlayback = new CinematicVideoPlaybackTimeline([track]);
+        var state = new CinematicObjectState(new AnimationClip(), world, [],
+            videoPlayback: videoPlayback);
+
+        state.Evaluate(0);
+        Require(!owner.IsControlHidden,
+            "An MPEG player that starts in the normal init path must reveal its owner object.");
+        state.Evaluate(2);
+        Require(owner.IsControlHidden,
+            "An MPEG-player toggle-off must hide its owner object, matching Iris mpegplayer_loop.");
+        state.Evaluate(1);
+        Require(!owner.IsControlHidden,
+            "Seeking backward across an MPEG-player event must restore its initial owner visibility.");
+        Require(state.VisibilityTargets.Contains(owner)
+            && state.VisibilityChangeTimes.Contains(2),
+            "MPEG-player visibility must be represented as a timeline target for scene export.");
+        state.Clear();
+
+        var estimatedOwner = new SceneObject { GaoKey = videoOwnerKey + 1, Name = "estimated screen" };
+        var estimatedWorld = new WorldData();
+        estimatedWorld.Objects.Add(estimatedOwner);
+        var estimatedTrack = new CinematicVideoPlaybackTrack(videoOwnerKey + 1,
+            new CinematicVideoInitialPlaybackState(false, false, "sound modifier gate unresolved"),
+            [new(2, CinematicVideoControl.Toggle)]);
+        var estimatedState = new CinematicObjectState(new AnimationClip(), estimatedWorld, [],
+            videoPlayback: new CinematicVideoPlaybackTimeline([estimatedTrack]));
+        estimatedState.Evaluate(0);
+        Require(estimatedOwner.IsControlHidden,
+            "An unresolved initial state must still use the same disclosed fallback as the procedural video preview.");
+        estimatedState.Evaluate(2);
+        Require(!estimatedOwner.IsControlHidden,
+            "Serialized video triggers must update owner visibility consistently even when the initial gate is estimated.");
+        estimatedState.Clear();
     }
 
     private static void Require(bool condition, string message)

@@ -7,7 +7,8 @@ internal static class ArchiveCinematicBodyCoverageAudit
         string ClipName, string ClipOwnerKey, string Actor, string ActorKey, int BoneCount, int ActionSegments,
         int BoneTracks, bool HasRootTrack, bool HasUnresolvedActionRequests,
         int? BaseKitSlotCount, string[] RequestedSlotsAbsentFromBaseKit,
-        string[] ActionRequests, string[] Diagnostics);
+        string[] ActionRequests, string[] PreviewableOwnerActionsResolvingMissingRequests,
+        string[] Diagnostics);
     private sealed record ClipIndex(string Container, string World, string Clip,
         string ClipOwnerKey, string ClipOwnerName, float Duration, int TrackCount, string[] TrackTargets,
         string[] ClipOwnerCandidateDetails, string OwnerBrainKey, string ScriptModelKey, string[] ScriptFunctionKeys,
@@ -61,8 +62,9 @@ internal static class ArchiveCinematicBodyCoverageAudit
                     clipCount++;
                     clipIndex.Add(ReadClipIndex(entry.Id, sourceWorld.Name, sourceWorld.Key, clip,
                         document, replay.Records, sourceBytes));
-                    var nestedCommands = CinematicNestedEventTransformTracks
-                        .ReadTimeline(clip, world, document).Commands;
+                    var nestedTimeline = CinematicNestedEventTransformTracks.ReadTimeline(clip, world, document);
+                    var nestedCommands = nestedTimeline.Commands;
+                    var previewedOwnerTimelineCache = new Dictionary<CinematicScriptOwnerId, CinematicNestedEventTimeline>();
                     var sourceTracks = clip.Tracks.Concat(CinematicScriptTransformTracks.Read(clip)).ToArray();
                     foreach (var actor in world.Actors)
                     {
@@ -82,7 +84,7 @@ internal static class ArchiveCinematicBodyCoverageAudit
                             coverage.Add(new(entry.Id, sourceWorld.Name, clip.Key.ToString("X8"), clip.Name,
                                 clip.CinematicOwnerKey.ToString("X8"), actor.Root.Name, actor.Root.GaoKey.ToString("X8"),
                                 actor.Bones.Count, 0, 0, false, true,
-                                null, [], [],
+                                null, [], [], [],
                                 [$"Audit could not build the action timeline: {error.Message}"]));
                             continue;
                         }
@@ -109,6 +111,9 @@ internal static class ArchiveCinematicBodyCoverageAudit
                             .Select(request => $"{request.Action} at {request.Time:F3}s")
                             .Distinct(StringComparer.Ordinal)
                             .ToArray();
+                        string[] previewableOwnerActions = FindPreviewableOwnerActionsResolvingMissingRequests(
+                            clip, world, actor, sourceWorld.Key, document, timeline,
+                            nestedTimeline.PreviewableSceneEventOwners, previewedOwnerTimelineCache);
 
                         coverage.Add(new(entry.Id, sourceWorld.Name, clip.Key.ToString("X8"), clip.Name,
                             clip.CinematicOwnerKey.ToString("X8"), actor.Root.Name, actor.Root.GaoKey.ToString("X8"), actor.Bones.Count,
@@ -117,6 +122,7 @@ internal static class ArchiveCinematicBodyCoverageAudit
                             actionRequests.Select(request => DescribeActionRequest(request, sourceWorld.Key,
                                     document.CinematicActionKitsByOwner))
                                 .Distinct(StringComparer.Ordinal).ToArray(),
+                            previewableOwnerActions,
                             timeline.Diagnostics.ToArray()));
                     }
                 }
@@ -154,12 +160,49 @@ internal static class ArchiveCinematicBodyCoverageAudit
             ClipIndex = clipIndex,
             LoadFailures = failures,
             ActorCoverage = coverage,
-            Limits = "Static reconstruction using each FF container's serialized actor action kits and clip events. It does not execute brain callbacks, conditional gameplay handoffs, runtime action queues, or actor visibility/collision state. Reused cross-container defaults are not inferred."
+            Limits = "Static reconstruction using each FF container's serialized actor action kits and clip events. PreviewableOwnerActionsResolvingMissingRequests reports separate manually selectable SceneEvents owners whose serialized commands supply an otherwise missing action; it does not mean those owner gates passed in the game. The audit does not execute brain callbacks, conditional gameplay handoffs, runtime action queues, or actor visibility/collision state. Reused cross-container defaults are not inferred."
         };
 
         Directory.CreateDirectory(output);
         File.WriteAllText(Path.Combine(output, "archive-cinematic-body-coverage.json"),
             JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private static string[] FindPreviewableOwnerActionsResolvingMissingRequests(AnimationClip clip,
+        WorldData world, SceneActor actor, uint worldKey, SceneDocument document,
+        CinematicBodyTimeline baselineTimeline, IEnumerable<CinematicScriptOwnerId> previewableOwners,
+        IDictionary<CinematicScriptOwnerId, CinematicNestedEventTimeline> candidateTimelineCache)
+    {
+        if (!baselineTimeline.Diagnostics.Any(message =>
+                message.StartsWith("Missing body action ", StringComparison.Ordinal))) return [];
+
+        var resolutions = new List<string>();
+        foreach (CinematicScriptOwnerId ownerId in previewableOwners.Distinct())
+        {
+            CinematicNestedEventTimeline candidateTimeline;
+            if (candidateTimelineCache.TryGetValue(ownerId, out var cachedTimeline))
+            {
+                candidateTimeline = cachedTimeline;
+            }
+            else
+            {
+                candidateTimeline = CinematicNestedEventTransformTracks.ReadTimeline(clip, world, document,
+                    previewedSceneEventOwners: new HashSet<CinematicScriptOwnerId> { ownerId });
+                candidateTimelineCache.Add(ownerId, candidateTimeline);
+            }
+            var candidateBody = CinematicBodyTimeline.Create(clip, actor, worldKey,
+                document.CinematicActionKitsByOwner, candidateTimeline.Commands);
+            string[] resolvedDescriptions = CinematicOwnerActionContributionResolver
+                .FindResolvedRequests(actor, baselineTimeline, candidateBody);
+            if (resolvedDescriptions.Length == 0) continue;
+
+            SceneObject[] ownerMatches = world.Objects.Where(item => item.GaoKey == ownerId.OwnerKey)
+                .Take(2).ToArray();
+            string ownerName = ownerMatches.Length == 1 ? ownerMatches[0].Name : "unresolved/ambiguous owner";
+            resolutions.Add($"{ownerId.OwnerKey:X8} {ownerName}: {string.Join("; ", resolvedDescriptions)}");
+        }
+
+        return resolutions.ToArray();
     }
 
     private static string ClassifyCoverage(ActorCoverage item)

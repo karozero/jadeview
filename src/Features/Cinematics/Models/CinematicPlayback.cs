@@ -141,7 +141,7 @@ public sealed partial class CinematicPlayback
         this.resolver = resolver;
         this.world = world;
         videoPlayback = new(sourceClip, world, document, resolver, nestedEventCommands);
-        objectState = new(sourceClip, world, actorClips.Keys, nestedEventCommands);
+        objectState = new(sourceClip, world, actorClips.Keys, nestedEventCommands, videoPlayback);
         CinematicEnvironmentController[] environmentControllers = world.CinematicEnvironmentControllers.Length > 0
             ? world.CinematicEnvironmentControllers
             : document.CinematicEnvironmentControllers.Values
@@ -281,9 +281,10 @@ public sealed partial class CinematicPlayback
             var actorTracks = sourceTracks.Where(track => IsActorTrack(track, actor)).ToList();
             var companionActionRequests = CinematicCompanionActionRequestResolver.Resolve(
                 nestedEventTimeline.Commands, actor, world.Key, document.CinematicScriptOwners.Values);
-            var bodyEventCalls = nestedEventTimeline.Commands.Concat(companionActionRequests).ToArray();
+            var bodyEventCalls = nestedEventTimeline.Commands.Concat(companionActionRequests.PreviewCalls).ToArray();
             var body = CinematicBodyTimeline.Create(sourceClip, actor, world.Key,
                 document.CinematicActionKitsByOwner, bodyEventCalls);
+            body.AddDiagnostics(companionActionRequests.Diagnostics);
             if (actorTracks.Count == 0 && body.ActionCount == 0) continue;
             actorClips[actor] = new AnimationClip
             {

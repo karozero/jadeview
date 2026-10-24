@@ -3,7 +3,8 @@ using System.Buffers.Binary;
 namespace JadeView;
 
 public sealed record CinematicFacialEvent(float Time, uint ActorTargetKey, bool? AutomaticMouth, float MouthFactor,
-    float MouthSpeed, CinematicMorphCommand?[] Commands, bool BlinkRequested = false)
+    float MouthSpeed, CinematicMorphCommand?[] Commands, bool BlinkRequested = false,
+    int? TargetModuleSelector = null)
 {
     private const int MessageTypeOffset = 0x30;
     private const int MouthCommandOffset = 0x18;
@@ -70,7 +71,10 @@ public sealed record CinematicFacialEvent(float Time, uint ActorTargetKey, bool?
         if (automaticMouth == true && !IsSupportedSpeed(mouthSpeed)) return null;
 
         bool blinkRequested = handler == CinematicFacialMessageHandler.Sally && message.Int2 != 0;
-        return new(message.Time, message.Gao, automaticMouth, mouthFactor, mouthSpeed, commands, blinkRequested);
+        int? targetModuleSelector = handler is CinematicFacialMessageHandler.Sally
+            or CinematicFacialMessageHandler.Companion ? 0 : null;
+        return new(message.Time, message.Gao, automaticMouth, mouthFactor, mouthSpeed, commands,
+            blinkRequested, targetModuleSelector);
     }
 
     private static CinematicFacialEvent? Decode(float time, uint actorTargetKey,

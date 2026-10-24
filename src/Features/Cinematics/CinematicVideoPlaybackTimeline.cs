@@ -3,7 +3,14 @@ using System.Globalization;
 namespace JadeView;
 
 internal readonly record struct CinematicVideoPlaybackSample(bool Controlled, bool Ambiguous,
-    bool HasStarted, bool IsPlaying, float VideoTime);
+    bool HasStarted, bool IsPlaying, float VideoTime)
+{
+    internal bool InitialStateResolved { get; init; } = true;
+    internal string InitialStateEvidence { get; init; } = string.Empty;
+}
+
+internal readonly record struct CinematicVideoInitialPlaybackState(
+    bool InitiallyPlaying, bool IsResolved, string Evidence);
 
 internal sealed class CinematicVideoPlaybackTimeline
 {
@@ -12,6 +19,7 @@ internal sealed class CinematicVideoPlaybackTimeline
     private const uint VideoStopRequest = 0x2000;
     private const uint VideoSwitchCapability = 0x100;
     private readonly Dictionary<uint, CinematicVideoPlaybackTrack[]> tracksByTexture;
+    private readonly Dictionary<uint, CinematicVideoPlaybackTrack[]> tracksByOwner;
 
     internal int ControlledTextureCount => tracksByTexture.Count;
     internal IEnumerable<uint> TextureKeys => tracksByTexture.Keys;
@@ -40,6 +48,7 @@ internal sealed class CinematicVideoPlaybackTimeline
             .GroupBy(owner => owner.OwnerKey)
             .ToDictionary(group => group.Key, group => group.ToArray());
         var tracksByKey = new Dictionary<uint, Dictionary<string, CinematicVideoPlaybackTrack>>();
+        var tracksByOwnerKey = new Dictionary<uint, Dictionary<string, CinematicVideoPlaybackTrack>>();
 
         foreach (SceneObject sceneObject in world.Objects)
         {
@@ -51,12 +60,17 @@ internal sealed class CinematicVideoPlaybackTimeline
             {
                 uint? switchKey = scriptOwner.EffectiveObjectReference("des_o_Interrupteur")?.TargetKey;
                 SceneObject? switchObject = ResolveUniqueObject(world, switchKey);
-                bool initiallyPlaying = ReadInitialPlayingState(scriptOwner, switchObject);
+                CinematicVideoInitialPlaybackState initialState = ResolveInitialPlaybackState(
+                    scriptOwner, switchObject);
                 bool stopAtEnd = ReadStopAtEnd(scriptOwner);
                 var controlEvents = ReadControlEvents(controlCalls, scriptOwner.OwnerKey, switchKey);
-                var track = new CinematicVideoPlaybackTrack(initiallyPlaying, controlEvents, stopAtEnd);
+                var track = new CinematicVideoPlaybackTrack(scriptOwner.OwnerKey, initialState,
+                    controlEvents, stopAtEnd);
                 string trackIdentity = CreateTrackIdentity(scriptOwner.OwnerKey, switchKey,
-                    initiallyPlaying, stopAtEnd, controlEvents);
+                    initialState, stopAtEnd, controlEvents);
+                if (!tracksByOwnerKey.TryGetValue(scriptOwner.OwnerKey, out var ownerTracks))
+                    tracksByOwnerKey[scriptOwner.OwnerKey] = ownerTracks = new(StringComparer.Ordinal);
+                ownerTracks.TryAdd(trackIdentity, track);
                 foreach (uint textureKey in textureKeys)
                 {
                     if (!tracksByKey.TryGetValue(textureKey, out var tracks))
@@ -67,7 +81,24 @@ internal sealed class CinematicVideoPlaybackTimeline
         }
 
         tracksByTexture = tracksByKey.ToDictionary(pair => pair.Key, pair => pair.Value.Values.ToArray());
+        tracksByOwner = tracksByOwnerKey.ToDictionary(pair => pair.Key, pair => pair.Value.Values.ToArray());
     }
+
+    internal CinematicVideoPlaybackTimeline(IEnumerable<CinematicVideoPlaybackTrack> ownerTracks)
+    {
+        tracksByTexture = [];
+        tracksByOwner = ownerTracks.GroupBy(track => track.OwnerKey)
+            .ToDictionary(group => group.Key, group => group.ToArray());
+    }
+
+    internal IEnumerable<(uint OwnerKey, bool Visible)> InitialOwnerVisibility => tracksByOwner
+        .Where(pair => pair.Value.Length == 1 && pair.Value[0].InitialVisibility is not null)
+        .Select(pair => (pair.Key, pair.Value[0].InitialVisibility!.Value));
+
+    internal IEnumerable<(float Time, uint OwnerKey, bool Visible)> OwnerVisibilityEvents => tracksByOwner
+        .Where(pair => pair.Value.Length == 1)
+        .SelectMany(pair => pair.Value[0].VisibilityEvents.Select(change =>
+            (change.Time, pair.Key, change.Visible)));
 
     internal CinematicVideoPlaybackSample? Evaluate(uint textureKey, float timelineTime)
     {
@@ -82,6 +113,9 @@ internal sealed class CinematicVideoPlaybackTimeline
         if (sample == null) return "No MPEG-player callback is linked; sampling from cinematic time.";
         CinematicVideoPlaybackSample playbackSample = sample.Value;
         if (playbackSample.Ambiguous) return "Multiple MPEG-player callbacks control this texture; trigger timing is ambiguous.";
+        if (!playbackSample.InitialStateResolved)
+            return $"MPEG-player initial state is estimated: {playbackSample.InitialStateEvidence} "
+                + "The preview uses serialized i_Play/switch state as a fallback; native callback dispatch is not observed.";
         if (!playbackSample.HasStarted) return "Waiting for an explicit cinematic video trigger.";
         return playbackSample.IsPlaying
             ? $"Script-triggered video · {playbackSample.VideoTime:F2}s from media start"
@@ -109,14 +143,42 @@ internal sealed class CinematicVideoPlaybackTimeline
         }
     }
 
-    internal static bool ReadInitialPlayingState(CinematicScriptOwner owner, SceneObject? switchObject)
+    internal static CinematicVideoInitialPlaybackState ResolveInitialPlaybackState(
+        CinematicScriptOwner owner, SceneObject? switchObject)
     {
         string? value = owner.EffectiveVariable("i_Play")?.Value;
         bool serializedPlaying = int.TryParse(value, NumberStyles.Integer,
             CultureInfo.InvariantCulture, out int playing) && playing != 0;
         bool switchIsOn = switchObject != null
             && (switchObject.InitialCapabilities & VideoSwitchCapability) != 0;
-        return serializedPlaying || switchIsOn;
+        bool fallbackPlaying = serializedPlaying || switchIsOn;
+
+        int? specialFlagModifier = ReadEffectiveInteger(owner, "des_i_sf_modifier_vrai");
+        int? specialFlagPresence = ReadEffectiveInteger(owner, "des_i_sf_jesuisla");
+        int? savedFlagSwitch = ReadEffectiveInteger(owner, "des_i_sf_on_off");
+        int? soundModifier = ReadEffectiveInteger(owner, "des_i_SND_modifier");
+        if (specialFlagModifier is > 0 || specialFlagPresence is not 0 and not null)
+            return Estimated("an alternate save-flag/timer branch may stop or delay the normal init path");
+        if (specialFlagModifier is null || specialFlagPresence is null || savedFlagSwitch is null
+            || soundModifier is null)
+            return Estimated("one or more effective save-flag branch values are unavailable");
+        if (savedFlagSwitch is > 0)
+            return Estimated($"saved flag {savedFlagSwitch} can start playback independently of the switch object's capability");
+        if (soundModifier is > 0)
+            return Estimated($"sound modifier {soundModifier} can hide the video owner when its runtime status gate fails");
+
+        CinematicScriptObjectReference? switchReference = owner.EffectiveObjectReference("des_o_Interrupteur");
+        if (switchReference == null || switchObject == null
+            || switchObject.GaoKey != switchReference.TargetKey)
+            return Estimated("des_o_Interrupteur is absent, unresolved, or not unique in the preview world");
+
+        // Iris's ordinary mpegplayer_init node (15) overwrites i_Play from the
+        // switch capability before selecting the video material. Serialized
+        // i_Play is therefore only a fallback when that source branch is unknown.
+        return new(switchIsOn, true,
+            $"normal init path: i_Play is overwritten from {switchObject.Name} ({switchObject.GaoKey:X8}) capability 0x100");
+
+        CinematicVideoInitialPlaybackState Estimated(string reason) => new(fallbackPlaying, false, reason);
     }
 
     private static bool ReadStopAtEnd(CinematicScriptOwner owner)
@@ -126,12 +188,17 @@ internal sealed class CinematicVideoPlaybackTimeline
             && stopAtEnd != 0;
     }
 
-    private static string CreateTrackIdentity(uint ownerKey, uint? switchKey, bool initiallyPlaying,
+    private static string CreateTrackIdentity(uint ownerKey, uint? switchKey,
+        CinematicVideoInitialPlaybackState initialState,
         bool stopAtEnd,
         CinematicVideoControlEvent[] events) =>
         $"{ownerKey:X8}:{switchKey?.ToString("X8", CultureInfo.InvariantCulture) ?? "none"}:"
-        + $"{initiallyPlaying}:{stopAtEnd}:{string.Join(',', events.Select(item =>
+        + $"{initialState.InitiallyPlaying}:{initialState.IsResolved}:{stopAtEnd}:{string.Join(',', events.Select(item =>
             $"{item.Time.ToString("R", CultureInfo.InvariantCulture)}={item.Control}"))}";
+
+    private static int? ReadEffectiveInteger(CinematicScriptOwner owner, string name) =>
+        int.TryParse(owner.EffectiveVariable(name)?.Value, NumberStyles.Integer,
+            CultureInfo.InvariantCulture, out int value) ? value : null;
 
     internal static CinematicVideoControlEvent[] ReadControlEvents(
         IEnumerable<(float Time, CinematicLiteralCall Call)> calls, uint ownerKey, uint? switchKey) => calls
@@ -183,10 +250,39 @@ internal enum CinematicVideoControl { Start, Stop, Toggle }
 
 internal sealed record CinematicVideoControlEvent(float Time, CinematicVideoControl Control);
 
-internal sealed class CinematicVideoPlaybackTrack(bool initiallyPlaying,
-    CinematicVideoControlEvent[] controlEvents, bool stopAtEnd = false)
+internal sealed class CinematicVideoPlaybackTrack
 {
-    internal bool StopAtEnd { get; } = stopAtEnd;
+    private readonly bool initiallyPlaying;
+    private readonly bool initialStateResolved;
+    private readonly string initialStateEvidence;
+    private readonly CinematicVideoControlEvent[] controlEvents;
+    private readonly (float Time, bool Visible)[] visibilityEvents;
+    internal uint OwnerKey { get; }
+    // The same fallback state drives both the video quad and its owner visibility.
+    // IsResolved remains separate so the UI can disclose when native gates are unknown.
+    internal bool? InitialVisibility => initiallyPlaying;
+    internal IReadOnlyList<(float Time, bool Visible)> VisibilityEvents => visibilityEvents;
+    internal bool StopAtEnd { get; }
+
+    internal CinematicVideoPlaybackTrack(bool initiallyPlaying,
+        CinematicVideoControlEvent[] controlEvents, bool stopAtEnd = false)
+        : this(0, new CinematicVideoInitialPlaybackState(initiallyPlaying, true, "explicit preview state"),
+            controlEvents, stopAtEnd)
+    {
+    }
+
+    internal CinematicVideoPlaybackTrack(uint ownerKey, CinematicVideoInitialPlaybackState initialState,
+        CinematicVideoControlEvent[] controlEvents, bool stopAtEnd = false)
+    {
+        OwnerKey = ownerKey;
+        initiallyPlaying = initialState.InitiallyPlaying;
+        initialStateResolved = initialState.IsResolved;
+        initialStateEvidence = initialState.Evidence;
+        this.controlEvents = controlEvents;
+        StopAtEnd = stopAtEnd;
+        visibilityEvents = controlEvents
+            .Select(item => (item.Time, Evaluate(item.Time).IsPlaying)).ToArray();
+    }
 
     internal CinematicVideoPlaybackSample Evaluate(float timelineTime)
     {
@@ -218,6 +314,10 @@ internal sealed class CinematicVideoPlaybackTrack(bool initiallyPlaying,
         }
 
         float videoTime = isPlaying ? Math.Max(0, timelineTime - mediaStart) : frozenTime;
-        return new(true, false, hasStarted, isPlaying, videoTime);
+        return new(true, false, hasStarted, isPlaying, videoTime)
+        {
+            InitialStateResolved = initialStateResolved,
+            InitialStateEvidence = initialStateEvidence
+        };
     }
 }

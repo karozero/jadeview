@@ -1,9 +1,10 @@
 namespace JadeView;
 
 internal sealed record CinematicNleTimelineLane(string Name, CinematicNleLaneKind Kind,
-    CinematicNleTimelineItem[] Items);
+    CinematicNleTimelineItem[] Items, uint? ObjectKey = null);
 
-internal sealed record CinematicNleTimelineItem(float Start, float End, string Label, string Details);
+internal sealed record CinematicNleTimelineItem(float Start, float End, string Label, string Details,
+    uint? ObjectKey = null);
 
 internal enum CinematicNleLaneKind
 {
@@ -41,8 +42,9 @@ internal static class CinematicNleTimelineBuilder
                     track.Keys.Min(key => key.Time),
                     Math.Max(track.Keys.Max(key => key.Time), track.Keys.Min(key => key.Time)),
                     track.Bone < 0 ? "Transform" : $"Bone {track.Bone}",
-                    $"Target {group.Key:X8} · {track.Keys.Count} keys · channel flags 0x{track.ChannelFlags:X4}"))
-                    .ToArray()))
+                    $"Target {group.Key:X8} · {track.Keys.Count} keys · channel flags 0x{track.ChannelFlags:X4}",
+                    group.Key))
+                    .ToArray(), group.Key))
             .OrderBy(lane => lane.Name, StringComparer.OrdinalIgnoreCase);
         lanes.AddRange(animationLanes);
 
@@ -50,10 +52,11 @@ internal static class CinematicNleTimelineBuilder
         {
             var bodyItems = bodyTimeline.TimelineSegments(playback.Duration)
                 .Select(segment => new CinematicNleTimelineItem(segment.Start, segment.End,
-                    segment.Label, $"{actor.Root.Name} · {segment.Label}"))
+                    segment.Label, $"{actor.Root.Name} · {segment.Label}", actor.Root.GaoKey))
                 .ToArray();
             if (bodyItems.Length > 0)
-                lanes.Add(new($"{actor.Root.Name} · body", CinematicNleLaneKind.BodyAction, bodyItems));
+                lanes.Add(new($"{actor.Root.Name} · body", CinematicNleLaneKind.BodyAction,
+                    bodyItems, actor.Root.GaoKey));
         }
 
         AddScriptLanes(lanes, playback, world, document);

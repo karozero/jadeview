@@ -8,25 +8,36 @@ internal sealed class CinematicObjectState
     private const int ObjectCapabilitiesSet = 8133, ObjectCapabilitiesToggle = 8145;
     private readonly SceneObject[] objects;
     private readonly (StateChange Change, SceneObject[] Targets)[] events;
+    private readonly (uint OwnerKey, bool Visible)[] initialVideoVisibility;
+    private readonly (DrawMaskChange Change, SceneObject Target)[] drawMaskEvents;
     private readonly (CapabilityChange Change, SceneObject Target)[] capabilityEvents;
     private readonly HashSet<SceneActor> participants;
     private int appliedEventCount;
+    private int appliedDrawMaskEventCount;
     private int appliedCapabilityEventCount;
     private bool hasEvaluation;
     private float lastEvaluationTime;
 
     internal IEnumerable<float> VisibilityChangeTimes => events
         .Where(item => ((item.Change.SetMask | item.Change.ClearMask) & Invisible) != 0)
-        .Select(item => item.Change.Time).Distinct();
+        .Select(item => item.Change.Time)
+        .Concat(drawMaskEvents.Where(item => ((item.Change.SetMask | item.Change.ClearMask) & SceneObject.DrawVisibilityMask) != 0)
+            .Select(item => item.Change.Time)).Distinct();
     internal IEnumerable<SceneObject> VisibilityTargets => events
         .Where(item => ((item.Change.SetMask | item.Change.ClearMask) & Invisible) != 0)
-        .SelectMany(item => item.Targets).Distinct();
+        .SelectMany(item => item.Targets)
+        .Concat(initialVideoVisibility.SelectMany(item => objects.Where(sceneObject =>
+            sceneObject.GaoKey == item.OwnerKey)))
+        .Concat(drawMaskEvents.Where(item => ((item.Change.SetMask | item.Change.ClearMask) & SceneObject.DrawVisibilityMask) != 0)
+            .Select(item => item.Target)).Distinct();
 
     internal CinematicObjectState(AnimationClip source, WorldData world, IEnumerable<SceneActor> actors,
-        IEnumerable<(float Time, CinematicLiteralCall Call)>? nestedEventCommands = null)
+        IEnumerable<(float Time, CinematicLiteralCall Call)>? nestedEventCommands = null,
+        CinematicVideoPlaybackTimeline? videoPlayback = null)
     {
         objects = world.Objects.ToArray();
         participants = actors.ToHashSet();
+        initialVideoVisibility = videoPlayback?.InitialOwnerVisibility.ToArray() ?? [];
         var calls = CinematicLiteralCall.ReadTimeline(source)
             .Concat(nestedEventCommands ?? [])
             .DistinctBy(item => (item.Time, item.Call.Target, item.Call.Selector,
@@ -36,7 +47,19 @@ internal sealed class CinematicObjectState
         events = calls
             .Select(item => Decode(item.Time, item.Call))
             .OfType<StateChange>().OrderBy(change => change.Time)
-            .Select(change => (change, Targets(change).ToArray())).ToArray();
+            .Select(change => (Change: change, Targets: Targets(change).ToArray())).ToArray();
+        events = events.Concat(videoPlayback?.OwnerVisibilityEvents.Select(change =>
+                (Change: new StateChange(change.Time, change.OwnerKey,
+                    change.Visible ? 0u : Invisible, change.Visible ? Invisible : 0u),
+                    Targets: objects.Where(sceneObject => sceneObject.GaoKey == change.OwnerKey).ToArray())) ?? [])
+            .OrderBy(item => item.Change.Time).ToArray();
+        drawMaskEvents = calls
+            .Where(item => CinematicEngineFunctionCatalog.NameFor(item.Call.Selector) == "OBJDrawMaskSet"
+                && item.Call.Arguments.Length == 2)
+            .SelectMany(item => objects.Where(sceneObject => sceneObject.GaoKey == item.Call.Target)
+                .Select(target => (Change: new DrawMaskChange(item.Time,
+                    item.Call.Arguments[0], item.Call.Arguments[1]), Target: target)))
+            .OrderBy(item => item.Change.Time).ToArray();
         capabilityEvents = calls
             .Where(item => (item.Call.Selector == ObjectCapabilitiesSet && item.Call.Arguments.Length == 2)
                 || (item.Call.Selector == ObjectCapabilitiesToggle && item.Call.Arguments.Length == 1))
@@ -55,6 +78,7 @@ internal sealed class CinematicObjectState
         {
             ResetToSourceState();
             appliedEventCount = 0;
+            appliedDrawMaskEventCount = 0;
             appliedCapabilityEventCount = 0;
             hasEvaluation = true;
         }
@@ -69,6 +93,13 @@ internal sealed class CinematicObjectState
                     target.PreviewControlFlags!.Value, change.SetMask, change.ClearMask);
                 if ((change.ClearMask & (Invisible | Inactive)) != 0) target.CinematicExcluded = false;
             }
+        }
+        while (appliedDrawMaskEventCount < drawMaskEvents.Length
+            && drawMaskEvents[appliedDrawMaskEventCount].Change.Time <= requestedTime)
+        {
+            var (change, target) = drawMaskEvents[appliedDrawMaskEventCount++];
+            uint drawFlags = target.PreviewDrawFlags!.Value;
+            target.PreviewDrawFlags = (drawFlags | change.SetMask) & ~change.ClearMask;
         }
         while (appliedCapabilityEventCount < capabilityEvents.Length
             && capabilityEvents[appliedCapabilityEventCount].Change.Time <= requestedTime)
@@ -87,10 +118,19 @@ internal sealed class CinematicObjectState
         foreach (var sceneObject in objects)
         {
             sceneObject.PreviewControlFlags = sceneObject.ControlFlags;
+            sceneObject.PreviewDrawFlags = sceneObject.DrawFlags;
             sceneObject.PreviewCapabilities = sceneObject.InitialCapabilities;
             sceneObject.CinematicExcluded = sceneObject.Actor is { } actor
                 && sceneObject == actor.Root && !actor.IsCinematicWorldResident
                 && !participants.Contains(actor);
+        }
+        foreach (var (ownerKey, visible) in initialVideoVisibility)
+        {
+            foreach (var sceneObject in objects.Where(sceneObject => sceneObject.GaoKey == ownerKey))
+            {
+                uint flags = sceneObject.PreviewControlFlags!.Value;
+                sceneObject.PreviewControlFlags = visible ? flags & ~Invisible : flags | Invisible;
+            }
         }
     }
 
@@ -113,12 +153,14 @@ internal sealed class CinematicObjectState
     internal void Clear()
     {
         appliedEventCount = 0;
+        appliedDrawMaskEventCount = 0;
         appliedCapabilityEventCount = 0;
         hasEvaluation = false;
         lastEvaluationTime = 0;
         foreach (var sceneObject in objects)
         {
             sceneObject.PreviewControlFlags = null;
+            sceneObject.PreviewDrawFlags = null;
             sceneObject.PreviewCapabilities = null;
             sceneObject.CinematicExcluded = false;
         }
@@ -137,5 +179,6 @@ internal sealed class CinematicObjectState
     }
 
     private sealed record StateChange(float Time, uint Target, uint SetMask, uint ClearMask, bool Group = false);
+    private sealed record DrawMaskChange(float Time, uint SetMask, uint ClearMask);
     private sealed record CapabilityChange(float Time, uint AddMask, uint RemoveMask, uint ToggleMask);
 }

@@ -15,8 +15,10 @@ public sealed partial class SceneExporter
     {
         if (SceneRenderer.IsCollision(sceneObject)) return options.Collisions;
         bool visibleInPreview = !sceneObject.PreviewHidden && !sceneObject.IsControlHidden
-            && sceneObject.Actor?.Root.IsControlHidden != true && (sceneObject.DrawFlags & 8) != 0;
-        return options.GameHidden || visibleInPreview;
+            && sceneObject.Actor?.Root.IsControlHidden != true
+            && (sceneObject.EffectiveDrawFlags & SceneObject.DrawVisibilityMask) != 0;
+        return options.GameHidden || visibleInPreview
+            || options.Animations && cinematicVisibilityObjects.Contains(sceneObject);
     }
     private int Node(SceneObject sceneObject, Matrix4x4 matrix, bool trs = false)
     {

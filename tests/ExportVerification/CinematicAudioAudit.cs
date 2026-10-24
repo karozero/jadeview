@@ -476,6 +476,10 @@ internal static class CinematicAudioAudit
                             {
                                 line.TextId,
                                 line.SoundId,
+                                TextStringOffset = line.TextId >= 0
+                                    && line.TextId < group.StringOffsets.Count
+                                        ? group.StringOffsets[line.TextId]
+                                        : (int?)null,
                                 Text = line.TextId >= 0 && line.TextId < group.Strings.Count
                                     ? group.Strings[line.TextId]
                                     : null

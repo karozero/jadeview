@@ -252,7 +252,7 @@ internal static class CinematicNestedEventTransformChecks
 
     private static void VerifyCallbackBoundSceneEvents(string outputDirectory)
     {
-        var world = World(0x10, 0x100, 0x200);
+        var world = World(0x10, 0x100, 0x200, 0x300);
         var clip = new AnimationClip
         {
             Key = 0x150, Name = "callback-bound", Duration = 5,
@@ -261,12 +261,16 @@ internal static class CinematicNestedEventTransformChecks
             {
                 Bone = -1,
                 Target = 0,
-                Keys = [CinematicTestEvents.Call(2, 0x100, 0x2917, 2166)]
+                Keys =
+                [
+                    CinematicTestEvents.Call(.5f, 0x100, 0x2916, 2166),
+                    CinematicTestEvents.Call(2, 0x100, 0x2917, 2166)
+                ]
             }]
         };
         world.CinematicClips.Add(clip.Key, clip);
         var owner = new CinematicScriptOwner(0x100, 0, 0, 0x10, uint.MaxValue, clip.Key,
-            "callback owner", ["Cine_Events_Cine_exec_GoToEvents"], [], [])
+            "callback owner", ["Cine_Events_cine_tests_depart", "Cine_Events_Cine_exec_GoToEvents"], [], [])
         {
             ModelFunctionNames = ["Cine_Events_Cine_exec_GoToEvents"],
             CallbackSlots = [new(3, 0x2916, "Cine_Events_Cine_exec_GoToEvents")]
@@ -283,9 +287,10 @@ internal static class CinematicNestedEventTransformChecks
                 Calls =
                 [
                     (.5f, new CinematicLiteralCall(0x200, 8152, [1])),
-                    (.75f, new CinematicLiteralCall(0x100, 0x2916, [2166]))
+                    (.25f, new CinematicLiteralCall(0x100, 0x2916, [2166]))
                 ]
-            }
+            },
+            TransformChannel(1, 0x300, 0, 3) with { ChannelFlags = 0 }
         ]));
 
         bool sourceRouteExists = CinematicScriptReader.ReachableEngineCalls(owner)
@@ -299,8 +304,9 @@ internal static class CinematicNestedEventTransformChecks
         bool remainsVisibleBeforeEvent = !world.Objects.Single(sceneObject => sceneObject.GaoKey == 0x200).IsControlHidden;
         state.Evaluate(.5f);
         bool hiddenAtEvent = world.Objects.Single(sceneObject => sceneObject.GaoKey == 0x200).IsControlHidden;
-        if (!sourceRouteExists || tracks.Length != 1 || tracks[0].Target != 0x200
-            || tracks[0].Keys[0].Time != 0)
+        if (!sourceRouteExists || tracks.Length != 2
+            || tracks.Single(track => track.Target == 0x200).Keys[0].Time != 0
+            || tracks.Single(track => track.Target == 0x300).Keys[0].Time != 0)
             throw new InvalidDataException("A source-reachable TRAPlayAll callback on the selected clip's own SceneEvents list must seed EVE transform playback at clip time zero.");
         if (!remainsVisibleBeforeEvent || !hiddenAtEvent)
             throw new InvalidDataException("Callback-bound SceneEvents commands must update object visibility on the shared cinematic clock.");
@@ -308,11 +314,87 @@ internal static class CinematicNestedEventTransformChecks
         var enabledPlayback = CinematicPlayback.Discover(document, world, new(), null).Single();
         bool directWriteRetained = enabledPlayback.ScriptCalls.Any(item => item.Time == 2
             && item.Call.Selector == 0x2917 && item.Call.Arguments.SequenceEqual([2166u]));
-        bool nestedWriteIncluded = enabledPlayback.ScriptStateCalls.Any(item => item.Time == .75f
+        bool nestedWriteIncluded = enabledPlayback.ScriptStateCalls.Any(item => item.Time == .25f
             && item.Call.Selector == 0x2916 && item.Call.Arguments.SequenceEqual([2166u]));
         if (!directWriteRetained || !nestedWriteIncluded)
             throw new InvalidDataException("The playhead flag state must combine direct clip writes with callback-resolved SceneEvents writes.");
+
+        var gatedCallbackOwner = owner with
+        {
+            Variables =
+            [
+                new("des_i_specialFlag_test1", PcVariableFormat.IntegerType, "instance", "2166"),
+                new("f_first_delay", PcVariableFormat.FloatType, "model", "1.25"),
+                new("des_f_tempo", PcVariableFormat.FloatType, "model", "2.5"),
+                new("des_f_duree_totale", PcVariableFormat.FloatType, "model", "1"),
+                new("f_timecode", PcVariableFormat.FloatType, "model", "0")
+            ]
+        };
+        document.CinematicScriptOwners[owner.Id] = gatedCallbackOwner;
+        float? callbackSelfSignal = CinematicTimelineFlagAnalyzer.FindFirstExternalStartFlagTime(
+            gatedCallbackOwner, enabledPlayback.Key, enabledPlayback.ScriptCalls);
+        var callbackSelfStateCalls = CinematicTimelineFlagAnalyzer.ExternalTimelineCalls(
+            gatedCallbackOwner, enabledPlayback.Key, enabledPlayback.ScriptStateCalls);
+        float? independentClipSignal = CinematicTimelineFlagAnalyzer.FindFirstExternalStartFlagTime(
+            gatedCallbackOwner with { SceneEventsKey = 0x999 }, enabledPlayback.Key,
+            enabledPlayback.ScriptCalls);
+        var independentStateCalls = CinematicTimelineFlagAnalyzer.ExternalTimelineCalls(
+            gatedCallbackOwner with { SceneEventsKey = 0x999 }, enabledPlayback.Key,
+            enabledPlayback.ScriptStateCalls);
+        float? nestedCallbackGateSignal = CinematicTimelineFlagAnalyzer.FindFirstSatisfiedStartFlagTime(
+            gatedCallbackOwner, enabledPlayback.ScriptStateCalls);
+        CinematicOwnerStartTimingEstimate? callbackGateTiming = independentClipSignal is { } gateSignal
+            ? CinematicOwnerStartTimingEstimator.Estimate(gatedCallbackOwner, gateSignal)
+            : null;
+        var gateAlignedTimeline = CinematicNestedEventTransformTracks.ReadTimeline(clip, world, document,
+            previewedSceneEventStartTimes: callbackGateTiming is { } estimatedTiming
+                ? new Dictionary<CinematicScriptOwnerId, float> { [owner.Id] = estimatedTiming.PreviewStartTime }
+                : null);
+        CinematicTrackPlaybackClock? callbackDurationClock = gateAlignedTimeline.TransformTracks
+            .Single(track => track.Target == 0x300).CinematicPlaybackClock;
+        CinematicTrackPlaybackClock? runningInitDurationClock = gateAlignedTimeline.TransformTracks
+            .Single(track => track.Target == 0x200).CinematicPlaybackClock;
+        bool callbackPreviewStartsAtEstimatedTime = callbackDurationClock?.Transitions.FirstOrDefault().Time == 3.75f;
+        bool callbackDurationStopsAtConfiguredDeadline = callbackDurationClock != null
+            && callbackDurationClock.TryGetSnapshot(4.74f, out var beforeCallbackDeadline)
+            && beforeCallbackDeadline.Running
+            && callbackDurationClock.TryGetSnapshot(4.75f, out var atCallbackDeadline)
+            && !atCallbackDeadline.Running;
+        bool ownerDeadlineStopsRunningInitChannel = runningInitDurationClock != null
+            && runningInitDurationClock.TryGetSnapshot(4.74f, out var beforeRunningInitDeadline)
+            && beforeRunningInitDeadline.Running
+            && runningInitDurationClock.TryGetSnapshot(4.75f, out var atRunningInitDeadline)
+            && !atRunningInitDeadline.Running;
+        float? zeroDurationStop = CinematicOwnerStartTimingEstimator.PreviewStopTime(
+            gatedCallbackOwner with
+            {
+                Variables = [.. gatedCallbackOwner.Variables.Where(variable => variable.Name != "des_f_duree_totale"),
+                    new("des_f_duree_totale", PcVariableFormat.FloatType, "model", "0")]
+            }, 0);
+        if (callbackSelfSignal != null || callbackSelfStateCalls != null
+            || independentClipSignal != .5f || independentStateCalls == null
+            || nestedCallbackGateSignal != .25f
+            || callbackGateTiming is not { UsedConfiguredTiming: true, PreviewStartTime: 3.75f }
+            || !callbackPreviewStartsAtEstimatedTime || !callbackDurationStopsAtConfiguredDeadline
+            || !ownerDeadlineStopsRunningInitChannel
+            || zeroDurationStop != null)
+            throw new InvalidDataException($"A callback-linked EVE preview must reject self-generated gate evidence, accept independent flag signals, apply Cine_Events start delays and owner-wide finite duration stops, and preserve the zero-duration sentinel. selfSignal={callbackSelfSignal}; independentSignal={independentClipSignal}; combinedSignal={nestedCallbackGateSignal}; timing={callbackGateTiming}; previewStart={callbackPreviewStartsAtEstimatedTime}; durationStop={callbackDurationStopsAtConfiguredDeadline}; runningInitStop={ownerDeadlineStopsRunningInitChannel}; zeroStop={zeroDurationStop}.");
         enabledPlayback.Deactivate();
+
+        var delayedTimeline = CinematicNestedEventTransformTracks.ReadTimeline(clip, world, document,
+            previewedSceneEventStartTimes: new Dictionary<CinematicScriptOwnerId, float>
+            {
+                [owner.Id] = .75f
+            });
+        var delayedCallbackEntry = delayedTimeline.OwnerExecutionLedger.Single(entry =>
+            entry.OwnerId == owner.Id && entry.Route == CinematicOwnerExecutionRoute.CallbackReachability);
+        CinematicTrackPlaybackClock? delayedCallbackClock = delayedTimeline.TransformTracks
+            .Single(track => track.Target == 0x300).CinematicPlaybackClock;
+        if (delayedCallbackClock?.Transitions.FirstOrDefault().Time != .75f
+            || delayedTimeline.TransformTracks.Single(track => track.Target == 0x200).Keys[0].Time != 0
+            || delayedCallbackEntry.PreviewStartTime != .75f)
+            throw new InvalidDataException("An explicitly selected Cine_Events configured start estimate must offset callback-started channels while leaving an independent RunningInit channel at zero.");
+
         // Keep the standalone script-state assertion out of the GLB export fixture:
         // the export checks below should measure only callback-resolved EVE motion.
         clip.Tracks = [];
@@ -331,7 +413,7 @@ internal static class CinematicNestedEventTransformChecks
         if (callbackLedger.PreviewStatus != CinematicOwnerPreviewStatus.Included
             || disabledLedger.PreviewStatus != CinematicOwnerPreviewStatus.Disabled
             || callbackLedger.RuntimeGate != CinematicRuntimeGateStatus.Unknown
-            || !callbackLedger.ChannelIndices.SequenceEqual([0])
+            || !callbackLedger.ChannelIndices.SequenceEqual([0, 1])
             || callbackLedger.CallbackSources.Length != 1
             || callbackLedger.CallbackSources[0].Status != CinematicCallbackSourceBindingStatus.Bound
             || callbackLedger.CallbackSources[0].SlotIndex != 3
@@ -647,6 +729,85 @@ internal static class CinematicNestedEventTransformChecks
                 .Zip([.25f, 1.25f, 2.25f])
                 .All(pair => MathF.Abs(pair.First - pair.Second) < .001f);
 
+        var ownerLoopWorld = World(0x10, 0x100, 0x200, 0x300, 0x400);
+        var ownerLoopDocument = new SceneDocument();
+        AddList(ownerLoopDocument, List(0x100, 0x10, 0x150,
+        [
+            new CinematicEmbeddedEventTrack(0, 0x100, 255,
+                CinematicEventTrackFlags.RunningInit | CinematicEventTrackFlags.AutoLoop, 1, 1),
+            new CinematicEmbeddedEventTrack(1, 0x200, -1, 0, 2, 4)
+            {
+                SourceTrack = new AnimationTrack
+                {
+                    Bone = -1,
+                    Keys =
+                    [
+                        new AnimationKey { Time = 0, Duration = 4, Position = Vector3.Zero },
+                        new AnimationKey { Time = 4, Position = new Vector3(4, 0, 0) }
+                    ]
+                }
+            },
+            TransformChannel(2, 0x300, 0, 4) with
+            {
+                ChannelFlags = CinematicEventTrackFlags.RunningInit,
+                Duration = 4
+            },
+            TransformChannel(3, 0x400, 0, 4) with
+            {
+                ChannelFlags = CinematicEventTrackFlags.RunningInit,
+                Duration = 4
+            }
+        ]));
+        var ownerLoopClip = Clip(0x100, .25f, 0x3B64, 1);
+        ownerLoopClip.Tracks[0].Keys.Add(CinematicTestEvents.Call(.5f, 0x100, 0x3B65, 2));
+        ownerLoopClip.Tracks[0].Keys.Add(CinematicTestEvents.Call(.5f, 0x100, 0x3B66, 3));
+        CinematicNestedEventTimeline ownerLoopTimeline = CinematicNestedEventTransformTracks.ReadTimeline(
+            ownerLoopClip, ownerLoopWorld, ownerLoopDocument);
+        CinematicTrackPlaybackClock? startedPeerClock = ownerLoopTimeline.TransformTracks
+            .Single(track => track.Target == 0x200).CinematicPlaybackClock;
+        CinematicTrackPlaybackClock? stoppedPeerClock = ownerLoopTimeline.TransformTracks
+            .Single(track => track.Target == 0x300).CinematicPlaybackClock;
+        CinematicTrackPlaybackClock? pausedPeerClock = ownerLoopTimeline.TransformTracks
+            .Single(track => track.Target == 0x400).CinematicPlaybackClock;
+        bool sentinelLoopResetsTraPlayPeer = startedPeerClock != null
+            && startedPeerClock.TryMap(1.5f, out float startedPeerTime)
+            && MathF.Abs(startedPeerTime - .5f) < .001f
+            && startedPeerClock.TryMap(2.5f, out float startedPeerSecondTime)
+            && MathF.Abs(startedPeerSecondTime - .5f) < .001f;
+        bool sentinelLoopLeavesStoppedPeerAtItsCursor = stoppedPeerClock != null
+            && stoppedPeerClock.TryGetSnapshot(1.5f, out var stoppedPeerState)
+            && !stoppedPeerState.Running && MathF.Abs(stoppedPeerState.LocalTime - .5f) < .001f;
+        bool sentinelLoopResetsPausedPeer = pausedPeerClock != null
+            && pausedPeerClock.TryGetSnapshot(1.5f, out var pausedPeerState)
+            && pausedPeerState.Running && pausedPeerState.Paused && pausedPeerState.LocalTime == 0;
+
+        ownerLoopClip.Cinematic = true;
+        ownerLoopClip.SceneMotion = true;
+        ownerLoopWorld.CinematicClips.Add(ownerLoopClip.Key, ownerLoopClip);
+        ownerLoopDocument.Worlds.Add(ownerLoopWorld);
+        ownerLoopDocument.CinematicClips.Add(ownerLoopClip.Key, ownerLoopClip);
+        var ownerLoopPlayback = CinematicPlayback.Discover(ownerLoopDocument, ownerLoopWorld, new()).Single();
+        ownerLoopPlayback.Activate();
+        ownerLoopPlayback.Seek(1.5f);
+        bool ownerLoopPreviewPoseMatchesClock = MathF.Abs(ownerLoopWorld.Objects
+            .Single(sceneObject => sceneObject.GaoKey == 0x200).PreviewMatrix!.Value.M41 - .5f) < .02f;
+        string ownerLoopExportPath = Path.Combine(outputDirectory, "cinematic-owner-loop-reset.glb");
+        SceneExporter.Export(ownerLoopExportPath, ownerLoopWorld, new(), new()
+        {
+            Animations = true,
+            UnknownObjects = true,
+            CinematicClipKey = ownerLoopClip.Key,
+            CinematicDocument = ownerLoopDocument
+        });
+        using var ownerLoopExport = new GlbReader(ownerLoopExportPath);
+        SceneObject ownerLoopTarget = ownerLoopWorld.Objects.Single(sceneObject => sceneObject.GaoKey == 0x200);
+        int ownerLoopNode = Enumerable.Range(0, ownerLoopExport.Root.GetProperty("nodes").GetArrayLength())
+            .Single(index => ownerLoopExport.Root.GetProperty("nodes")[index].GetProperty("name")
+                .GetString() == ownerLoopTarget.Name);
+        bool ownerLoopExportPoseMatchesClock = MathF.Abs(ownerLoopExport.World(ownerLoopNode, 0, 1.5f).M41
+            - .5f) < .02f;
+        ownerLoopPlayback.Deactivate();
+
         var loopingClock = new CinematicTrackPlaybackClock(0, 1, 2.5f,
             CinematicEventTrackFlags.AutoLoop, []);
         bool mapsFirstLoop = loopingClock.TryMap(.75f, out float firstLoopTime)
@@ -663,6 +824,27 @@ internal static class CinematicNestedEventTransformChecks
             CinematicEventTrackFlags.AutoLoop, []);
         bool unrepresentableLoopTerminates = unrepresentableLoopClock.TryMap(44.78f, out float tinyLoopTime)
             && tinyLoopTime == 0;
+        var ownerLoopPeerClock = CinematicTrackPlaybackClock.FromCommands(0, 4, 3,
+            CinematicEventTrackFlags.RunningInit,
+            [new(1, "EVEOwnerLoopReset"), new(2, "EVEOwnerLoopReset")], 4);
+        bool runningPeerResetsWithOwnerLoop = ownerLoopPeerClock.TryMap(1.5f, out float peerLoopTime)
+            && MathF.Abs(peerLoopTime - .5f) < .001f
+            && ownerLoopPeerClock.TryMap(2.5f, out float peerSecondLoopTime)
+            && MathF.Abs(peerSecondLoopTime - .5f) < .001f;
+        var stoppedOwnerLoopPeerClock = CinematicTrackPlaybackClock.FromCommands(0, 4, 3,
+            CinematicEventTrackFlags.RunningInit,
+            [new(.5f, "TRAStop"), new(1, "EVEOwnerLoopReset")], 4);
+        bool stoppedPeerStaysStoppedAtOwnerLoop = stoppedOwnerLoopPeerClock.TryGetSnapshot(1.5f,
+            out var stoppedAtOwnerLoop)
+            && !stoppedAtOwnerLoop.Running
+            && MathF.Abs(stoppedAtOwnerLoop.LocalTime - .5f) < .001f;
+        var pausedOwnerLoopPeerClock = CinematicTrackPlaybackClock.FromCommands(0, 4, 2,
+            CinematicEventTrackFlags.RunningInit,
+            [new(.5f, "TRAPause"), new(1, "EVEOwnerLoopReset")], 4);
+        bool pausedPeerResetsWithoutUnpausing = pausedOwnerLoopPeerClock.TryGetSnapshot(1.5f,
+            out var pausedAtOwnerLoop)
+            && pausedAtOwnerLoop.Running && pausedAtOwnerLoop.Paused
+            && pausedAtOwnerLoop.LocalTime == 0;
 
         var persistentClock = new CinematicTrackPlaybackClock(0, 1, 3,
             0,
@@ -868,6 +1050,10 @@ internal static class CinematicNestedEventTransformChecks
         bool reinitExportUsesResetClock = MathF.Abs(reinitExportPose.M41 - .5f) < .001f;
 
         if (!runningInitTrackStartsAtClipStart || !runningInitCommandsUseSameClock
+            || !runningPeerResetsWithOwnerLoop || !stoppedPeerStaysStoppedAtOwnerLoop
+            || !pausedPeerResetsWithoutUnpausing || !sentinelLoopResetsTraPlayPeer
+            || !sentinelLoopLeavesStoppedPeerAtItsCursor || !sentinelLoopResetsPausedPeer
+            || !ownerLoopPreviewPoseMatchesClock || !ownerLoopExportPoseMatchesClock
             || !mapsFirstLoop || !mapsNextLoop || repeatedKeys.Length != 3
             || !longLoopMapsWithoutPrecisionStall || !unrepresentableLoopTerminates || !setEndJumpsToLastFrame
             || !setEndTransformsUseSourceCall || !reinitStopsNonRunningInitTrack
@@ -877,7 +1063,8 @@ internal static class CinematicNestedEventTransformChecks
             || !setTimeSeeksRunningTrack || !setTimePreservesStoppedTrack || !setTimePreservesPausedTrack
             || !setTimeClampsPastEndToLastEvent || !invalidSetTimeIsIgnored || !setTimeSelectsAllChannels
             || !setTimePreviewMatchesBothChannels || !setTimeExportMatchesBothChannels || !wrappedSetTimeIsNotGuessed)
-            throw new InvalidDataException($"Nested SceneEvents must seed RunningInit tracks and honor AutoLoop, AutoStop, TRASetEnd, TRASetTime, TRAReinit, TRAReinitAll and play-while-running source semantics in preview and GLB export. setEndClock={setEndJumpsToLastFrame}, setEndTransform={setEndTransformsUseSourceCall}, reinitStops={reinitStopsNonRunningInitTrack}, reinitRestarts={reinitRestartsRunningInitTrack}, reinitTransform={reinitAllTransformsUseSourceCall}, reinitPreview={reinitPlaybackUsesResetClock}, reinitExport={reinitExportUsesResetClock}, setTimeRunning={setTimeSeeksRunningTrack}, setTimeStopped={setTimePreservesStoppedTrack}, setTimePaused={setTimePreservesPausedTrack}, setTimeEnd={setTimeClampsPastEndToLastEvent}, setTimeInvalid={invalidSetTimeIsIgnored}, setTimeWrap={wrappedSetTimeIsNotGuessed}, setTimeAll={setTimeSelectsAllChannels}, setTimePreview={setTimePreviewMatchesBothChannels}, setTimeExport={setTimeExportMatchesBothChannels}.");
+            throw new InvalidDataException($"Nested SceneEvents must seed RunningInit tracks and honor owner-wide AutoLoop resets, AutoStop, TRASetEnd, TRASetTime, TRAReinit, TRAReinitAll and play-while-running source semantics in preview and GLB export. ownerLoopPeer={runningPeerResetsWithOwnerLoop}, ownerLoopStopped={stoppedPeerStaysStoppedAtOwnerLoop}, ownerLoopPaused={pausedPeerResetsWithoutUnpausing}, ownerLoopTraPlayPeer={sentinelLoopResetsTraPlayPeer}, ownerLoopStoppedPeer={sentinelLoopLeavesStoppedPeerAtItsCursor}, ownerLoopPausedPeer={sentinelLoopResetsPausedPeer}, ownerLoopPreview={ownerLoopPreviewPoseMatchesClock}, ownerLoopExport={ownerLoopExportPoseMatchesClock}, setEndClock={setEndJumpsToLastFrame}, setEndTransform={setEndTransformsUseSourceCall}, reinitStops={reinitStopsNonRunningInitTrack}, reinitRestarts={reinitRestartsRunningInitTrack}, reinitTransform={reinitAllTransformsUseSourceCall}, reinitPreview={reinitPlaybackUsesResetClock}, reinitExport={reinitExportUsesResetClock}, setTimeRunning={setTimeSeeksRunningTrack}, setTimeStopped={setTimePreservesStoppedTrack}, setTimePaused={setTimePreservesPausedTrack}, setTimeEnd={setTimeClampsPastEndToLastEvent}, setTimeInvalid={invalidSetTimeIsIgnored}, setTimeWrap={wrappedSetTimeIsNotGuessed}, setTimeAll={setTimeSelectsAllChannels}, setTimePreview={setTimePreviewMatchesBothChannels}, setTimeExport={setTimeExportMatchesBothChannels}.");
+        Console.WriteLine("PASS: sentinel EVE AutoLoop resets active owner channels in preview and GLB export");
     }
 
     private static void VerifyStopAndAmbiguousRoutesAreOmitted()

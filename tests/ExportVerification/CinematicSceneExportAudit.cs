@@ -77,7 +77,7 @@ internal static class CinematicSceneExportAudit
         CinematicObjectState state)
     {
         SceneObject[] targets = state.VisibilityTargets
-            .Where(target => target.Actor == null && !SceneRenderer.IsCollision(target))
+            .Where(target => !SceneRenderer.IsCollision(target))
             .Distinct().ToArray();
         if (targets.Length == 0) return;
         using var glb = new GlbReader(path);
@@ -91,15 +91,14 @@ internal static class CinematicSceneExportAudit
         foreach (var target in targets)
         {
             var targetNodes = Enumerable.Range(0, nodes.GetArrayLength())
-                .Where(index => nodes[index].TryGetProperty("name", out var name)
-                    && name.GetString() == target.Name).ToHashSet();
-            bool hasAnimationChannel = channels.Any(channel =>
+                .Where(index => ExportVisibilityNodeMatches(nodes[index], target)).ToArray();
+            int animatedNode = targetNodes.FirstOrDefault(index => channels.Any(channel =>
                 channel.GetProperty("target").TryGetProperty("node", out var node)
-                && targetNodes.Contains(node.GetInt32()));
-            if (targetNodes.Count == 0 || !hasAnimationChannel)
+                && node.GetInt32() == index), -1);
+            if (animatedNode < 0)
                 throw new InvalidDataException(
                     $"GLB export for {clip.Key:X8} omitted visibility animation for {target.Name} ({target.GaoKey:X8}).");
-            targetNodesByObject[target] = targetNodes.First();
+            targetNodesByObject[target] = animatedNode;
         }
 
         int animationIndex = Enumerable.Range(0, glb.Root.GetProperty("animations").GetArrayLength())
@@ -118,12 +117,26 @@ internal static class CinematicSceneExportAudit
                     + MathF.Abs(exportedPose.M22) + MathF.Abs(exportedPose.M23)
                     + MathF.Abs(exportedPose.M31) + MathF.Abs(exportedPose.M32)
                     + MathF.Abs(exportedPose.M33) < .0001f;
-                if (exportedHidden != target.IsControlHidden)
+                bool previewHidden = target.IsControlHidden
+                    || (target.EffectiveDrawFlags & SceneObject.DrawVisibilityMask) == 0;
+                if (exportedHidden != previewHidden)
                     throw new InvalidDataException(
                         $"GLB export for {clip.Key:X8} has incorrect visibility for {target.Name} "
                         + $"({target.GaoKey:X8}) at {time:F3}s.");
             }
         }
+    }
+
+    private static bool ExportVisibilityNodeMatches(System.Text.Json.JsonElement node, SceneObject target)
+    {
+        if (target.Actor == null)
+            return node.TryGetProperty("name", out var name) && name.GetString() == target.Name;
+        if (!node.TryGetProperty("extras", out var extras)
+            || !extras.TryGetProperty("gaoKey", out var key)
+            || key.GetString() != target.GaoKey.ToString("X8")) return false;
+        return node.TryGetProperty("mesh", out _)
+            || extras.TryGetProperty("actorComponentVisual", out var visual) && visual.GetBoolean()
+            || extras.TryGetProperty("actorVisibility", out var actorVisibility) && actorVisibility.GetBoolean();
     }
 
     private static int CountAnimatedBones(SceneActor actor)
@@ -197,22 +210,31 @@ internal static class CinematicSceneExportAudit
             .FirstOrDefault(candidate => candidate.Key == clipKey);
         if (playback == null) return [];
         playback.Activate();
-        VerifyActorWorldPositions(world);
+        VerifyActorWorldPositions(world, playback.ScriptStateCalls);
         return playback.SampleFacialMorphTimelines();
     }
 
-    private static void VerifyActorWorldPositions(WorldData world)
+    private static void VerifyActorWorldPositions(WorldData world,
+        IEnumerable<(float Time, CinematicLiteralCall Call)> scriptCalls)
     {
         foreach (var actor in world.Actors.Where(actor => actor.Clip?.Cinematic == true))
         {
-            var sourcePosition = actor.Clip!.Tracks
+            AnimationClip clip = actor.Clip!;
+            Vector3? sourcePosition = clip.CinematicBody?.RootPose(0).Translation;
+            sourcePosition ??= CinematicScriptTransformTracks.Read(clip, scriptCalls)
+                .Where(track => track.Target == actor.Root.GaoKey)
+                .SelectMany(track => track.Keys)
+                .Where(key => key.Time == 0 && key.Position != null)
+                .Select(key => key.Position).LastOrDefault();
+            sourcePosition ??= clip.Tracks
                 .Where(track => track.Bone < 0 && track.Target == actor.Root.GaoKey)
                 .SelectMany(track => track.Keys)
                 .FirstOrDefault(key => key.Time == 0 && key.Position != null)?.Position;
             if (sourcePosition == null) continue;
             var actual = actor.Root.PreviewMatrix!.Value.Translation;
             if (System.Numerics.Vector3.Distance(actual, sourcePosition.Value) > .001f)
-                throw new InvalidDataException($"Cinematic actor {actor.Root.Name} lost its absolute source position.");
+                throw new InvalidDataException($"Cinematic actor {actor.Root.Name} lost its source root position "
+                    + $"at 0s (expected {sourcePosition.Value}, got {actual}).");
         }
     }
 

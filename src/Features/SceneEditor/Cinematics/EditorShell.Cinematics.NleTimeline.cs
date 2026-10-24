@@ -69,7 +69,16 @@ public sealed partial class EditorShell
                     CinematicNleTimelineLane lane = _cinematicNleLanes[laneIndex];
                     ImGui.TableNextRow();
                     ImGui.TableSetColumnIndex(0);
-                    ImGui.TextDisabled($"{LaneIcon(lane.Kind)} {lane.Name}");
+                    if (lane.ObjectKey is { } laneObjectKey)
+                    {
+                        bool selected = SelectedObject?.GaoKey == laneObjectKey;
+                        if (ImGui.Selectable($"{LaneIcon(lane.Kind)} {lane.Name}##NleLane{laneIndex}", selected))
+                            SelectCinematicTimelineObject(laneObjectKey);
+                    }
+                    else
+                    {
+                        ImGui.TextDisabled($"{LaneIcon(lane.Kind)} {lane.Name}");
+                    }
                     if (ImGui.IsItemHovered())
                         ImGui.SetTooltip($"{lane.Items.Length} item(s) · {LaneDescription(lane.Kind)}");
                     ImGui.TableSetColumnIndex(1);
@@ -136,7 +145,19 @@ public sealed partial class EditorShell
             }
         }
         DrawNlePlayhead(drawList, start, end, width, duration);
-        if (ImGui.IsItemActive())
+        bool selectedObjectItem = false;
+        if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(ImGuiMouseButton.Left))
+        {
+            float clickedTime = Math.Clamp((ImGui.GetIO().MousePos.X - start.X) / width, 0, 1) * duration;
+            CinematicNleTimelineItem? clickedItem = FindNleItemAtTime(lane, clickedTime);
+            if (clickedItem?.ObjectKey is { } objectKey
+                && SelectCinematicTimelineObject(objectKey))
+            {
+                SeekNleTo(clickedItem.Start);
+                selectedObjectItem = true;
+            }
+        }
+        if (ImGui.IsItemActive() && !selectedObjectItem)
             SeekFromNlePointer(start.X, width, duration);
         else if (ImGui.IsItemHovered())
             DrawNleItemTooltip(lane, start.X, width, start.Y, end.Y, duration);
@@ -149,17 +170,34 @@ public sealed partial class EditorShell
         float mouseY = ImGui.GetIO().MousePos.Y;
         if (mouseY < top || mouseY > bottom) return;
         float hoveredTime = Math.Clamp((mouseX - originX) / width, 0, 1) * duration;
-        CinematicNleTimelineItem? hoveredItem = lane.Items.FirstOrDefault(item =>
-            hoveredTime >= item.Start && hoveredTime <= Math.Max(item.End, item.Start + .12f));
+        CinematicNleTimelineItem? hoveredItem = FindNleItemAtTime(lane, hoveredTime);
         if (hoveredItem != null)
             ImGui.SetTooltip($"{hoveredItem.Label} · {hoveredItem.Start:F2}s\n{hoveredItem.Details}");
+    }
+
+    private static CinematicNleTimelineItem? FindNleItemAtTime(CinematicNleTimelineLane lane, float time) =>
+        lane.Items.FirstOrDefault(item => time >= item.Start
+            && time <= Math.Max(item.End, item.Start + .12f));
+
+    private bool SelectCinematicTimelineObject(uint objectKey)
+    {
+        SceneObject[] matches = _cinematicWorld?.Objects
+            .Where(sceneObject => sceneObject.GaoKey == objectKey).Take(2).ToArray() ?? [];
+        if (matches.Length != 1) return false;
+        SelectedObject = matches[0];
+        return true;
     }
 
     private void SeekFromNlePointer(float originX, float width, float duration)
     {
         float normalizedTime = Math.Clamp((ImGui.GetIO().MousePos.X - originX) / width, 0, 1);
+        SeekNleTo(normalizedTime * duration);
+    }
+
+    private void SeekNleTo(float time)
+    {
         _cinematicPlayback!.Pause();
-        _cinematicPlayback.Seek(normalizedTime * duration);
+        _cinematicPlayback.Seek(Math.Clamp(time, 0, _cinematicPlayback.Duration));
         _cinematicVideoPostRollActive = false;
         _cinematicVideoPostRollCompleted = false;
         _cinematicVideoPostRollSeconds = 0;
