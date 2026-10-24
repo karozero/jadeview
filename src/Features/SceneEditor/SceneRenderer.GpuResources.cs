@@ -64,6 +64,7 @@ public sealed partial class SceneRenderer
     /// </summary>
     public void ClearGpuCache()
     {
+        textureParameterCache.Clear();
         ClearProceduralVideoTextures();
         _hiddenObjects.Clear();
         foreach (var geo in _geometryCache.Values)

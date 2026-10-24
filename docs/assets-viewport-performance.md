@@ -502,4 +502,173 @@ cost is not exclusively GPU time either. Before another optimization, collect th
 actual trace; if `skinMs` is dominant, sample the methods above including native
 `UpdateMeshBuffer` waits. If `presentMs` dominates, inspect presentation/driver/GPU
 with matching viewport resolution. No new production fix is justified by the
-current stage-only measurements.
+current stage-only measurements. A later repeat on the current source isolated
+a cold-load spike and tested progressive geometry preparation; see below.
+
+## Progressive geometry preparation on cold frames
+
+The full UI audit on the current source and the same retail archive measured a
+401.66 ms first default-workspace frame while uploading 109 geometries. Warmed
+frames were fast, so this was a cold-load hitch rather than a sustained 250 ms
+render cost. Rendering now limits preparation of uncached geometry to a soft
+2 ms per frame. Already cached geometry remains immediate; the selected object
+and its actor remain immediate; remaining uncached objects are deferred to a
+later frame. The viewport reports the current deferred-object count while this
+work is pending. Material pass order and transparent/destination-alpha sorting
+are unchanged.
+
+On the same 3440x1440 full UI audit after this change, the largest default
+warm-up frame was 92.57 ms and no frame in the measured 90-frame window exceeded
+39.03 ms. The warm-up reached the same 205 visible objects and 86,803 triangles
+as the baseline. A stricter 1 ms trial left the scene incomplete after the audit
+warm-up (166 objects), so it was rejected. The 2 ms limit is a soft budget: one
+mesh upload can cross it, and first-time shader/driver setup still contributes
+to the first frame. Full suite and repeated pixel/runtime checks are required
+before treating this as a general frame-time guarantee.
+
+Current logs and screenshots are under ignored
+`artifacts/assets-perf-current/`; the prior source and budget trials are retained
+there for comparison.
+
+## Wide-scene interaction audit on the current source (2026-10-24)
+
+The current dirty source was built into an isolated output directory and traced
+with the full Assets UI on `sally_clean.bf`, container `FF0045A2`, world
+`3500B8E7/00_03_dehors_maison_Intro_cine`, focus
+`3500BB78/Cine_SFX_Faisceau_ascension.gao`. The measured wide-orbit condition had
+`Show hidden`, colliders, selection wireframe, grid and frustum enabled, with
+about 780–850 visible objects and 85–95k triangles. This reproduces the
+many-object stress case, but is broader than a normal view and is not the user's
+exact camera capture.
+
+- Cold first full frame: 568.75 ms total, 529.67 ms renderer, 847 visible
+  objects, 94,507 triangles, 18.35 MB allocated, zero Gen2 collections. The
+  renderer interval is nested; its 94.10 ms prep and 416.50 ms draw subtimers
+  are inclusive measurements and must not be added together.
+- Warm 240-frame wide orbit: 57.40 ms average, 67.99 ms p95, 142.30 ms max;
+  warm render average 54.86 ms and p95 64.60 ms. Separate warm-up/interaction
+  frames still reached about 200–218 ms. Thus this build reproduced large
+  spikes but did not show a sustained 250 ms frame in the sampled window.
+- Ordinary default focused view: 22.08 ms average, 24.62 ms p95, 34.85 ms max
+  with 99 visible objects. This confirms that the wide-view object count and
+  display overlays materially affect the stress result.
+- Selection picking was a separate cold cost (192.41 ms with 414 geometry
+  uploads); repeated warm picking averaged 101.65 ms. The selected beam itself
+  was not a dominant warm geometry/skin/light hotspot.
+
+The traced wide-view cost is distributed across many scene objects. Cold
+lighting-plan evaluation reached 328.63 ms across the frame; warm spikes were
+often dominated by deformation and draw-pass work. For example, one frame had
+`B_Plante_01` at 51.65 ms skin time; other spikes distributed work among
+`B_BoukBoy_Torse`, `b_Crumble_TeteBD`, `S_Crumble_CorpsDef`, and other actors.
+The renderer path is `SceneRenderer.DrawPasses.cs` (packet preparation and
+material passes), `SceneRenderer.Skinning.cs` and
+`SceneActor.Skinning.cs` (deformation and mesh updates), and
+`SceneRenderer.Lighting.cs` (per-part diffuse plan/sample). The timings include
+possible synchronous native/GPU-buffer waits; they do not identify CPU-only or
+GPU-only cost.
+
+No production optimization is justified by this profile alone. Hiding objects,
+particles or effects, changing transparent ordering, or skipping deformation
+would alter the preview. A next exact-output experiment should count material
+passes and redundant GL state changes, then cache only state changes while
+preserving packet order and compare rendered pixels across blend modes. If
+deformation remains dominant, it needs a separate equivalent-output skinning
+optimization and pose/normal/image verification.
+
+Reproduction build, UI audit, traced wide-orbit, and uncached-uniform A/B outputs
+are under ignored
+`tests/ExportVerification/artifacts/assets-lag-audit-current-20261024*`. The
+wide trace is
+`tests/ExportVerification/artifacts/assets-lag-audit-current-20261024/artifacts/assets-frame-trace-5848.tsv`;
+the build records the current JadeView DLL timestamp in its header. The uniform
+A/B was not a controlled paired benchmark, so it supports retaining the
+existing cache but does not prove a new optimization's speedup.
+
+## Texture-parameter cache follow-up (2026-10-24)
+
+The renderer now skips redundant OpenGL texture-parameter writes when a
+texture's wrap or filter value is already set. The cache is keyed by texture
+ID and parameter and is cleared with the renderer GPU cache. A full-frame GPU
+check renders the same scene with caching enabled and disabled and requires
+exact pixel equality; the export-verification suite passes.
+
+A sequential on/off interaction audit on the same archive, scene, focus object,
+and wide-scene profile measured these warm averages:
+
+| Interaction | Cache on | Cache off | Change |
+| --- | ---: | ---: | ---: |
+| Wide camera orbit | 17.38 ms (p95 20.84) | 24.64 ms (p95 27.02) | 29% lower average |
+| Repeated selection notification | 17.90 ms (p95 19.81) | 27.09 ms (p95 30.93) | 34% lower average |
+| Repeated ray picking | 20.91 ms (p95 24.67) | 28.53 ms (p95 30.20) | 27% lower average |
+
+This is one sequential comparison, not a repeated controlled benchmark, so the
+percentages are indicative rather than a guaranteed speedup on every machine.
+The uncached run still had a 146 ms warm-up spike; startup and other cold-frame
+costs remain. Cache correctness is checked at the pixel level, but the original
+250 ms report has not been independently reproduced on the user's machine.
+
+### Draw-packet sorting measurement (2026-10-24)
+
+The full interaction audit now times the existing draw-packet sort separately,
+to avoid optimizing it based only on total draw-pass time. On the same wide
+orbit profile (780–850 visible objects, 85–95k triangles), warm camera orbit
+measured 16.74 ms average / 20.32 ms p95 / 28.18 ms maximum. Packet sorting was
+0.08 ms average / 0.10 ms p95 / 0.27 ms maximum in that run. A later sequential
+run measured 0.32 ms average / 0.35 ms p95 / 0.41 ms maximum. Sorting is
+therefore not a meaningful contributor to the reported 250 ms frame and should
+not be replaced with a more complex ordering path.
+
+The first selected wide-view frame was a separate cold spike: 371.36 ms total,
+335.39 ms in the renderer, with 18.4 MB allocated. Its sampled costs included
+93.60 ms of skinning, 31.57 ms of light-plan preparation, and 121.86 ms of
+lighting evaluation. Those measurements overlap renderer work only where the
+audit labels them inclusive; they identify cold-frame deformation and lighting
+as better follow-up targets than packet sorting. The audit's close-view and
+warm wide-view numbers do not reproduce a sustained 250 ms frame. The captured
+scene, display settings, and exact user camera still differ from the user's
+reported session, so they do not rule out a machine- or state-specific spike.
+
+### Cache source mouth-controller validation (2026-10-24)
+
+`FaceMorphPreview.Get` is called while skinned geometry is prepared. For
+controllers that identify a morph mesh by its form sequence, each lookup used
+to rerun `PcMorphControllerBinding.TryBind`; that validates the channel and
+walks the source sequence, accumulating sparse vertex deltas into temporary
+dictionaries. The modifier and controller data are immutable for the lifetime
+of that preview, so the validation result and failure are now cached per
+controller instance. A regression check repeats the lookup and verifies it
+does not revalidate; the Sally and military automatic-mouth tests also cover
+the name/key-independent geometry match and GLB export.
+
+On the same 3440x1440 wide-orbit audit after this change, warm interaction
+averaged 16.32 ms with 215,182 B allocated per frame, compared with the earlier
+16.74 ms and 282,013 B/frame run. This is a sequential, unpaired comparison;
+the allocation reduction is consistent with removing repeated temporary
+dictionary work, while the frame-time change is too small to claim as a
+reliable speedup. The first wide-view frame remained a cold spike (353.65 ms,
+319.72 ms in renderer, 18.3 MB allocated). The cache targets repeated warm
+morph validation; it does not solve the cold scene upload/lighting spike.
+
+### Current-source regression check (2026-10-24)
+
+The current uncommitted source was rebuilt to an isolated output and the full
+ExportVerification suite passed, including 175 checks against the retail
+`sally_clean.bf`. A fresh full-UI run then used the same archive/container/world
+and focus asset, with game-hidden objects enabled. It measured 623 visible
+objects and 87,915 triangles: warm full-frame average 15.77 ms, p95 17.67 ms,
+maximum 19.64 ms; renderer average 13.99 ms. This profile did not reproduce a
+250 ms frame. It is not directly comparable to the earlier 780–850-object
+wide-orbit trace because the audit camera and resulting visible set differ.
+
+The same run issued 12,564 texture-parameter requests but only 8 GL writes;
+12,556 requests hit the renderer cache. Packet sorting averaged 0.24 ms, skin
+updates 4.49 ms, and draw-pass work 8.57 ms. Its first measured frame peaked at
+99.46 ms while initializing the shader (32.71 ms); this was outside the warm
+sample. A separate selected-object close view averaged 3.34 ms renderer time
+with 71 visible objects. The results show the current cache behaving as
+intended and no sustained stall in these audited profiles, but do not establish
+that the user's exact orbit/display state is stall-free.
+
+The isolated build and fresh-run logs are in
+`artifacts/verification-current/` and `artifacts/perf-audit-current/`.

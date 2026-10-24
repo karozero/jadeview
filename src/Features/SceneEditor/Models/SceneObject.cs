@@ -4,6 +4,7 @@ namespace JadeView;
 
 public sealed class SceneObject
 {
+    internal const uint DrawVisibilityMask = 0x8;
     public string Id { get; set; } = "";
     public uint GaoKey { get; init; }
     public string Name { get; set; } = "";
@@ -17,6 +18,10 @@ public sealed class SceneObject
     public uint[] RliColors { get; set; } = [];
     // GAO visual draw mask; bit 3 controls visibility, independently of identity flags.
     public uint DrawFlags { get; set; } = 0x01000008;
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal uint? PreviewDrawFlags { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal uint EffectiveDrawFlags => PreviewDrawFlags ?? DrawFlags;
     public uint ControlFlags { get; set; }
     // Raw PC .gao word at offset 12. Keep separate from identity flags and editor controls;
     // the engine derives runtime flags2 from this word during object initialization.

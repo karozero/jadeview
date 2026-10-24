@@ -14,7 +14,7 @@ internal static class AssetsUiPerformanceAudit
     internal static unsafe void Write(string archivePath, string container, string worldName,
         string focusName, string output, string requestedProfile = "all")
     {
-        if (requestedProfile is not ("all" or "default" or "show-hidden" or "show-hidden-close" or "interactions"))
+        if (requestedProfile is not ("all" or "default" or "show-hidden" or "show-hidden-drained" or "show-hidden-close" or "interactions"))
             throw new ArgumentOutOfRangeException(nameof(requestedProfile));
         var archive = new Archive(archivePath);
         var entry = archive.Entries.Single(item => item.Id == container);
@@ -47,6 +47,7 @@ internal static class AssetsUiPerformanceAudit
             shell.Renderer.VideoArchive = archive;
             shell.Renderer.CapturePerformanceDiagnostics = true;
             shell.Renderer.CacheShaderUniformValues = Environment.GetEnvironmentVariable("JADEVIEW_AUDIT_UNCACHED_UNIFORMS") != "1";
+            shell.Renderer.CacheTextureParameterValues = Environment.GetEnvironmentVariable("JADEVIEW_AUDIT_UNCACHED_TEXTURE_PARAMETERS") != "1";
             shell.SelectedObject = focus;
             shell.Renderer.FrameObject(focus);
             object scenes = typeof(EditorShell).GetMethod("BuildArchiveSceneIndex", BindingFlags.Static | BindingFlags.NonPublic)!
@@ -73,19 +74,26 @@ internal static class AssetsUiPerformanceAudit
             shell.Renderer.ShowGameHidden = false;
             void MeasureWorkspace(string profile)
             {
-                if (requestedProfile != "all" && requestedProfile != profile) return;
+                bool isDrainedProfile = requestedProfile == "show-hidden-drained" && profile == "show-hidden";
+                if (requestedProfile != "all" && requestedProfile != profile && !isDrainedProfile) return;
                 double warmupMaximum = 0;
                 int warmupUploads = 0;
+                int peakDeferredGeometry = 0;
                 int uploadsAtMaximum = 0;
                 int maximumFrame = -1;
                 float maximumRender = 0;
                 float maximumGeometryMissTime = 0;
                 string resourceBreakdownAtMaximum = "";
                 string ownerHotspotsAtMaximum = "none";
-                for (int frame = 0; frame < (profile.StartsWith("show-hidden", StringComparison.Ordinal) ? 300 : 30); frame++)
+                int warmupFrameLimit = isDrainedProfile ? 3000
+                    : profile.StartsWith("show-hidden", StringComparison.Ordinal) ? 300 : 30;
+                int warmupFrames = 0;
+                for (int frame = 0; frame < warmupFrameLimit; frame++)
                 {
                     long started = Stopwatch.GetTimestamp();
                     DrawFrame();
+                    peakDeferredGeometry = Math.Max(peakDeferredGeometry,
+                        shell.Renderer.StatDeferredGeometryObjects);
                     double elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
                     if (elapsed > warmupMaximum)
                     {
@@ -98,10 +106,14 @@ internal static class AssetsUiPerformanceAudit
                         ownerHotspotsAtMaximum = shell.Renderer.PerformanceOwnerWork.FormatHotspots();
                     }
                     warmupUploads = Math.Max(warmupUploads, shell.Renderer.StatGeometryUploadsThisFrame);
+                    warmupFrames = frame + 1;
+                    if (isDrainedProfile && warmupFrames >= 30
+                        && shell.Renderer.StatDeferredGeometryObjects == 0) break;
                 }
                 Console.WriteLine($"ASSETS UI WARMUP: profile={profile}; max={warmupMaximum:F2}ms; frame={maximumFrame}; "
+                    + $"warmupFrames={warmupFrames}; deferredAtEnd={shell.Renderer.StatDeferredGeometryObjects}; "
                     + $"renderAtMaximum={maximumRender:F2}ms; geometryCacheMissAtMaximum={maximumGeometryMissTime:F2}ms; uploadsAtMaximum={uploadsAtMaximum}; "
-                    + $"peakGeometryUploads={warmupUploads}; resources=[{resourceBreakdownAtMaximum}]; ownerHotspots=[{ownerHotspotsAtMaximum}]; "
+                    + $"peakGeometryUploads={warmupUploads}; peakDeferredGeometry={peakDeferredGeometry}; resources=[{resourceBreakdownAtMaximum}]; ownerHotspots=[{ownerHotspotsAtMaximum}]; "
                     + $"camera={shell.Renderer.Camera.Position}/{shell.Renderer.Camera.Target}");
                 double[] total = new double[90];
                 double[] shellTimes = new double[total.Length];
@@ -109,6 +121,7 @@ internal static class AssetsUiPerformanceAudit
                 double[] render = new double[total.Length];
                 double[] prep = new double[total.Length];
                 double[] drawPass = new double[total.Length];
+                double[] packetSort = new double[total.Length];
                 double[] skin = new double[total.Length];
                 double[] actors = new double[total.Length];
                 double[] gpuTail = new double[total.Length];
@@ -127,6 +140,7 @@ internal static class AssetsUiPerformanceAudit
                     render[frame] = shell.Renderer.StatRenderMilliseconds;
                     prep[frame] = shell.Renderer.StatGeometryPreparationMilliseconds;
                     drawPass[frame] = shell.Renderer.StatDrawPassMilliseconds;
+                    packetSort[frame] = shell.Renderer.StatDrawPacketSortMilliseconds;
                     skin[frame] = shell.Renderer.StatSkinningMilliseconds;
                     actors[frame] = shell.Renderer.StatWorldActorUpdateMilliseconds;
                     gpuTail[frame] = gpuFinishTail;
@@ -140,11 +154,12 @@ internal static class AssetsUiPerformanceAudit
                 }
                 long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
                 Console.WriteLine($"ASSETS FULL UI PERFORMANCE: profile={profile}; hidden={shell.Renderer.ShowGameHidden}; total={Summary(total)}; shell={Summary(shellTimes)}; render={Summary(render)}; "
-                    + $"shellWithoutRender={Summary(nonRender)}; prep={Summary(prep)}; draw={Summary(drawPass)}; skin={Summary(skin)}; "
+                    + $"shellWithoutRender={Summary(nonRender)}; prep={Summary(prep)}; draw={Summary(drawPass)}; packetSort={Summary(packetSort)}; skin={Summary(skin)}; "
                     + $"actors={Summary(actors)}; gpuFinishTail={Summary(gpuTail)}; "
                     + $"video={Summary(procedural)}; target={Summary(target)}; lightFrame={Summary(lighting)}; clip={Summary(clipping)}; "
                     + $"overlay={Summary(overlay)}; finalize={Summary(finalize)}; lightingEvaluations={shell.Renderer.StatDiffuseLightingUpdates}; uniforms={shell.Renderer.StatShaderUniformUploads}/{shell.Renderer.StatShaderUniformRequests}; cachedUniforms={shell.Renderer.CacheShaderUniformValues}; "
-                    + $"allocation={allocated / total.Length}B/frame; visible={shell.Renderer.StatVisibleObjects}; tris={shell.Renderer.StatDrawnTriangles}");
+                    + $"textureParameters={shell.Renderer.StatTextureParameterCalls}/{shell.Renderer.StatTextureParameterRequests}; textureParameterCacheHits={shell.Renderer.StatTextureParameterCacheHits}; "
+                    + $"allocation={allocated / total.Length}B/frame; visible={shell.Renderer.StatVisibleObjects}; deferredGeometry={shell.Renderer.StatDeferredGeometryObjects}; tris={shell.Renderer.StatDrawnTriangles}");
                 var screen = Raylib.LoadImageFromScreen();
                 Raylib.ExportImage(screen, Path.Combine(output, $"assets-full-ui-performance-{profile}.png"));
                 Raylib.UnloadImage(screen);
@@ -222,6 +237,7 @@ internal static class AssetsUiPerformanceAudit
         + $"sourceResolve={renderer.StatMaterialSourceResolutionMilliseconds:F2}ms; nativeMaterialAlloc={renderer.StatMaterialAllocationMilliseconds:F2}ms; "
         + $"textureDecode={renderer.StatTextureDecodeMilliseconds:F2}ms; textureUpload={renderer.StatTextureUploadMilliseconds:F2}ms/count={renderer.StatTextureUploadsThisFrame}; "
         + $"renderPrepInclusive={renderer.StatGeometryPreparationMilliseconds:F2}ms; renderDrawInclusive={renderer.StatDrawPassMilliseconds:F2}ms; "
+        + $"packetSort={renderer.StatDrawPacketSortMilliseconds:F2}ms; "
         + $"lightPlan={renderer.StatDiffuseLightingPlanMilliseconds:F2}ms/{renderer.StatDiffuseLightingPreparations}; "
         + $"lightEval={renderer.StatDiffuseLightingEvaluationMilliseconds:F2}ms/{renderer.StatDiffuseLightingUpdates}; lightUpload={renderer.StatDiffuseLightingUploadMilliseconds:F2}ms; "
         + $"actors={renderer.StatWorldActorUpdateMilliseconds:F2}ms; lightFrame={renderer.StatLightingPreparationMilliseconds:F2}ms; target={renderer.StatRenderTargetMilliseconds:F2}ms; "

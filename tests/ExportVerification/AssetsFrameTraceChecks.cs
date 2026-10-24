@@ -24,6 +24,7 @@ internal static class AssetsFrameTraceChecks
             string path = Path.Combine(AppContext.BaseDirectory, "artifacts", $"assets-frame-trace-{Environment.ProcessId}.tsv");
             string log = File.ReadAllText(path);
             if (!log.Contains("GPU synchronization=none") || !log.Contains("presentMs")
+                || !log.Contains("textureParameterCacheHits")
                 || !log.Contains("ownerHotspots") || !log.Contains("SLOW FRAMES"))
                 throw new Exception("Trace metadata/columns were not saved.");
             Console.WriteLine($"PASS Assets trace opt-in, bounded rings and log persistence: {path}");

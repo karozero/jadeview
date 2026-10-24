@@ -29,6 +29,7 @@ public sealed partial class SceneRenderer
     {
         long renderStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
         _skinUpdatesThisFrame = 0;
+        ResetTextureParameterStatistics();
         StatShaderUniformRequests = 0;
         StatShaderUniformUploads = 0;
         StatGeometryUploadsThisFrame = 0;
@@ -64,10 +65,12 @@ public sealed partial class SceneRenderer
         StatWorldActorUpdates = 0;
         StatWorldActorUpdateMilliseconds = 0;
         StatWorldActorUpdateAllocatedBytes = 0;
+        StatDeferredGeometryObjects = 0;
         StatGeometryPreparationAllocatedBytes = 0;
         StatDrawPassAllocatedBytes = 0;
         StatGeometryPreparationMilliseconds = 0;
         StatDrawPassMilliseconds = 0;
+        StatDrawPacketSortMilliseconds = 0;
         StatSkinningMilliseconds = 0;
         StatSkinningAllocatedBytes = 0;
         if (CapturePerformanceDiagnostics) PerformanceOwnerWork.Clear();
@@ -148,6 +151,19 @@ public sealed partial class SceneRenderer
                     float sourceRadius = (sourceMaximum - sourceMinimum).Length() * .5f;
                     if (!IsSphereInFrustum((sourceMinimum + sourceMaximum) * .5f, sourceRadius)) continue;
                 }
+                bool selectedObjectOrActor = SelectedObject == obj
+                    || SelectedObject?.Actor != null && SelectedObject.Actor == obj.Actor;
+                double geometryPreparationElapsedMilliseconds = System.Diagnostics.Stopwatch
+                    .GetElapsedTime(geometryPreparationStartedAt).TotalMilliseconds;
+                bool shouldDeferGeometryUpload = ShouldDeferGeometryUpload(
+                    _geometryCache.ContainsKey(obj.RenderGeometryKey), selectedObjectOrActor,
+                    StatGeometryUploadsThisFrame, geometryPreparationElapsedMilliseconds,
+                    GeometryUploadFrameBudgetMilliseconds);
+                if (shouldDeferGeometryUpload)
+                {
+                    StatDeferredGeometryObjects++;
+                    continue;
+                }
                 var geo = GetOrUploadGeometryForOwner(obj); if (geo == null) continue;
                 bool geometryDeformsThisFrame = obj.Actor != null
                     || geo.Source is { Billboards.Count: > 0 }
@@ -194,7 +210,9 @@ public sealed partial class SceneRenderer
                 ? GC.GetAllocatedBytesForCurrentThread() - geometryPreparationAllocatedBefore : 0;
             long drawPassAllocatedBefore = CapturePerformanceDiagnostics
                 ? GC.GetAllocatedBytesForCurrentThread() : 0;
+            long packetSortStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
             packets.Sort(DrawPacketComparison);
+            StatDrawPacketSortMilliseconds = (float)System.Diagnostics.Stopwatch.GetElapsedTime(packetSortStartedAt).TotalMilliseconds;
             foreach (var packet in packets)
             {
                 var obj = packet.Obj; var geo = packet.Geo; int i = packet.Part;
@@ -222,7 +240,7 @@ public sealed partial class SceneRenderer
                     bool spritePart = geo.Source is { } sourceGeometry && sourceGeometry.Parts[i].VertexIndices.Length > 0
                         && sourceGeometry.IsBillboardVertex(sourceGeometry.Parts[i].VertexIndices[0]);
                     // Jaded forces UseRLI for sprite primitives before selecting color inputs.
-                    uint effectiveDrawFlags = obj.DrawFlags | (spritePart ? 0x40u : 0u);
+                    uint effectiveDrawFlags = obj.EffectiveDrawFlags | (spritePart ? 0x40u : 0u);
                     bool particlePart = (obj.CinematicParticles ?? geo.Source?.Particles) != null
                         && i >= geo.Source!.ParticlePart;
                     if (particlePart) effectiveDrawFlags &= ~0x08000100u; // PAG clears Lighted and UseAmbient.
@@ -239,7 +257,7 @@ public sealed partial class SceneRenderer
                     JadeUniform("useRliAlpha", layer.Blend != 0 && (obj.RliColors.Length > 0 || spritePart) ? 1 : 0);
                     JadeUniform("rliDestColor", CinematicRliColor);
                     JadeUniform("rliFactor", CinematicRliFactor);
-                    bool foggedObject = (obj.DrawFlags & 0x4000) != 0;
+                    bool foggedObject = (obj.EffectiveDrawFlags & 0x4000) != 0;
                     JadeUniform("fogEnabled", foggedObject && CinematicFogFar > CinematicFogNear ? 1 : 0);
                     JadeUniform("fogColor", FogColorForBlend(layer.Blend));
                     JadeUniform("fogNear", CinematicFogNear);
@@ -255,10 +273,10 @@ public sealed partial class SceneRenderer
                     JadeUniform("additiveLocalAlpha", layer.Blend == 5
                         && (layer.Flags & JadeMaterialFlags.OverrideAlpha) != 0 ? 1 : 0);
                     var texture = pass.Material.Maps[(int)MaterialMapIndex.Albedo].Texture;
-                    Rlgl.TextureParameters(texture.Id, 10242, (layer.Flags & 1) == 0 ? 33071 : 10497);
-                    Rlgl.TextureParameters(texture.Id, 10243, (layer.Flags & 2) == 0 ? 33071 : 10497);
-                    Rlgl.TextureParameters(texture.Id, 10240, (layer.Flags & 4) == 0 ? 9728 : 9729);
-                    Rlgl.TextureParameters(texture.Id, 10241, (layer.Flags & 4) == 0 ? 9728 : 9729);
+                    SetTextureParameter(texture, 10242, (layer.Flags & 1) == 0 ? 33071 : 10497);
+                    SetTextureParameter(texture, 10243, (layer.Flags & 2) == 0 ? 33071 : 10497);
+                    SetTextureParameter(texture, 10240, (layer.Flags & 4) == 0 ? 9728 : 9729);
+                    SetTextureParameter(texture, 10241, (layer.Flags & 4) == 0 ? 9728 : 9729);
                     bool inverse = (layer.Flags & 0x80) != 0;
                     var factors = layer.Blend switch
                     {
@@ -364,5 +382,10 @@ public sealed partial class SceneRenderer
     internal static bool CanCullBeforeGpuUpload(bool isActor, bool hasBillboards,
         bool hasParticles, bool hasCinematicParticles) =>
         !isActor && !hasBillboards && !hasParticles && !hasCinematicParticles;
+
+    internal static bool ShouldDeferGeometryUpload(bool geometryCached, bool isSelected,
+        int uploadsThisFrame, double elapsedMilliseconds, double budgetMilliseconds) =>
+        !geometryCached && !isSelected && uploadsThisFrame > 0
+        && elapsedMilliseconds >= budgetMilliseconds;
 
 }

@@ -22,6 +22,7 @@ namespace JadeView;
 /// </summary>
 public sealed partial class SceneRenderer : IDisposable
 {
+    internal const double GeometryUploadFrameBudgetMilliseconds = 2;
     private readonly record struct DrawPacket(SceneObject Obj, GpuGeometry Geo,
         GpuMaterialSet? Materials, int Part, bool Transparent, float Depth, int Order);
 
@@ -108,7 +109,8 @@ public sealed partial class SceneRenderer : IDisposable
     public bool ShowGrid = true;
     public bool ShowGameHidden = false;
     public bool IsGameHidden(SceneObject obj) => !ShowGameHidden && (obj.PreviewHidden || obj.IsControlHidden
-        || obj.Actor?.Root.IsControlHidden == true || (obj.DrawFlags & 8) == 0 && !IsCollision(obj));
+        || obj.Actor?.Root.IsControlHidden == true
+        || (obj.EffectiveDrawFlags & SceneObject.DrawVisibilityMask) == 0 && !IsCollision(obj));
     [System.Runtime.InteropServices.DllImport("opengl32.dll", EntryPoint = "glDepthFunc")]
     private static extern void SetDepthFunction(uint function);
     public bool ShowGizmo = true;
@@ -149,6 +151,7 @@ public sealed partial class SceneRenderer : IDisposable
     public float StatClipPreparationMilliseconds { get; private set; }
     public float StatGeometryPreparationMilliseconds { get; private set; }
     public float StatDrawPassMilliseconds { get; private set; }
+    public float StatDrawPacketSortMilliseconds { get; private set; }
     public float StatSkinningMilliseconds { get; private set; }
     public long StatSkinningAllocatedBytes { get; private set; }
     public long StatGeometryPreparationAllocatedBytes { get; private set; }
@@ -162,6 +165,7 @@ public sealed partial class SceneRenderer : IDisposable
         .OrderByDescending(item => item.Value).Take(6)
         .Select(item => $"{item.Key}={item.Value / 120.0:F0}B/frame"));
     public int StatGeometryUploadsThisFrame { get; private set; }
+    public int StatDeferredGeometryObjects { get; private set; }
     internal List<uint> GeometryUploadKeysThisFrame { get; } = [];
     private int _skinUpdatesThisFrame;
     public int StatCachedGeometries => _geometryCache.Count;

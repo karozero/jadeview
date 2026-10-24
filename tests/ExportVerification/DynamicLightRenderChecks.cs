@@ -123,9 +123,65 @@ internal static class DynamicLightRenderChecks
         }
         Console.WriteLine("PASS: cached/uncached shader uniforms produce bit-identical complete GPU images across material switches");
 
+        VerifyTextureParameterCacheImageEquality(renderer, world, receiver, computedMaterialKey);
+
         byte[] Capture()
         {
             renderer.Render(160, 120, new(), world, null, resolver);
+            var image = Raylib.LoadImageFromTexture(renderer.Target.Texture);
+            var colors = Raylib.LoadImageColors(image);
+            try { return new ReadOnlySpan<byte>(colors, image.Width * image.Height * 4).ToArray(); }
+            finally
+            {
+                Raylib.UnloadImageColors(colors);
+                Raylib.UnloadImage(image);
+            }
+        }
+    }
+
+    private static unsafe void VerifyTextureParameterCacheImageEquality(SceneRenderer renderer,
+        WorldData world, SceneObject receiver, uint materialKey)
+    {
+        var repeatedTextureOwner = new SceneObject
+        {
+            GaoKey = 0x909,
+            Name = "Repeated material texture owner",
+            GeometryKey = receiver.GeometryKey,
+            MaterialKey = materialKey,
+            Flags = receiver.Flags,
+            DrawFlags = receiver.DrawFlags,
+            RliColors = receiver.RliColors
+        };
+        world.Objects.Add(repeatedTextureOwner);
+        try
+        {
+            renderer.CacheTextureParameterValues = false;
+            byte[] uncachedPixels = Capture();
+            int uncachedRequests = renderer.StatTextureParameterRequests;
+            if (renderer.StatTextureParameterCalls != uncachedRequests)
+                throw new InvalidDataException("The uncached texture-parameter path must issue every requested GL call.");
+
+            renderer.CacheTextureParameterValues = true;
+            byte[] cachedPixels = Capture();
+            if (!uncachedPixels.AsSpan().SequenceEqual(cachedPixels))
+                throw new InvalidDataException("Texture parameter caching changed the rendered RGBA image.");
+            if (renderer.StatTextureParameterCacheHits == 0
+                || renderer.StatTextureParameterCalls >= renderer.StatTextureParameterRequests)
+                throw new InvalidDataException("Repeated material texture settings were not suppressed by the cache.");
+
+            Console.WriteLine($"PASS: cached/uncached texture parameters are pixel-identical; "
+                + $"calls={renderer.StatTextureParameterCalls}/{renderer.StatTextureParameterRequests}, "
+                + $"uncached={uncachedRequests}");
+        }
+        finally
+        {
+            world.Objects.Remove(repeatedTextureOwner);
+            renderer.CacheTextureParameterValues = true;
+        }
+
+        byte[] Capture()
+        {
+            renderer.Render(160, 120, new(), world, null, null);
             var image = Raylib.LoadImageFromTexture(renderer.Target.Texture);
             var colors = Raylib.LoadImageColors(image);
             try { return new ReadOnlySpan<byte>(colors, image.Width * image.Height * 4).ToArray(); }

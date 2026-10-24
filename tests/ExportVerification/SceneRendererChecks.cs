@@ -5,6 +5,7 @@ internal static class SceneRendererChecks
 {
     internal static void Verify()
     {
+        VerifyTextureParameterCache();
         VerifyUniformValueCache();
         VerifyInstanceLightingSamples();
         VerifyReusableNormalBuffers();
@@ -15,6 +16,12 @@ internal static class SceneRendererChecks
             && !SceneRenderer.CanCullBeforeGpuUpload(false, false, true, false)
             && !SceneRenderer.CanCullBeforeGpuUpload(false, false, false, true),
             "Only static, non-procedural geometry may be frustum-culled before GPU upload.");
+        Require(!SceneRenderer.ShouldDeferGeometryUpload(true, false, 0, 10, 6)
+            && !SceneRenderer.ShouldDeferGeometryUpload(false, true, 0, 10, 6)
+            && !SceneRenderer.ShouldDeferGeometryUpload(false, false, 0, 10, 6)
+            && !SceneRenderer.ShouldDeferGeometryUpload(false, false, 1, 5.99, 6)
+            && SceneRenderer.ShouldDeferGeometryUpload(false, false, 1, 6, 6),
+            "Viewport cold uploads must make progress before enforcing the per-frame budget while keeping cached and selected geometry immediate.");
 
         var results = SceneRenderer.RunVerificationTests();
         var failures = results.Where(result => !result.Passed).ToArray();
@@ -23,6 +30,20 @@ internal static class SceneRendererChecks
                 + string.Join(" | ", failures.Select(result => $"{result.Name}: {result.Details}")));
 
         Console.WriteLine($"PASS: SceneRenderer math, camera and hot-path checks ({results.Count} checks)");
+    }
+
+    private static void VerifyTextureParameterCache()
+    {
+        var cache = new GpuTextureParameterCache();
+        Require(cache.Record(10, 10242, 33071)
+            && !cache.Record(10, 10242, 33071)
+            && cache.Record(10, 10242, 10497)
+            && cache.Record(10, 10243, 33071)
+            && cache.Record(11, 10242, 33071),
+            "Texture parameter caching must track texture IDs, parameter names, and exact values independently.");
+        cache.Clear();
+        Require(cache.Record(10, 10242, 33071),
+            "Unloading renderer textures must invalidate cached texture parameter state.");
     }
 
     private static void VerifyUniformValueCache()
@@ -48,6 +69,7 @@ internal static class SceneRendererChecks
         Require(integers.Changed(3, 0x08000001) && integers.Changed(3, 0x08000002),
             "Object draw-mask uniforms must retain every integer bit without a float conversion.");
     }
+
     private static void VerifyInstanceLightingSamples()
     {
         var samples = new GpuDiffuseLightingSamples();

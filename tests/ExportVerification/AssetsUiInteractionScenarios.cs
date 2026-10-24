@@ -74,6 +74,7 @@ internal static class AssetsUiInteractionScenarios
             }
             double[] times = new double[count];
             double[] renderTimes = new double[count];
+            double[] packetSort = new double[count];
             double[] skin = new double[count];
             double[] plans = new double[count];
             double[] selectionTimes = new double[count];
@@ -91,6 +92,7 @@ internal static class AssetsUiInteractionScenarios
                 drawFrame();
                 times[frame] = Stopwatch.GetElapsedTime(frameStarted).TotalMilliseconds;
                 renderTimes[frame] = renderer.StatRenderMilliseconds;
+                packetSort[frame] = renderer.StatDrawPacketSortMilliseconds;
                 skin[frame] = renderer.StatSkinningMilliseconds;
                 plans[frame] = renderer.StatDiffuseLightingPlanMilliseconds;
                 minimumVisible = Math.Min(minimumVisible, renderer.StatVisibleObjects);
@@ -102,12 +104,12 @@ internal static class AssetsUiInteractionScenarios
                 maximumFrame = times[frame];
                 slowestFrame = frame;
                 slowestDetails = $"visible={renderer.StatVisibleObjects}; triangles={renderer.StatDrawnTriangles}; uploads={renderer.StatGeometryUploadsThisFrame}; "
-                    + $"prep={renderer.StatGeometryPreparationMilliseconds:F2}; draw={renderer.StatDrawPassMilliseconds:F2}; plan={renderer.StatDiffuseLightingPlanMilliseconds:F2}; "
+                    + $"prep={renderer.StatGeometryPreparationMilliseconds:F2}; draw={renderer.StatDrawPassMilliseconds:F2}; packetSort={renderer.StatDrawPacketSortMilliseconds:F2}; plan={renderer.StatDiffuseLightingPlanMilliseconds:F2}; "
                     + $"lightEval={renderer.StatDiffuseLightingEvaluationMilliseconds:F2}; skin={renderer.StatSkinningMilliseconds:F2}; camera={renderer.Camera.Position}/{renderer.Camera.Target}";
             }
             long bytes = GC.GetAllocatedBytesForCurrentThread() - bytesBefore;
             Console.WriteLine($"ASSETS INTERACTION: {label}; frames={count}; total={Summary(times)}; render={Summary(renderTimes)}; "
-                + $"inputCallback={Summary(selectionTimes)}; skin={Summary(skin)}; lightPlan={Summary(plans)}; "
+                + $"inputCallback={Summary(selectionTimes)}; packetSort={Summary(packetSort)}; skin={Summary(skin)}; lightPlan={Summary(plans)}; "
                 + $"visible={minimumVisible}..{maximumVisible}; triangles={minimumTriangles}..{maximumTriangles}; "
                 + $"measuredPeakUploads={peakUploads}; warmupMax={maximumWarmup:F2}ms/warmupPeakUploads={peakWarmUploads}; allocation={bytes / count}B/frame; "
                 + $"slowestFrame={slowestFrame}[{slowestDetails}]; warmupWorst=[{warmupWorstDetails}]");

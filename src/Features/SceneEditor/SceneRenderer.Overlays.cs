@@ -222,7 +222,9 @@ public sealed partial class SceneRenderer
         // Нижний правый угол: статистика и подсказки
         string skinStatus = CinematicMaterials == null ? $"Skin: {StatSkinUpdates}"
             : $"Skin: {StatSkinUpdates}/{StatSkinningMilliseconds:F1} ms";
-        string statText = $"Frame: {Raylib.GetFrameTime() * 1000:F1} ms / {Raylib.GetFPS()} FPS · Objects: {StatVisibleObjects}/{StatTotalObjects} · Tris: {StatDrawnTriangles:N0} · {skinStatus} · Upload: {StatGeometryUploadsThisFrame} · World AI: {StatWorldActorUpdates}/{StatWorldActorUpdateMilliseconds:F1} ms · Cine: {StatCinematicUpdateMilliseconds:F1} ms · Audio: {StatCinematicAudioMilliseconds:F1} ms · Render: {StatRenderMilliseconds:F1} ms (prep {StatGeometryPreparationMilliseconds:F1}, draw {StatDrawPassMilliseconds:F1}, FX {StatPostEffectMilliseconds:F1}) · GPU cache: {StatCachedGeometries} GRO, {StatCachedTextures} TEX";
+        string deferredStatus = StatDeferredGeometryObjects > 0
+            ? $" · Deferred geometry: {StatDeferredGeometryObjects}" : string.Empty;
+        string statText = $"Frame: {Raylib.GetFrameTime() * 1000:F1} ms / {Raylib.GetFPS()} FPS · Objects: {StatVisibleObjects}/{StatTotalObjects} · Tris: {StatDrawnTriangles:N0} · {skinStatus} · Upload: {StatGeometryUploadsThisFrame}{deferredStatus} · World AI: {StatWorldActorUpdates}/{StatWorldActorUpdateMilliseconds:F1} ms · Cine: {StatCinematicUpdateMilliseconds:F1} ms · Audio: {StatCinematicAudioMilliseconds:F1} ms · Render: {StatRenderMilliseconds:F1} ms (prep {StatGeometryPreparationMilliseconds:F1}, draw {StatDrawPassMilliseconds:F1}, FX {StatPostEffectMilliseconds:F1}) · GPU cache: {StatCachedGeometries} GRO, {StatCachedTextures} TEX";
         Vector2 statSize = ImGui.CalcTextSize(statText);
         Vector2 statPos = origin + size - statSize - new Vector2(12 * scale, 10 * scale);
         drawList.AddRectFilled(statPos - new Vector2(4, 2), statPos + statSize + new Vector2(4, 2), 0xAA101612, 4.0f);
