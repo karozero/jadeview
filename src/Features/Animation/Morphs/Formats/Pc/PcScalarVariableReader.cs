@@ -41,8 +41,7 @@ internal static class PcScalarVariableReader
         uint offset = BitConverter.ToUInt32(bytes[descriptor..]);
         uint packed = BitConverter.ToUInt32(bytes[(descriptor + sizeof(uint))..]);
         ushort type = BitConverter.ToUInt16(bytes[(descriptor + sizeof(uint) * 2)..]);
-        bool supportedType = type is PcVariableFormat.IntegerType or PcVariableFormat.FloatType
-            or PcVariableFormat.ObjectReferenceType or PcVariableFormat.PackedColorType;
+        bool supportedType = PcVariableFormat.IsSupportedWordType(type);
         bool withinStorage = offset + (ulong)sizeof(int) <= (ulong)layout.StorageLength;
         if (packed != PcVariableFormat.ScalarLength || !supportedType || !withinStorage)
             throw new InvalidDataException("Unsupported OVA scalar layout.");

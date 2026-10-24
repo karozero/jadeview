@@ -64,9 +64,9 @@ internal static class PcVariableSnapshotReader
         return $"[{string.Join(", ", displayedValues)}{remainder}] ({count} entries)";
     }
 
-    private static int ElementSize(ushort type) => type switch
+    private static int ElementSize(ushort type) => PcVariableFormat.IsSupportedWordType(type)
+        ? sizeof(uint) : type switch
     {
-        33 or 34 or 40 or 46 => sizeof(uint),
         37 => 12,
         41 => 52,
         44 => 8,
@@ -97,13 +97,21 @@ internal static class PcVariableSnapshotReader
     {
         return type switch
         {
+            PcVariableFormat.BooleanType => FormatBoolean(valueBytes),
             PcVariableFormat.IntegerType => BinaryPrimitives.ReadInt32LittleEndian(valueBytes)
                 .ToString(CultureInfo.InvariantCulture),
             PcVariableFormat.FloatType => FormatFloat(valueBytes),
             PcVariableFormat.ObjectReferenceType => $"0x{BinaryPrimitives.ReadUInt32LittleEndian(valueBytes):X8}",
+            PcVariableFormat.KeyType => $"0x{BinaryPrimitives.ReadUInt32LittleEndian(valueBytes):X8}",
             PcVariableFormat.PackedColorType => $"0x{BinaryPrimitives.ReadUInt32LittleEndian(valueBytes):X8}",
             _ => Convert.ToHexString(valueBytes)
         };
+    }
+
+    private static string FormatBoolean(ReadOnlySpan<byte> bytes)
+    {
+        uint value = BinaryPrimitives.ReadUInt32LittleEndian(bytes);
+        return $"{(value == 0 ? "false" : "true")} (0x{value:X8})";
     }
 
     private static string FormatFloat(ReadOnlySpan<byte> bytes)
