@@ -33,6 +33,13 @@ internal static class ScriptModelVariableAudit
                     Key = owner.OwnerKey.ToString("X8"), WorldKey = owner.WorldKey.ToString("X8"),
                     ModelKey = owner.ScriptModelKey.ToString("X8"), owner.Name,
                     CallbackKeys = owner.CallbackSlots?.Select(slot => slot.FunctionKey.ToString("X8")).ToArray(),
+                    EngineCallbacks = owner.EngineCallbackSlots?.Select(callback => new
+                    {
+                        callback.EventId,
+                        Event = CinematicEngineCallbackCatalog.Describe(callback.EventId),
+                        FunctionKey = callback.FunctionKey.ToString("X8"), callback.FunctionName,
+                        IrisCallSiteConfirmed = CinematicEngineCallbackCatalog.IsConfirmedByIrisCallSite(callback.EventId)
+                    }).ToArray(),
                     ModelVariableCount = owner.Variables.Count(variable => variable.Source == "model"),
                     InstanceVariableCount = owner.Variables.Count(variable => variable.Source == "instance"),
                     ReferenceCount = owner.ObjectReferences.Length,

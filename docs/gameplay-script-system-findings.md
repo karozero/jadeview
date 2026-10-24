@@ -9,6 +9,81 @@ the retail PC build executes the same branch.
 
 ## Confirmed system facts
 
+### Callback state-effect candidates
+
+The callback inspector reports source-reachable calls that may affect object
+visibility, activity, capability, position, or hierarchy. It currently covers
+`OBJ_FlagInvisibleSet`, `OBJ_FlagInactiveSet`, `OBJDestroy`, `OBJ_CapaSet`,
+`OBJMove`, `OBJSetPos`, `OBJSetLocalPos`, `OBJReinit`,
+`OBJ_HierarchySet`, and `OBJ_HierarchyReset`. The Iris implementations define
+their effects: for example, `OBJ_CapaSet_C` applies
+`capa = (capa & ~remove) | set`, `OBJMove_C` applies an offset (scaled by event
+duration while EVE is running), and hierarchy operations update the parent
+binding and derived transform.
+
+Receiver binding is deliberately conservative. A `CURRENT` API variant or an
+explicit `AI_gpst_CurrentGameObject` first argument resolves to the callback
+owner; a direct pointer resolves only when it uniquely matches a source object
+reference. Other operands, such as the parent passed to a hierarchy operation,
+are not mistaken for the receiver. Ambiguous or branch-dependent receivers
+remain unresolved. Each row retains source arguments, callback path, branch
+conditions, receiver evidence, and is labelled `SourceCallCandidate`: the
+inspector does not execute callbacks, infer dispatch times, or apply these
+effects to playback.
+
+This limit applies to code-reachable AI callback candidates. Separately,
+literal `OBJ_HierarchySet`/`OBJ_HierarchyReset` commands serialized directly in
+a cinematic or linked EVE timeline are evaluated by cinematic preview and are
+sampled into GLB transforms for the active clip. That timeline path does not
+execute a script callback or prove that the callback was dispatched in-game.
+The world-scoped script graph audit emits the same candidate records for every
+brain owner in the selected world, including ordinary gameplay worlds; the
+cinematic clip audit additionally narrows owners to those reachable from that
+clip. The gameplay world `FF005833 / D90057CC` (`00_02_home_decryptage`) has 33
+script owners and 268 callback state-effect candidates, 171 with a uniquely
+resolved receiver. This demonstrates archive coverage outside a cinematic; it
+still does not establish which callbacks were dispatched in a retail run.
+
+The current audit of installed `sally_clean.bf`, container `FF0045A2`, clip
+`3500B8EA` emitted 1,926 candidate rows; 982 receiver targets resolve and 944
+remain unresolved. Of the resolved receivers, 564 use a `CURRENT` API variant,
+94 bind a unique source pointer, and 324 explicitly pass
+`AI_gpst_CurrentGameObject`. The rows include 649 `OBJ_CapaSet` calls (472
+resolved), 265 `OBJDestroy` calls (189 resolved), and 444 position/reinit/
+hierarchy calls (193 resolved). Branch-dependent alternatives are not
+collapsed to a single target. These are source-reachable calls, not runtime
+executions: branches and callback scheduling remain unevaluated.
+
+Iris `OBJDestroy_C` has two distinct outcomes: ordinary archive objects are
+marked invisible and inactive, while generated objects may be detached from
+world, sound, and collision registries and removed. The callback candidate
+records this distinction but leaves the target unresolved unless source context
+proves it; the separate literal EVE object-state timeline continues to handle
+serialized `OBJDestroy` on its known target. Source: `external/irisEng/ai/ai_gameobjectfunctions.c`
+(`AI_EvalFunc_OBJDestroy_C`, selector `0x1FB1`).
+Serialized literal `OBJ_CapaSet` calls in cinematic/EVE tracks are handled by
+the separate deterministic object-state timeline, which is seekable and resets
+to archive capability values. This distinction prevents reachable AI code from
+being mistaken for an executed timeline command. Source: `external/irisEng/ai/ai_gameobjectfunctions.c`
+(`AI_EvalFunc_OBJ_CapaSet_C` / `_CURRENT`) and `external/irisEng/ai/ai_functions.c`
+(selector `0x1FC5`).
+
+The selected object's Script Inspector now also shows **Potential message
+routes** across the owners in the loaded document. A route is listed only when
+the callback graph has a statically resolved `MSGSend` recipient and message ID,
+that recipient resolves to one script owner, and a reachable callback on that
+owner contains a matching current-object queue reader. The row retains the send
+callback path, source line, arguments, and branch guards. This works for ordinary
+gameplay-world owners as well as cinematic owners; it is a static link, not proof
+of callback dispatch, branch success, queue delivery, or consumption. Unknown or
+ambiguous sends remain absent from this compact resolved-route view and should
+be inspected in the source-call evidence instead. The same inspector has a
+collapsed **Runtime scheduling evidence** section with the Iris world-AI and
+EVE-dispatch checks plus source calls through the owner's OVA-linked objects;
+the ordinary **Game activation** panel separately shows the initial-load flag
+projection. These are independent layers: initial eligibility does not prove
+that the object joined a scheduler table or that its callback ran.
+
 ### All-world brain-owner census
 
 The new `--archive-gameplay-script-index` pass indexes every GAO brain owner in
@@ -1149,9 +1224,13 @@ table—it runs as an AI update rather than being sampled from a standalone `i`
 clip. The static archive cannot establish that this owner was actually
 scheduled during a particular game run. JadeView now has a callback-specific
 preview adapter. It binds the callback by name, resolves both effect objects
-from the owner's OVA fields, resolves the global camera reference, applies the
-owner's capability changes from the cinematic timeline, and updates force
-visibility, generator rates, transforms, and orientation on seek/playback.
+from the owner's OVA fields, applies the owner's capability changes from the
+cinematic timeline, and updates force visibility, generator rates, transforms,
+and orientation on seek/playback. The source callback references the global
+`_PJ_Camera.gao` key (`71003F56`), while the cinematic route for that receiver
+can select a distinct camera object. JadeView applies the effect placement from
+the active route's evaluated render pose, including route changes, so the
+assembled cinematic world does not need a duplicate global camera object.
 The mode's next random delay is not recoverable from a timeline alone, so the
 adapter uses the 2.5-second mean of Iris's `MATHRandFloat(1, 4)` interval. The
 in-game PRNG sequence, EOT scheduling, and whether the callback was activated
@@ -1163,8 +1242,11 @@ an unlinked `i` resource cannot become a motion merely because one of its
 tracks targets the same GAO. Other compiled callbacks still need their own
 source/API evidence before JadeView can preview them. The implementation is in
 `CinematicCameraPagControllerReader.cs` and `CinematicCameraPagTimeline.cs`;
-`CinematicCameraPagChecks` covers owner binding, capability gating, camera
-placement, repeatable backward seeking, and allocation-free warmed evaluation.
+`CinematicCameraPagChecks` covers owner binding, capability gating, active
+preview-camera pose changes, repeatable backward seeking, missing-camera
+behavior, and allocation-free warmed evaluation. This camera substitution is a
+preview adaptation: the in-game `_PJ_Camera` and the selected cinematic route
+can diverge in native execution.
 
 A real archive frame audit of `FF0045A2 / 3500B8EA` confirms the owner gate is
 off at 33 s (`cap=0`, both PAG rates are zero) and on at 54 s (`cap=1`, rates
