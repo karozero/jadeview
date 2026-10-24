@@ -12,6 +12,7 @@ public sealed class TextDocument
         public uint Id { get; set; }
         public byte[] References { get; set; } = [];
         public uint Flags { get; set; }
+        public List<int> StringOffsets { get; set; } = [];
         public List<string> Strings { get; set; } = [];
     }
     public static TextDocument Read(byte[] b)
@@ -30,6 +31,7 @@ public sealed class TextDocument
             {
                 int n = Count(4); var offsets = new int[n]; for (int i = 0; i < n; i++) offsets[i] = r.ReadInt32();
                 int length = Count(1); var pool = r.ReadBytes(length);
+                g.StringOffsets = offsets.ToList();
                 foreach (int offset in offsets)
                 {
                     if (offset < 0 || offset >= pool.Length) throw new InvalidDataException("String outside pool bounds.");
@@ -53,8 +55,9 @@ public sealed class TextDocument
             foreach (var g in batch)
             {
                 var parts = g.Strings.Select(str => encoding.GetBytes(str)).ToList();
-                w.Write(checked(parts.Count * 4)); int offset = 0;
-                foreach (var part in parts) { w.Write(offset); offset = checked(offset + part.Length + 1); }
+                w.Write(checked(parts.Count * 4)); int offset = 0; var offsets = new List<int>(parts.Count);
+                foreach (var part in parts) { offsets.Add(offset); w.Write(offset); offset = checked(offset + part.Length + 1); }
+                g.StringOffsets = offsets;
                 w.Write(offset); foreach (var part in parts) { w.Write(part); w.Write((byte)0); }
             }
         }

@@ -58,7 +58,7 @@ sealed class Preview
             }
         }
         else if (bytes.AsSpan().StartsWith("BIK"u8))
-        { p.Kind = "Bink video"; p.Details = "No built-in Bink decoder. Export the file to an external player."; }
+        { p.Kind = "Bink video"; p.Details = "Standalone playback is not shown here. Cinematic materials can preview linked Bink video using the game's installed decoder; export preserves the source file."; }
         else if (entry.Name.StartsWith("ff0", StringComparison.OrdinalIgnoreCase))
         { p.Kind = "Jade models"; p.Scene = Models.Read(bytes); p.Details = $"{p.Scene.Models.Count} models · vertices, UV, materials"; }
         else if (bytes.Length < 2 * 1024 * 1024 && bytes.Take(Math.Min(4096, bytes.Length)).Count(c => c == 0) == 0)
