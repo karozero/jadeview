@@ -4,11 +4,80 @@ internal static class VerificationCommands
     {
         switch (arguments)
         {
+            case ["--cinematic-sight-set-checks"]:
+                CinematicSightSetChecks.Verify(output);
+                break;
+            case ["--assets-frame-trace-checks"]:
+                AssetsFrameTraceChecks.Run();
+                break;
+            case ["--archive-startup-script-audit", var archive]:
+                ArchiveStartupScriptAudit.Write(archive, output);
+                break;
+            case ["--pc-world-list-resource-audit", var archive, var key]:
+                PcWorldListResourceAudit.Write(archive, key, output);
+                break;
+            case ["--pc-world-list-header-checks"]:
+                PcWorldListHeaderChecks.Verify();
+                break;
+            case ["--pc-ai-call-graph-checks"]:
+                PcAiFunctionCallGraphChecks.Verify();
+                break;
+            case ["--pc-ai-call-binding-checks"]:
+                PcAiFunctionCallBindingChecks.Verify();
+                break;
+            case ["--pc-ai-constant-branch-checks"]:
+                PcAiConstantBranchChecks.Verify();
+                break;
+            case ["--pc-ai-scalar-assignment-checks"]:
+                PcAiScalarConstantAssignmentChecks.Verify();
+                break;
+            case ["--pc-ai-call-graph-audit", var archive, var rootKey]:
+                PcAiFunctionCallGraphAudit.Write(archive, rootKey, output);
+                break;
             case ["--script-owner-resource-fixture", var archive, var container, var ownerKey]:
                 ScriptOwnerResourceFixture.Write(archive, container, Convert.ToUInt32(ownerKey, 16), output);
                 break;
             case ["--script-model-variable-audit", var archive, var container]:
                 ScriptModelVariableAudit.Write(archive, container, output);
+                break;
+            case ["--assets-ui-performance-audit", var archive, var container, var worldName, var focusName, var profile]:
+                AssetsUiPerformanceAudit.Write(archive, container, worldName, focusName, output, profile);
+                break;
+            case ["--assets-ui-performance-audit", var archive, var container, var worldName, var focusName]:
+                AssetsUiPerformanceAudit.Write(archive, container, worldName, focusName, output);
+                break;
+            case ["--assets-render-performance-audit", var archive, var container, var worldName, var focusName,
+                var width, var height, var camera]:
+                AssetsRenderPerformanceAudit.Write(archive, container, worldName, focusName, output,
+                    int.Parse(width), int.Parse(height), camera);
+                break;
+            case ["--assets-render-performance-audit", var archive, var container, var worldName, var focusName]:
+                AssetsRenderPerformanceAudit.Write(archive, container, worldName, focusName, output);
+                break;
+            case ["--collision-resource-audit", var archive, var container]:
+                PcCollisionResourceAudit.Write(archive, container, output);
+                break;
+            case ["--collision-resource-audit", var archive, var container, var dialect]:
+                PcCollisionResourceAudit.Write(archive, container, output,
+                    Enum.Parse<JadeView.PcCollisionWireDialect>(dialect, ignoreCase: true));
+                break;
+            case ["--collision-resource-audit", var archive, var container, var dialect, var readMode]:
+                PcCollisionResourceAudit.Write(archive, container, output,
+                    Enum.Parse<JadeView.PcCollisionWireDialect>(dialect, ignoreCase: true),
+                    Enum.Parse<JadeView.PcCollisionReadMode>(readMode, ignoreCase: true));
+                break;
+            case ["--cinematic-export-audit", var archive, var container, var clipKey, var time]:
+                CinematicExportAudit.Write(archive, container, Convert.ToUInt32(clipKey, 16),
+                    float.Parse(time, System.Globalization.CultureInfo.InvariantCulture), output);
+                break;
+            case ["--cinematic-export-all-audit", var archive, var container, var clipKey, var time]:
+                CinematicExportAudit.Write(archive, container, Convert.ToUInt32(clipKey, 16),
+                    float.Parse(time, System.Globalization.CultureInfo.InvariantCulture), output, allClips: true);
+                break;
+            case ["--cinematic-camera-script-fov-audit", var archive, var container, var clipKey, var ownerKey, var time]:
+                CinematicCameraScriptFovAudit.Write(archive, container, Convert.ToUInt32(clipKey, 16),
+                    Convert.ToUInt32(ownerKey, 16), float.Parse(time,
+                        System.Globalization.CultureInfo.InvariantCulture), output);
                 break;
             case ["--cinematic-audio-stream-clock-audit"]:
                 CinematicAudioStreamClockAudit.Run();
@@ -29,6 +98,9 @@ internal static class VerificationCommands
             case ["--cinematic-material-render-check"]:
                 CinematicMaterialRenderChecks.Verify();
                 break;
+            case ["--dynamic-light-render-check"]:
+                DynamicLightRenderChecks.Verify();
+                break;
             case ["--cinematic-flash-check"]:
                 CinematicFlashChecks.Verify();
                 break;
@@ -38,6 +110,10 @@ internal static class VerificationCommands
             case ["--cinematic-frame-audit", var archive, var container, var clipKey, var time]:
                 CinematicFrameAudit.Write(archive, container, Convert.ToUInt32(clipKey, 16),
                     float.Parse(time, System.Globalization.CultureInfo.InvariantCulture), output);
+                break;
+            case ["--cinematic-frame-audit", var archive, var container, var clipKey, var time, var focusObject]:
+                CinematicFrameAudit.Write(archive, container, Convert.ToUInt32(clipKey, 16),
+                    float.Parse(time, System.Globalization.CultureInfo.InvariantCulture), output, focusObject);
                 break;
             case ["--cinematic-playback-performance-audit", var archive, var container, var clipKey, .. var sampleTimes]:
                 CinematicPlaybackPerformanceAudit.Write(archive, container, Convert.ToUInt32(clipKey, 16),
@@ -58,6 +134,10 @@ internal static class VerificationCommands
                 break;
             case ["--cinematic-motion-audit", var archive, var container, var clipKey, ..]:
                 CinematicMotionAudit.Write(archive, container, Convert.ToUInt32(clipKey, 16), output);
+                break;
+            case ["--cinematic-root-trajectory-audit", var archive, var container, var clipKey, var actorKey]:
+                CinematicRootTrajectoryAudit.Write(archive, container, Convert.ToUInt32(clipKey, 16),
+                    Convert.ToUInt32(actorKey, 16), output);
                 break;
             case ["--cinematic-audio-audit", var archive, var container, var clipKey, ..]:
                 CinematicAudioAudit.Write(archive, container, Convert.ToUInt32(clipKey, 16), output);
@@ -82,6 +162,9 @@ internal static class VerificationCommands
             case ["--nested-eve-transform-audit", var archive, var container, var clipKey, ..]:
                 CinematicNestedEventTransformAudit.Write(archive, container,
                     Convert.ToUInt32(clipKey, 16), output);
+                break;
+            case ["--cinematic-hierarchy-track-audit", var archive, var container]:
+                CinematicHierarchyTrackAudit.Write(archive, container, output);
                 break;
             case ["--cinematic-state-audit", var archive, var container, ..]:
                 CinematicSceneStateAudit.Write(archive, container, output);
@@ -113,6 +196,9 @@ internal static class VerificationCommands
             case ["--archive-cinematic-census", var archive, ..]:
                 ArchiveCinematicCensus.Write(archive, output);
                 break;
+            case ["--archive-engine-function-audit", var archive, var functionName]:
+                ArchiveEngineFunctionAudit.Write(archive, functionName, output);
+                break;
             case ["--archive-cinematic-script-index", var archive, var sourceRoot, ..]:
                 ArchiveCinematicScriptIndex.Write(archive, sourceRoot, output);
                 break;
@@ -135,6 +221,9 @@ internal static class VerificationCommands
                 break;
             case ["--archive-gameplay-script-index", var archive, var sourceRoot, ..]:
                 ArchiveCinematicScriptIndex.WriteAllWorlds(archive, sourceRoot, output);
+                break;
+            case ["--archive-world-transition-call-audit", var archive]:
+                ArchiveWorldTransitionCallAudit.Write(archive, output);
                 break;
             case ["--archive-cinematic-body-coverage", var archive, ..]:
                 ArchiveCinematicBodyCoverageAudit.Write(archive, output);
