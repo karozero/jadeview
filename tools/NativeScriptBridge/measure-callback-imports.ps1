@@ -1,6 +1,8 @@
 param(
     [Parameter(Mandatory = $true)]
-    [string] $SourcePath
+    [string] $SourcePath,
+
+    [string] $FunctionName
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,10 +17,12 @@ if (-not $sourceFile.StartsWith($sourcePrefix, [System.StringComparison]::Ordina
 $compilerEnvironment = 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars32.bat'
 $outputDirectory = Join-Path $repoRoot 'artifacts\native-script-bridge\dependency-audit'
 $sourceName = [System.IO.Path]::GetFileNameWithoutExtension($sourceFile)
+$reportName = if ([string]::IsNullOrWhiteSpace($FunctionName)) { $sourceName } else { "$sourceName-$FunctionName" }
 $objectFile = Join-Path $outputDirectory ($sourceName + '.obj')
 $symbolsFile = Join-Path $outputDirectory ($sourceName + '-symbols.txt')
 $relocationsFile = Join-Path $outputDirectory ($sourceName + '-relocations.txt')
-$summaryFile = Join-Path $outputDirectory ($sourceName + '-imports.txt')
+$headersFile = Join-Path $outputDirectory ($sourceName + '-headers.txt')
+$summaryFile = Join-Path $outputDirectory ($reportName + '-imports.txt')
 
 if (-not (Test-Path -LiteralPath $compilerEnvironment)) {
     throw "x86 MSVC environment was not found: $compilerEnvironment"
@@ -54,8 +58,20 @@ try {
         throw "COFF relocation extraction failed with exit code $LASTEXITCODE."
     }
 
+    $headersLine = @('call', "`"$compilerEnvironment`"", '>nul', '&&', 'dumpbin', '/headers',
+        "`"$objectFile`"", '>', "`"$headersFile`"") -join ' '
+    & $env:ComSpec /d /c $headersLine
+    if ($LASTEXITCODE -ne 0) {
+        throw "COFF section extraction failed with exit code $LASTEXITCODE."
+    }
+
     $functionImports = Get-Content -LiteralPath $symbolsFile | ForEach-Object {
         if ($_ -match 'UNDEF\s+notype\s+\(\)\s+External\s+\|\s+(\S+)') {
+            $Matches[1]
+        }
+    } | Sort-Object -Unique
+    $definedFunctionSymbols = Get-Content -LiteralPath $symbolsFile | ForEach-Object {
+        if ($_ -match 'SECT[0-9A-Fa-f]+\s+notype\s+\(\)\s+External\s+\|\s+(\S+)') {
             $Matches[1]
         }
     } | Sort-Object -Unique
@@ -66,7 +82,32 @@ try {
             }
         }
     } | Sort-Object -Unique
-    $relocatedSymbols = Get-Content -LiteralPath $relocationsFile | ForEach-Object {
+    $relocationLines = Get-Content -LiteralPath $relocationsFile
+    $sectionNumber = $null
+    if (-not [string]::IsNullOrWhiteSpace($FunctionName)) {
+        $escapedFunctionName = [regex]::Escape("_$FunctionName")
+        $functionSymbol = Get-Content -LiteralPath $symbolsFile | Where-Object {
+            $_ -match "^\s*[0-9A-Fa-f]+\s+[0-9A-Fa-f]{8}\s+SECT([0-9A-Fa-f]+)\s+.*\|\s+$escapedFunctionName$"
+        } | Select-Object -First 1
+        if (-not $functionSymbol) {
+            throw "Function '$FunctionName' was not emitted as a COFF section in $SourcePath."
+        }
+        if ($functionSymbol -match 'SECT([0-9A-Fa-f]+)') {
+            $sectionNumber = $Matches[1].ToUpperInvariant()
+        }
+    }
+
+    $currentRelocationSection = $null
+    $selectedRelocationLines = foreach ($relocationLine in $relocationLines) {
+        if ($relocationLine -match '^RELOCATIONS\s+#([0-9A-Fa-f]+)') {
+            $currentRelocationSection = $Matches[1].ToUpperInvariant()
+        }
+        if ($null -eq $sectionNumber -or $currentRelocationSection -eq $sectionNumber) {
+            $relocationLine
+        }
+    }
+
+    $relocatedSymbols = $selectedRelocationLines | ForEach-Object {
         if ($_ -match '^\s+[0-9A-Fa-f]{8}\s+[A-Z0-9]+\s+[0-9A-Fa-f]{8}\s+[0-9A-Fa-f]+\s+(\S+)') {
             $Matches[1]
         }
@@ -76,13 +117,17 @@ try {
         [void]$relocatedSymbolSet.Add($relocatedSymbol)
     }
     $directFunctionImports = @($functionImports | Where-Object { $relocatedSymbolSet.Contains($_) })
+    $directSameTranslationUnitCalls = @($definedFunctionSymbols | Where-Object { $relocatedSymbolSet.Contains($_) })
     $directDataReferences = @($dataSymbols | Where-Object { $relocatedSymbolSet.Contains($_) })
 
     @(
         "Source: $($sourceFile.Substring($repoRoot.Length + 1))"
         'Mode: x86 compile and COFF relocation inspection; no link or execution'
+        $(if ($sectionNumber) { "Scope: function section _$FunctionName (#$sectionNumber), compiled with /Gy" } else { 'Scope: all sections in this translation unit' })
         "Direct function imports referenced by relocations: $($directFunctionImports.Count)"
         ($directFunctionImports | ForEach-Object { "  $_" })
+        "Direct calls to functions defined in this translation unit: $($directSameTranslationUnitCalls.Count)"
+        ($directSameTranslationUnitCalls | ForEach-Object { "  $_" })
         "Direct undefined data references in relocations: $($directDataReferences.Count)"
         ($directDataReferences | ForEach-Object { "  $_" })
     ) | Set-Content -LiteralPath $summaryFile -Encoding UTF8
