@@ -9,6 +9,7 @@ $manifestDirectory = [System.IO.Path]::GetDirectoryName($manifestFullPath)
 $outputDirectory = Join-Path $repoRoot 'artifacts\native-script-bridge\ofc-registry-probe'
 
 Import-Module (Join-Path $PSScriptRoot 'ExactSourceExtraction.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'OfcRegistrySource.psm1') -Force
 
 $manifest = Get-Content -LiteralPath $manifestFullPath -Raw | ConvertFrom-Json
 $fixture = $manifest.Fixture
@@ -42,17 +43,16 @@ $registryText = $registryDocument.Text
 $registryEncoding = $registryDocument.Encoding
 $registryEncodingName = $registryDocument.EncodingName
 $registryHash = $registryDocument.Sha256
-$rowPattern = '(?m)^[\t ]*\{[\t ]*0x' + $keyHex + '[\t ]*,[\t ]*(?<symbol>[A-Za-z_][A-Za-z0-9_]*)[\t ]*\}[\t ]*,[\t ]*\r?$'
-$registryRows = [regex]::Matches($registryText, $rowPattern)
-if ($registryRows.Count -ne 1) {
-    throw "The selected key $keyHex does not have exactly one source registry row; refusing an uncompiled fallback."
-}
-$registryRow = $registryRows[0]
-$symbol = $registryRow.Groups['symbol'].Value
-$rowLine = ([regex]::Matches($registryText.Substring(0, $registryRow.Index), "`n")).Count + 1
-$rowBytes = [System.Text.Encoding]::UTF8.GetBytes($registryRow.Value)
-$rowHash = Get-BytesSha256 -Bytes $rowBytes
-
+$registrySource = 'external/irisEng/ai/ai_compiledscripts.c'
+$registryHeaderSource = 'external/irisEng/ai/ai_compiledscripts.h'
+$registryHeader = Read-ExactSourceFile -Path (Join-Path $repoRoot $registryHeaderSource)
+$registryContract = Get-OfcRegistryContract -Definition $registryDocument -Declaration $registryHeader `
+    -DefinitionSource $registrySource -DeclarationSource $registryHeaderSource
+$registryExtent = $registryContract.Extent
+$selectedRow = Get-OfcRegistryRow -Document $registryDocument -Key $key -Source $registrySource
+$symbol = $selectedRow.Symbol
+$rowLine = $selectedRow.Span.StartLine
+$rowHash = $selectedRow.Span.Sha256
 $callbackDefinitions = [System.Collections.Generic.List[object]]::new()
 foreach ($sourceFile in Get-ChildItem (Join-Path $repoRoot 'external\irisEng\ai') -Filter '*.c' -Recurse) {
     $document = Read-ExactSourceFile -Path $sourceFile.FullName
@@ -119,7 +119,7 @@ $registryC = @"
  * The declared extent preserves the source ABI; SizeofArray exposes one active row. */
 #include "../../../external/irisEng/ai/ai_compiledscripts.h"
 extern int $symbol();
-tStruct_funclist AI2C_gat_fctdefs[2530] = { { (int)0x$keyHex, $symbol } };
+tStruct_funclist AI2C_gat_fctdefs[$registryExtent] = { { (int)0x$keyHex, $symbol } };
 unsigned int AI2C_i_SizeofArray(void) { return 1; }
 int (*OFCRegistryProbeTarget(void))() { return $symbol; }
 const char* OFCRegistryProbeSymbolName(void) { return "$symbol"; }
@@ -145,10 +145,13 @@ $manifestOutput = [pscustomobject]@{
         SourceSha256 = $registryHash
         SourceEncoding = $registryEncodingName
         SourceLine = $rowLine
-        ExactRow = $registryRow.Value
+        ExactRow = $selectedRow.Span.Text
         RowSha256 = $rowHash
+        RowByteOffset = $selectedRow.Span.ByteOffset
+        RowByteCount = $selectedRow.Span.ByteCount
+        ExtentContract = $registryContract
         Symbol = $symbol
-        FullRegistryRowCount = 2530
+        FullRegistryRowCount = $registryExtent
         ProbeRegistryRowCount = 1
         ScopeNote = 'The probe verifies this source row and runs Iris lookup over the one-row extracted registry slice; it does not link or claim the full registry.'
     }

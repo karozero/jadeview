@@ -18,6 +18,8 @@ The host explicitly calls the OVA reader on the selected manifest payloads; it d
 
 ## Compiled-function metadata probe
 
+The extracted registry slice derives its array extent from the unique uncommented source definition and header declaration, requiring both numeric extents to agree. The manifest preserves both declaration spans and the selected row's original encoded byte offset/count/hash. `test-ofc-registry-source.ps1` checks changed extents, comment filtering, mismatch rejection and Windows-1252 row provenance. This bounded source reader does not run the C preprocessor or evaluate macro-defined extents; the native probe still exposes one active registry entry, not the full table.
+
 Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/NativeScriptBridge/test-ofc-registry-probe.ps1` for the separate OFC stage. It validates the manifest-selected resource, runs the original compact function loader, and checks its callback pointer against one source-selected compiled registry entry. Both real owner fixtures pass; unknown registry keys and invalid resource hashes are rejected before loading.
 
 The compiled callback is linked but never invoked. The repeated-load check uses a controlled one-entry address cache, not the engine cache. This stage does not resolve the earlier probe's queue, initialize instance variables, or apply script effects to JadeView. See [runtime bridge findings](../../docs/game-script-runtime-bridge-feasibility.md) for source locations, observed metadata, and the remaining initialization boundary.
