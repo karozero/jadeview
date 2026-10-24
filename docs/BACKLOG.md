@@ -44,6 +44,33 @@
     loaded non-generated objects made inactive/invisible by `OBJDestroy` from
     generated objects detached and removed from engine registries. Preserve
     those semantics as separate lifecycle states.
+  - Iris source now confirms two separate execution systems: five mutable,
+    timed AI tracks advanced by `AI_MainCall`, and phase-indexed engine
+    callbacks dispatched by `AI_ExecCallback` (including dynamic registrations
+    with a separate context object). Static BF preview must keep defaults,
+    explicit event-derived mutations, and unknown live state distinct; full
+    execution still needs track cursors/timers, callback registrations, and
+    owner/world eligibility. The cinematic source inspector now lists reachable
+    `AICBAdd`/`AICBDel` registration candidates, branch alternatives, raw tuple
+    operands, Iris dispatch callsites, and `AICBDel` candidates whose full
+    resolved tuple exactly matches a registration. Separate `AIReinitVars`
+    sites show possible current-instance callback-list resets. It does not
+    reconstruct the live callback list or prove any candidate executed. The
+    production audit of `FF005833 / BF00218E` found 22 adds and 4 deletes but
+    no fully resolved matching tuple or reachable reset site; destinations in
+    the inspected adds were dynamic or null.
+  - The global-startup inspector and cinematic Script Owners now show
+    `AITrackChange`, `AITrackStop`, `AITrackCurChange`,
+    `AITrackCurChangeNow`, and `AITrackCurStop` candidates from reachable
+    source functions, with literal slots, unique function links, branch paths,
+    and source-confirmed effects. The `FF005833 / BF00218E` audit found 511
+    candidates across 45 owners; 417 targets resolved uniquely and 423 carried
+    branch conditions. The graph also produced current-slot candidates for all
+    332 current-track operations: 330 had one source-path slot and two had
+    multiple possible slots. These are possible transitions, not executed
+    state. Dynamic values, current function/cursor/timer, owner admission, and
+    runtime order remain unknown. Next, connect only deterministic,
+    time-resolved state changes to preview.
   - Cinematic literal-state preview now models `OBJ_CapaNot` as a 16-bit XOR
     alongside add/remove `OBJ_CapaSet`, matching IrisEngine's `uw_Capacities`.
     This does not evaluate callback branches or collision/saved-flag gates.
@@ -90,9 +117,21 @@
     event list immediately, but the owner has start-gate mask `0x104`, including
     actor activity and saved special flag 2007; the BF archive does not reveal
     whether that gate passed in the user's playthrough. This is a concrete
-    candidate for the missing T-pose action, not proof it ran. A generic preview
-    of independently gated script-owned SceneEvents is still needed; do not
-    inject this action into every playback or hardcode the owner/character.
+    candidate for the missing T-pose action, not proof it ran. The generic
+    **EVE & actions** inventory now lists independently gated script-owned
+    `SceneEvents` with owner-specific preview controls and known flag/message
+    start candidates. The `FF001FBE / 35009F74` audit identifies
+    `CINE_INIT_MILI_EVENTS.gao` (`35009652`) as previewable; enabling it applies
+    the serialized action-kit merge and companion action request to synchronized
+    preview and export. This is an explicit inspection path, not automatic
+    playback. Keep the action out of default playback until owner activation and
+    runtime gates are known; no actor/scene special case is used.
+    The start-gate inspector now resolves the source's outer owner capability
+    branch (`OBJ_CapaTest(0x100)`) when preview capabilities are available,
+    distinguishing bypassed predicates from evaluated predicates. Preview start
+    estimates use serialized flag/message signals and configured delays when
+    uniquely available. Callback dispatch, owner activation, and automatic
+    scheduling from independently gated owners remain unresolved.
     A cross-report scan found 14 EVE channels in four representative containers
     that combine an action-kit merge with companion message 49 in the same
     channel. This is a repeated event-track pattern, not a Militaire-specific
@@ -111,17 +150,20 @@
     literal commands from resolved nested `SceneEvents` routes. It remains a
     static route preview: callback branches, world transitions, and the retail
     save's initial flag values are not evaluated.
-  - The latest world-scoped archive audit scans 91 containers, 38 cinematic
-    worlds and 1,232 clips. It found 441 skeletal actor/clip bindings; 296 have
-    decoded body-action segments and 145 do not. Those 145 have root-transform
-    data in 117 cases and direct bone tracks in 28. Ten bindings contain an
-    unresolved action request: seven still resolve other body-action segments,
-    while three have no resolved segment. The report now uses the same
-    world-scoped action-kit resolver as playback; the previous audit used a
-    legacy global map and undercounted segments (1,281 vs. 1,429). These are
-    coverage results, not necessarily playback bugs: serialized BF data does
-    not include live AI track state. The current report is
-    `artifacts/export-verification/archive-cinematic-body-coverage.json`.
+  - The 2026-10-24 world-scoped archive audit scans 91 containers, 38 cinematic
+    worlds and 208 clips. It found 454 skeletal actor/clip bindings; 308 have
+    decoded body-action segments and 146 do not. Those 146 have root-transform
+    data in 117 cases and direct bone tracks in 26. Eleven bindings contain an
+    unresolved action request. The report uses the same world-scoped action-kit
+    resolver as playback; these are coverage results, not necessarily playback
+    bugs because serialized BF data omits live AI track state.
+  - For bindings with missing actions, the audit now independently enables each
+    selectable script-owned `SceneEvents` source and checks whether its action
+    kit merge supplies the missing slot. It found such owner-preview candidates
+    for Militaire in `35009F74` and `3500A4C7`, and PNJ_Faucheur in `3500B047`.
+    This is a generic discovery path to the relevant setup owner, not proof that
+    the owner gate passed in the retail game. Runtime callback scheduling and
+    gameplay handoff remain unresolved.
   - The script-graph audit now builds cinematic participants through
     `CinematicWorldAssembler` and includes serialized transform-track targets
     in the linked owner scope. On `FF00791B / BF003BD1` this recovers Peyj's
@@ -131,6 +173,22 @@
     but their dynamic mode/branch inputs do not identify Peyj's active action
     at cinematic entry. The T-pose therefore remains unresolved without runtime
     state rather than being replaced with a guessed idle.
+  - Iris source narrows the generic handoff protocol: companion message `49`
+    with `Int1 == 4` stores `Int2` in `Perso_ID_action[des_i_friend]` and
+    `i_attente_action`, then re-enters the mode selector, which applies the
+    stored action via `ACTActionSet`. `companion_co_init` also reads that shared
+    slot during setup. Status-change and companion-management scripts contain
+    writers for message `49`, but the `BF003BD1` archive evidence does not show
+    one targeting Peyj at clip start or reveal the active action value. Treat
+    this as a generic gameplay-to-pose dependency, not a verified scene event.
+    Next: map serialized EVE/message owners to the message-49 writers and find
+    the initialization path for `Perso_ID_action`; only add playback when the
+    archive provides a deterministic target, time, and action value.
+  - Message IDs are receiver-script scoped: Iris's Crochax cinematic receiver
+    interprets message `49`'s `f2` as scale, and the Secundo SFX receiver uses
+    `f2`/`f1` as light/alpha factors. Any future event inspector must resolve
+    sender + target + target AI before assigning meaning to a numeric message
+    ID; a global message-ID label would be misleading.
   - The live cinematic script-owner list now also follows the selected clip's
     serialized transform-track targets, so brain-bearing props reached by a
     transform track can be inspected beside actor and command-linked owners.
@@ -217,15 +275,15 @@
   - Compare the corrected result against retail capture. Native display-format
     constraints and positional camera smoothing still need verification.
 
-- [ ] Complete native trigger-timed playback for source video textures on in-scene screens.
+- [ ] Verify native gameplay lifecycle parity for source video textures on in-scene screens.
   - Confirmed reproduction: `FF005833`, worlds `00_02_home_decryptage_cine`
     / `00_02_home_decryptage`, object `Cine_ecran_explik_invent.gao` (`BF000DA6`).
   - Material `BF000DA8` has two RGB layers referencing `BF000F07`.
   - `FF805833` contains its 96-byte texture descriptor at `0x2429`:
     texture type 5, procedural subtype 3, 128 x 128, Bink key `61006334`.
   - That archive entry is `propaganda_01.bik`, with verified `BIKi` signature.
-    The PC registry reader consumes the descriptor but produces no image for
-    procedural textures; the renderer consequently shows its missing-texture checker.
+    The texture registry preserves a procedural descriptor rather than an
+    ordinary still image; cinematic rendering handles this descriptor separately.
   - The installed game's x86 `binkw32.dll` successfully decodes `128x128` Bink
     frames through a persistent x86 PowerShell bridge; JadeView's x64 renderer
     uploads frames and samples them against cinematic playhead time. The bridge
@@ -241,15 +299,15 @@
     seeking recomputes the event state. Use
     `--cinematic-video-trigger-audit <archive.bf> <container> <clip-key>` to
     inspect texture-to-owner links and sampled states.
-  - This is source-event preview, not AI VM execution. Live switch state,
-    saved-game gates, callback branch eligibility and callback-frame latency
-    still need recovery and representative in-game verification.
-  - In the audited `FF005833/BF00218E` clip, the monitor's `OBJ_CapaSet`
-    toggle is at `44.783333s`, exactly the clip endpoint. The static event
-    model starts the Bink timeline there, but this clip alone ends before a
-    later frame can be shown. Determine whether the game continues the screen
-    callback after the cinematic, or whether a linked event/script starts it
-    in the following gameplay state, before claiming full monitor playback.
+  - The preview is source-event reconstruction, not AI VM execution. Live
+    switch state, saved-game gates, callback branch eligibility and callback
+    frame latency still need recovery and representative in-game verification.
+  - Audit `FF005833/BF00218E`: the monitor's `OBJ_CapaSet` toggle is at
+    `44.783333s`, exactly the clip endpoint. JadeView keeps the final cinematic
+    pose and plays video post-roll through decoded media end when
+    `StopAtEnd` is configured. Verify against the game whether the screen
+    callback remains active after the cinematic and whether the same lifecycle
+    handles live switch/save gates and gameplay transitions.
   - GLB export now preserves the procedural descriptor in material
     `extras.jadeProceduralTexture` (key, subtype, dimensions, archive media key,
     media name, and source scope). The export warning explicitly states that
@@ -282,3 +340,27 @@
   - [ ] Compare the asset's grass coverage and tint against the JadeView
     viewport or retail game. The GLB imports and its baked layers are present,
     but an automated Blender import does not prove visual parity.
+
+## Assets viewport performance
+
+- [ ] Reduce wide-view frame spikes without hiding scene content or changing
+  material/transparent ordering.
+  - A new current-source stress audit selected
+    `Cine_SFX_Faisceau_ascension.gao` in
+    `00_03_dehors_maison_Intro_cine` and orbited a wide view with roughly 780–850
+    visible objects. The beam itself was not a leading hotspot; cold lighting
+    and warm multi-object skinning/draw work dominate different spikes.
+  - Warm orbit averaged 57.40 ms (p95 67.99 ms, max 142.30 ms); separate
+    warm-up/interaction frames reached about 200–218 ms. The sampled run did
+    not reproduce a sustained 250 ms frame. A normal 99-object view averaged
+    22.08 ms. This is a synthetic full-UI audit, not a capture of the user's
+    exact camera or machine behavior during ordinary interaction.
+    - A texture-parameter state cache now skips redundant wrap/filter writes.
+      Pixel equality is checked with cache on/off. One sequential audit measured
+      17.38 ms wide-orbit average with caching versus 24.64 ms without; repeated
+      selection was 17.90 versus 27.09 ms, and ray-picking was 20.91 versus
+      28.53 ms. Treat these as indicative; the comparison has not been repeated
+      under controlled conditions, and a 146 ms warm-up spike remains.
+    - Continue profiling cold frames and skinning/draw-pass spikes. Any skinning
+      optimization must preserve positions, normals, and rendered output.
+    Details and exact trace path: [`assets-viewport-performance.md`](assets-viewport-performance.md).
