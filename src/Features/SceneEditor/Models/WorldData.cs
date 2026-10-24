@@ -7,9 +7,11 @@ public sealed class WorldData
     public uint Key { get; init; }
     public string Name { get; set; } = "";
     public SourceRange RecordRange { get; init; }
+    public WorldLighting? Lighting { get; init; }
     public List<SceneObject> Objects { get; } = [];
     public List<SceneActor> Actors { get; } = [];
     public Dictionary<uint, AnimationClip> CinematicClips { get; } = [];
+    internal CinematicEnvironmentController[] CinematicEnvironmentControllers { get; set; } = [];
 
     public override string ToString() => $"{Name} ({Key:X8}) - {Objects.Count} objects";
 }

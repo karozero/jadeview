@@ -9,7 +9,7 @@ internal static class ArchiveCinematicCensus
     private sealed record SceneSummary(string Container, int Records, int AnimationRecords,
         int DecodedClips, int DecodeFailures, Dictionary<int, int> SendSelectors,
         Dictionary<string, int> EventControlFlags, List<object> FlaggedCinematicTracks,
-        List<object> LiteralMessageTemplates, int DecodedLiteralCommands,
+        List<object> EventFunctionWaitKeys, List<object> LiteralMessageTemplates, int DecodedLiteralCommands,
         int DescribedLiteralCommands, Dictionary<string, int> UndescribedEngineCommands);
 
     internal static void Write(string archivePath, string output)
@@ -48,7 +48,7 @@ internal static class ArchiveCinematicCensus
             },
             Selector8056Occurrences = summaries.Sum(summary => summary.SendSelectors.GetValueOrDefault(8056)),
             Selector8050Occurrences = summaries.Sum(summary => summary.SendSelectors.GetValueOrDefault(8050)),
-            EventFlagSemantics = "Execution-flag labels follow Jaded's later EVEconst.h and are hypotheses for the retail PC stream. The report counts raw serialized bits; it does not claim retail semantic equivalence.",
+            EventFlagSemantics = "Track lifecycle labels are source-backed by Iris and corroborated by Jaded. AI-function hold labels follow Iris events.c: key bit 0x0008 holds while the node returns true, and 0x0010 holds while false. The census counts serialized keys; it does not execute event nodes or claim retail binary equivalence.",
             Limits = "Archive-wide parsed FF containers and source animation event words. Counts preserve container occurrences; literal templates are candidates only. No VM execution, actor delivery, audio timing, shared-resource deduplication or completeness of non-FF resources is inferred.",
             Containers = summaries
         };
@@ -81,6 +81,7 @@ internal static class ArchiveCinematicCensus
         var selectorCounts = new Dictionary<int, int>();
         var eventControlFlags = new Dictionary<string, int>(StringComparer.Ordinal);
         var flaggedCinematicTracks = new List<object>();
+        var eventFunctionWaitKeys = new List<object>();
         var literalCandidates = new List<object>();
         var undescribedEngineCommands = new Dictionary<string, int>(StringComparer.Ordinal);
         int decodedClips = 0;
@@ -154,8 +155,28 @@ internal static class ArchiveCinematicCensus
                     CountFlag(eventControlFlags, "event.do-once", animationKey.Flags, 0x0001);
                     if (eventType == 0x0040)
                     {
-                        CountFlag(eventControlFlags, "event.wait-false", animationKey.Flags, 0x0008);
-                        CountFlag(eventControlFlags, "event.wait-true", animationKey.Flags, 0x0010);
+                        CinematicEventFunctionWaitMode waitMode =
+                            CinematicEventFunctionControlFlowReader.WaitModeFor(animationKey.Flags);
+                        if (waitMode == CinematicEventFunctionWaitMode.WaitWhileTrue)
+                            Increment(eventControlFlags, "event.hold-while-true");
+                        else if (waitMode == CinematicEventFunctionWaitMode.WaitWhileFalse)
+                            Increment(eventControlFlags, "event.hold-while-false");
+                        if (waitMode != CinematicEventFunctionWaitMode.None)
+                        {
+                            eventFunctionWaitKeys.Add(new
+                            {
+                                Clip = key.ToString("X8"),
+                                ClipName = recordName,
+                                World = worldKey.ToString("X8"),
+                                TrackIndex = clip.Tracks.IndexOf(track),
+                                Target = track.Target.ToString("X8"),
+                                track.Bone,
+                                KeyIndex = track.Keys.IndexOf(animationKey),
+                                Time = animationKey.Time,
+                                Flags = animationKey.Flags.ToString("X4"),
+                                WaitMode = waitMode.ToString()
+                            });
+                        }
                     }
 
                     string? controlEvent = eventType switch
@@ -218,7 +239,8 @@ internal static class ArchiveCinematicCensus
         }
 
         return new(entry.Id, sourceRecords.Length, animationRecords.Count, decodedClips,
-            decodeFailures, selectorCounts, eventControlFlags, flaggedCinematicTracks, literalCandidates,
+            decodeFailures, selectorCounts, eventControlFlags, flaggedCinematicTracks, eventFunctionWaitKeys,
+            literalCandidates,
             decodedLiteralCommands, describedLiteralCommands, undescribedEngineCommands);
     }
 
@@ -227,11 +249,14 @@ internal static class ArchiveCinematicCensus
         if ((value & mask) != 0) counts[name] = counts.GetValueOrDefault(name) + 1;
     }
 
+    private static void Increment(Dictionary<string, int> counts, string name) =>
+        counts[name] = counts.GetValueOrDefault(name) + 1;
+
     private static object ReadScene(byte[] bytes, string archivePath)
     {
         var loader = typeof(SceneActor).Assembly.GetType("JadeView.PcSceneLoader")!;
         var read = loader.GetMethod("Read", BindingFlags.Static | BindingFlags.NonPublic)!;
-        object replay = read.Invoke(null, [bytes, archivePath])!;
+        object replay = read.Invoke(null, [bytes, archivePath, null])!;
         string? error = (string?)GetField(replay, "Error");
         if (error != null) throw new InvalidDataException(error);
         return replay;

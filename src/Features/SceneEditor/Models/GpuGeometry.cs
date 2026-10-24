@@ -23,6 +23,7 @@ public sealed class GpuGeometry : IDisposable
     public Vector3 ProceduralCameraPosition,ProceduralCameraTarget;
     public Matrix4x4 ProceduralMatrix;
     public List<Mesh> PartMeshes { get; } = [];
+    internal GpuDiffuseLightingSamples DiffuseLighting { get; } = new();
     public List<BoundingBox> PartLocalBounds { get; } = [];
     internal Vector3[] NormalBuffer { get; private set; } = [];
     internal int[] NormalCountsBuffer { get; private set; } = [];
@@ -51,6 +52,7 @@ public sealed class GpuGeometry : IDisposable
             Raylib.UnloadMesh(m);
         }
         PartMeshes.Clear();
+        DiffuseLighting.Clear();
         PartLocalBounds.Clear();
         NormalBuffer = [];
         NormalCountsBuffer = [];

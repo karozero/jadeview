@@ -19,7 +19,7 @@ public sealed class SceneDocument
     public Dictionary<uint, uint[]> CinematicSoundBanks { get; } = [];
     public Dictionary<uint, CinematicShutterController> CinematicShutterControllers { get; } = [];
     public HashSet<uint> CinematicFadeReceivers { get; } = [];
-    public Dictionary<uint, CinematicEnvironmentController> CinematicEnvironmentControllers { get; } = [];
+    public Dictionary<CinematicScriptOwnerId, CinematicEnvironmentController> CinematicEnvironmentControllers { get; } = [];
     internal Dictionary<uint, CinematicShockwaveController> CinematicShockwaveControllers { get; } = [];
     internal Dictionary<uint, CinematicFlashController> CinematicFlashControllers { get; } = [];
     internal Dictionary<uint, CinematicLightningController> CinematicLightningControllers { get; } = [];
@@ -27,6 +27,8 @@ public sealed class SceneDocument
     public List<string> Diagnostics { get; } = [];
     // Retain keys after deletion: the source stream and undo history still own them.
     internal HashSet<uint> ReservedResourceKeys { get; } = [];
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal PcCollisionResourceCatalog? CollisionResources { get; set; }
 
     public uint AllocateObjectKey()
     {

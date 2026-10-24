@@ -21,7 +21,7 @@ internal sealed partial class PcSceneLoader
         }
     }
 
-    private void ReadTransformList(Record record)
+    private void ReadCollisionMapReferences(Record record)
     {
         if (record.Size == 4)
         {

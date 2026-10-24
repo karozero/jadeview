@@ -140,12 +140,22 @@ public sealed partial class SceneRenderer : IDisposable
     public int StatWorldActorUpdates { get; private set; }
     public float StatWorldActorUpdateMilliseconds { get; private set; }
     public long StatWorldActorUpdateAllocatedBytes { get; private set; }
+    public float StatGeometryCacheMissMilliseconds { get; private set; }
+    public float StatOverlayMilliseconds { get; private set; }
+    public float StatRenderFinalizeMilliseconds { get; private set; }
+    public float StatProceduralTextureMilliseconds { get; private set; }
+    public float StatRenderTargetMilliseconds { get; private set; }
+    public float StatLightingPreparationMilliseconds { get; private set; }
+    public float StatClipPreparationMilliseconds { get; private set; }
+    public float StatGeometryPreparationMilliseconds { get; private set; }
+    public float StatDrawPassMilliseconds { get; private set; }
     public float StatSkinningMilliseconds { get; private set; }
     public long StatSkinningAllocatedBytes { get; private set; }
     public long StatGeometryPreparationAllocatedBytes { get; private set; }
     public long StatDrawPassAllocatedBytes { get; private set; }
     internal bool CapturePerformanceDiagnostics { get; set; }
     internal bool CaptureSkinAllocationDiagnostics { get; set; }
+    internal SceneRendererOwnerWork PerformanceOwnerWork { get; } = new();
     private readonly Dictionary<string, long> skinAllocationTotals = new(StringComparer.Ordinal);
     internal void ResetSkinAllocationDiagnostics() => skinAllocationTotals.Clear();
     internal string SkinAllocationDiagnostics => string.Join(", ", skinAllocationTotals
@@ -186,6 +196,7 @@ public sealed partial class SceneRenderer : IDisposable
         in vec2 vertexTexCoord2;
         in vec4 vertexColor;
         in vec3 vertexNormal;
+        in vec4 vertexTangent;
         uniform mat4 mvp;
         uniform mat4 matModel;
         uniform int uvMode;
@@ -196,11 +207,31 @@ public sealed partial class SceneRenderer : IDisposable
         uniform mat4 jadePlanar;
         uniform float planarDistance;
         uniform int objectDrawFlags;
+        uniform vec4 rliDestColor;
+        uniform float rliFactor;
+        uniform vec4 ambientColor;
+        uniform int computedLighting;
         out vec2 uv;
         out vec4 paint;
+        out vec4 lightPaint;
         out float instanceAlpha;
         out float eyeDepth;
         vec3 jade(vec3 p) { return vec3(p.x, -p.z, p.y); }
+        uvec3 ScaleRliDestination(vec3 color, float factor) {
+            uvec3 packedColor = uvec3(round(clamp(color, 0.0, 1.0) * 255.0));
+            if (factor >= 0.98) return packedColor;
+            if (factor <= 0.02) return uvec3(0u);
+            uint interpoler = floatBitsToUint(factor + 49152.0);
+            uvec3 scaled = uvec3(0u);
+            if ((interpoler & 128u) != 0u) scaled += (packedColor & uvec3(0xfefefefeu)) >> 1u;
+            if ((interpoler & 64u) != 0u) scaled += (packedColor & uvec3(0xfcfcfcfcu)) >> 2u;
+            if ((interpoler & 32u) != 0u) scaled += (packedColor & uvec3(0xf8f8f8f8u)) >> 3u;
+            if ((interpoler & 16u) != 0u) scaled += (packedColor & uvec3(0xf0f0f0f0u)) >> 4u;
+            if ((interpoler & 8u) != 0u) scaled += (packedColor & uvec3(0xe0e0e0e0u)) >> 5u;
+            if ((interpoler & 4u) != 0u) scaled += (packedColor & uvec3(0xc0c0c0c0u)) >> 6u;
+            if ((interpoler & 2u) != 0u) scaled += (packedColor & uvec3(0x80808080u)) >> 7u;
+            return scaled;
+        }
         void main() {
             gl_Position = mvp * vec4(vertexPosition, 1.0);
             eyeDepth = abs((jadeModelView * vec4(jade(vertexPosition), 1.0)).z);
@@ -234,6 +265,20 @@ public sealed partial class SceneRenderer : IDisposable
                 uv = vec2(transformed.x, 1.0 - transformed.y);
             }
             paint = vertexColor;
+            // GEO_Render_InitRLI keeps raw RLI separate from computed diffuse.
+            bool useRli = (objectDrawFlags & 0x40) != 0;
+            bool dontScaleRli = (objectDrawFlags & 0x02000000) != 0;
+            lightPaint = useRli ? paint : vec4(0.0);
+            if (useRli && !dontScaleRli && rliFactor > 0.02) {
+                uvec4 destination = uvec4(ScaleRliDestination(rliDestColor.rgb, rliFactor),
+                    ScaleRliDestination(rliDestColor.aaa, rliFactor).x);
+                ivec4 difference = ivec4(round(clamp(paint, 0.0, 1.0) * 255.0)) - ivec4(destination);
+                lightPaint = vec4(max(difference, ivec4(0))) / 255.0;
+            }
+            if (computedLighting != 0) lightPaint = vertexTangent;
+            // LIGHT_ComputeVertexColor adds ambient RGB after RLI initialization.
+            // Alpha remains the computed/source channel, not the world's ambient alpha.
+            lightPaint.rgb = min(lightPaint.rgb + ambientColor.rgb, vec3(1.0));
             instanceAlpha = vertexTexCoord2.x;
         }
         """;
@@ -241,6 +286,7 @@ public sealed partial class SceneRenderer : IDisposable
         #version 330
         in vec2 uv;
         in vec4 paint;
+        in vec4 lightPaint;
         in float instanceAlpha;
         in float eyeDepth;
         uniform int useRliAlpha;
@@ -255,20 +301,16 @@ public sealed partial class SceneRenderer : IDisposable
         uniform float overrideValue;
         uniform float materialOpacity;
         uniform int additiveLocalAlpha;
-        uniform vec4 rliDestColor;
-        uniform float rliFactor;
         uniform int fogEnabled;
         uniform vec4 fogColor;
         uniform float fogNear;
         uniform float fogFar;
         out vec4 finalColor;
         void main() {
-            // Neutral editor preview. Realtime lighting is not emulated, but
-            // authored per-point colors remain useful as a diffuse fallback.
+            // Raw RLI and computed diffuse are distinct material inputs.
+            // Unmodeled sources (including specular) retain the neutral fallback.
             vec4 tint = vec4(1.0);
-            vec4 lightPaint = paint;
-            if (rliFactor > 0.02) lightPaint.rgb = max(paint.rgb - rliDestColor.rgb * rliFactor, vec3(0.0));
-            if (colorMode == 3 || colorMode == 5) tint = lightPaint;
+            if (colorMode == 3 || colorMode == 5) tint = paint;
             if (colorMode == 5) tint.rgb = 1.0 - tint.rgb;
             if (colorMode == 2 || colorMode == 4) tint = constantColor;
             if (effectColor != 0 && (colorMode == 0 || colorMode == 6)) tint = lightPaint;
@@ -288,10 +330,6 @@ public sealed partial class SceneRenderer : IDisposable
             if (alphaTest == 5 && finalColor.a <= alphaRef) discard;
         }
         """;
-    private unsafe void JadeUniform(string name, int value) => Raylib.SetShaderValue(_jadeShader, _jadeUniforms[name], &value, ShaderUniformDataType.Int);
-    private unsafe void JadeUniform(string name, float value) => Raylib.SetShaderValue(_jadeShader, _jadeUniforms[name], &value, ShaderUniformDataType.Float);
-    private unsafe void JadeUniform(string name, Vector2 value) => Raylib.SetShaderValue(_jadeShader, _jadeUniforms[name], &value, ShaderUniformDataType.Vec2);
-    private unsafe void JadeUniform(string name, Vector4 value) => Raylib.SetShaderValue(_jadeShader, _jadeUniforms[name], &value, ShaderUniformDataType.Vec4);
 
     // Состояние интерактивного 3D Gizmo
     public GizmoAxis HoveredAxis { get; private set; } = GizmoAxis.None;
@@ -327,6 +365,7 @@ public sealed partial class SceneRenderer : IDisposable
     private unsafe void EnsureGpuInitialized()
     {
         if (_resourcesInitialized) return;
+        long shaderInitializationStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
 
         // 1. Создаем детерминированную шахматную текстуру для неразрешенных связей
         byte[] checkerTga = FallbackGenerator.CreateCheckerboardTga(64, 64, 0xFFFF00FF, 0xFF151515);
@@ -365,9 +404,11 @@ public sealed partial class SceneRenderer : IDisposable
         _selectionFillMaterial.Maps[(int)MaterialMapIndex.Albedo].Color = new Color(50, 220, 110, 60);
 
         _jadeShader = Raylib.LoadShaderFromMemory(JadeVertexShader, JadeFragmentShader);
-        foreach (string name in new[] { "uvMode", "uvCustom", "uvMatrix", "uvOffset", "colorMode", "constantColor", "alphaTest", "alphaRef", "alphaOverride", "overrideValue", "materialOpacity", "additiveLocalAlpha", "useRliAlpha", "effectColor", "jadeModelView", "jadePlanar", "planarDistance", "objectDrawFlags", "rliDestColor", "rliFactor", "fogEnabled", "fogColor", "fogNear", "fogFar" })
+        ResetJadeUniformCache();
+        foreach (string name in new[] { "uvMode", "uvCustom", "uvMatrix", "uvOffset", "colorMode", "constantColor", "alphaTest", "alphaRef", "alphaOverride", "overrideValue", "materialOpacity", "additiveLocalAlpha", "useRliAlpha", "effectColor", "jadeModelView", "jadePlanar", "planarDistance", "objectDrawFlags", "rliDestColor", "rliFactor", "ambientColor", "computedLighting", "fogEnabled", "fogColor", "fogNear", "fogFar" })
             _jadeUniforms[name] = Raylib.GetShaderLocation(_jadeShader, name);
         _resourcesInitialized = true;
+        TotalShaderInitializationMilliseconds += (float)System.Diagnostics.Stopwatch.GetElapsedTime(shaderInitializationStartedAt).TotalMilliseconds;
     }
 
     /// <summary>
@@ -428,7 +469,9 @@ public sealed partial class SceneRenderer : IDisposable
             return existing;
         }
 
+        long decodeStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
         byte[] rgba = Preview.DecodeTga(asset);
+        StatTextureDecodeMilliseconds += (float)System.Diagnostics.Stopwatch.GetElapsedTime(decodeStartedAt).TotalMilliseconds;
         if (rgba.Length == 0) return _fallbackCheckerTexture;
 
         fixed (byte* p = rgba)
@@ -441,10 +484,13 @@ public sealed partial class SceneRenderer : IDisposable
                 Mipmaps = 1,
                 Format = PixelFormat.UncompressedR8G8B8A8
             };
+            long uploadStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
             Texture2D gpuTex = Raylib.LoadTextureFromImage(img);
             Raylib.SetTextureFilter(gpuTex, TextureFilter.Bilinear);
             Raylib.SetTextureWrap(gpuTex, TextureWrap.Repeat);
             _textureCache[asset.Name] = gpuTex;
+            StatTextureUploadMilliseconds += (float)System.Diagnostics.Stopwatch.GetElapsedTime(uploadStartedAt).TotalMilliseconds;
+            StatTextureUploadsThisFrame++;
             return gpuTex;
         }
     }
@@ -473,6 +519,7 @@ public sealed partial class SceneRenderer : IDisposable
     {
         if (geoKey == 0 || geoKey == uint.MaxValue) return null;
         if (_geometryCache.TryGetValue(geoKey, out var cached)) return cached;
+        long cacheMissStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
 
         Geometry? geom = ResolveGeometrySource(geoKey);
 
@@ -504,6 +551,7 @@ public sealed partial class SceneRenderer : IDisposable
             mesh.TexCoords = (float*)Raylib.MemAlloc((uint)(count * 8));
             mesh.TexCoords2 = (float*)Raylib.MemAlloc((uint)(count * 8));
             mesh.Normals = (float*)Raylib.MemAlloc((uint)(count * 12));
+            mesh.Tangents = (float*)Raylib.MemAlloc((uint)(count * 16));
             mesh.Colors = (byte*)Raylib.MemAlloc((uint)(count * 4));
 
             for (int i = 0; i < count; i += 3)
@@ -533,6 +581,7 @@ public sealed partial class SceneRenderer : IDisposable
                     mesh.Normals[k * 3 + 0] = normal.X;
                     mesh.Normals[k * 3 + 1] = normal.Y;
                     mesh.Normals[k * 3 + 2] = normal.Z;
+                    for (int channel = 0; channel < 4; channel++) mesh.Tangents[k * 4 + channel] = 0;
 
                     var uv = (geom.Uvs.Length > 0 && part.UvIndices.Length > k) ? geom.Uvs[part.UvIndices[k]] : Vector2.Zero;
                     int sourceVertex = part.VertexIndices[k];
@@ -565,8 +614,26 @@ public sealed partial class SceneRenderer : IDisposable
 
         _geometryCache[geoKey] = gpuGeo;
         StatGeometryUploadsThisFrame++;
+        StatGeometryCacheMissMilliseconds += (float)System.Diagnostics.Stopwatch.GetElapsedTime(cacheMissStartedAt).TotalMilliseconds;
         if (CapturePerformanceDiagnostics) GeometryUploadKeysThisFrame.Add(geoKey);
         return gpuGeo;
+    }
+
+    private GpuGeometry? GetOrUploadGeometryForOwner(SceneObject owner)
+    {
+        if (!CapturePerformanceDiagnostics)
+            return GetOrUploadGeometry(owner.RenderGeometryKey);
+
+        long startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            return GetOrUploadGeometry(owner.RenderGeometryKey);
+        }
+        finally
+        {
+            PerformanceOwnerWork.AddGeometry(owner,
+                System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
+        }
     }
 
     private Geometry? ResolveGeometrySource(uint geoKey)
@@ -614,6 +681,7 @@ public sealed partial class SceneRenderer : IDisposable
         EnsureGpuInitialized();
         var cacheKey = (geoKey, matKey);
         if (_materialCache.TryGetValue(cacheKey, out var existing)) return existing;
+        long materialStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
 
         Geometry? geom = null;
         if (Resolver != null && Resolver.Geometries.TryGetValue(geoKey, out geom)) { }
@@ -622,7 +690,9 @@ public sealed partial class SceneRenderer : IDisposable
         if (geom == null) return null;
 
         var matSet = new GpuMaterialSet { Key = cacheKey };
+        long sourceResolutionStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
         var textures = Resolver?.ResolveTexturesForGeometry(geom, matKey, useFallback: true) ?? [];
+        StatMaterialSourceResolutionMilliseconds += (float)System.Diagnostics.Stopwatch.GetElapsedTime(sourceResolutionStartedAt).TotalMilliseconds;
         var root = Resolver?.Materials.GetValueOrDefault(matKey);
         for (int pIdx = 0; pIdx < geom.Parts.Count; pIdx++)
         {
@@ -643,7 +713,10 @@ public sealed partial class SceneRenderer : IDisposable
             for (int layerIndex = 0; layerIndex < layers.Count; layerIndex++)
             {
                 var layer = layers[layerIndex];
+                long materialAllocationStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
                 var material = Raylib.LoadMaterialDefault();
+                StatMaterialAllocationMilliseconds += (float)System.Diagnostics.Stopwatch.GetElapsedTime(materialAllocationStartedAt).TotalMilliseconds;
+                StatMaterialPassesThisFrame++;
                 material.Shader = _jadeShader;
                 bool isVideoTexture = Resolver?.ProceduralTextures.TryGetValue(layer.Texture, out var procedural) == true
                     && procedural.Subtype == 3;
@@ -667,6 +740,8 @@ public sealed partial class SceneRenderer : IDisposable
         }
 
         _materialCache[cacheKey] = matSet;
+        StatMaterialSetsThisFrame++;
+        StatMaterialPreparationMilliseconds += (float)System.Diagnostics.Stopwatch.GetElapsedTime(materialStartedAt).TotalMilliseconds;
         return matSet;
     }
 
@@ -1194,8 +1269,7 @@ public sealed partial class SceneRenderer : IDisposable
             for (int i = 0; i < mesh.VertexCount; i++)
             {
                 int index = indices[i];
-                uint color = index < obj.RliColors.Length ? obj.RliColors[index]
-                    : index < geo.Source.VertexColors.Length ? geo.Source.VertexColors[index] : 0u;
+                uint color = GeometryVertexColor.PackedColor(obj, geo.Source, index);
                 mesh.TexCoords2[i * 2] = GeometryVertexColor.InstanceAlpha(obj, geo.Source, index, color);
                 mesh.Colors[i * 4] = (byte)color;
                 mesh.Colors[i * 4 + 1] = (byte)(color >> 8);
@@ -1225,10 +1299,12 @@ public sealed partial class SceneRenderer : IDisposable
         }
         finally
         {
-            StatSkinningMilliseconds += (float)System.Diagnostics.Stopwatch
+            double skinMilliseconds = System.Diagnostics.Stopwatch
                 .GetElapsedTime(skinStartedAt).TotalMilliseconds;
+            StatSkinningMilliseconds += (float)skinMilliseconds;
             if (CapturePerformanceDiagnostics)
             {
+                PerformanceOwnerWork.AddSkin(obj, skinMilliseconds);
                 long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - skinAllocatedBefore;
                 StatSkinningAllocatedBytes += allocatedBytes;
                 if (CaptureSkinAllocationDiagnostics && allocatedBytes > 0)
@@ -1357,19 +1433,22 @@ public sealed partial class SceneRenderer : IDisposable
             }
             else if (index < node.Matrices.Length) Matrix4x4.Invert(node.Matrices[index], out planar);
         }
-        Raylib.SetShaderValueMatrix(_jadeShader, _jadeUniforms["jadeModelView"], Matrix4x4.Transpose(modelView));
-        Raylib.SetShaderValueMatrix(_jadeShader, _jadeUniforms["jadePlanar"], planar);
+        JadeMatrixUniform("jadeModelView", Matrix4x4.Transpose(modelView));
+        JadeMatrixUniform("jadePlanar", planar);
         JadeUniform("planarDistance", 1 / MathF.Tan(Camera.FovY * MathF.PI / 360));
-        JadeUniform("objectDrawFlags", unchecked((int)obj.DrawFlags));
     }
 
     public unsafe void Render(int width, int height)
     {
         long renderStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
         _skinUpdatesThisFrame = 0;
+        StatShaderUniformRequests = 0;
+        StatShaderUniformUploads = 0;
         StatGeometryUploadsThisFrame = 0;
+        StatGeometryCacheMissMilliseconds = 0;
         GeometryUploadKeysThisFrame.Clear();
         _proceduralFrame++;
+        ResetResourceDiagnostics();
         EnsureGpuInitialized();
 
         width = Math.Max(16, width);
@@ -1377,7 +1456,10 @@ public sealed partial class SceneRenderer : IDisposable
         _viewportAspect = width / (float)height;
         ApplyCinematicProjection(width, height);
         UpdateFrustumBasis();
+        long videoStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
         UpdateProceduralVideoTextures(CinematicVideoTime ?? Raylib.GetTime());
+        StatProceduralTextureMilliseconds = (float)System.Diagnostics.Stopwatch.GetElapsedTime(videoStartedAt).TotalMilliseconds;
+        long targetStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
 
         if (_sceneTarget.Id == 0 || _sceneTarget.Texture.Width != width || _sceneTarget.Texture.Height != height)
         {
@@ -1387,6 +1469,7 @@ public sealed partial class SceneRenderer : IDisposable
 
         Raylib.BeginTextureMode(_sceneTarget);
         Raylib.ClearBackground(new Color(18, 23, 20, 255));
+        StatRenderTargetMilliseconds = (float)System.Diagnostics.Stopwatch.GetElapsedTime(targetStartedAt).TotalMilliseconds;
 
         // Flying/scrolling makes Target one unit from Position. That is a look direction,
         // not the distance to the scene: deriving farClip from it made large maps disappear.
@@ -1396,8 +1479,11 @@ public sealed partial class SceneRenderer : IDisposable
         StatWorldActorUpdateAllocatedBytes = 0;
         StatGeometryPreparationAllocatedBytes = 0;
         StatDrawPassAllocatedBytes = 0;
+        StatGeometryPreparationMilliseconds = 0;
+        StatDrawPassMilliseconds = 0;
         StatSkinningMilliseconds = 0;
         StatSkinningAllocatedBytes = 0;
+        if (CapturePerformanceDiagnostics) PerformanceOwnerWork.Clear();
         if (world != null)
         {
             long actorUpdateStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -1415,6 +1501,10 @@ public sealed partial class SceneRenderer : IDisposable
             StatWorldActorUpdateAllocatedBytes = CapturePerformanceDiagnostics
                 ? GC.GetAllocatedBytesForCurrentThread() - actorUpdateAllocatedBefore : 0;
         }
+        long lightingStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        BeginLightingFrame(world);
+        StatLightingPreparationMilliseconds = (float)System.Diagnostics.Stopwatch.GetElapsedTime(lightingStartedAt).TotalMilliseconds;
+        long clipStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
         _farClip = 2000;
         if (world != null)
         {
@@ -1427,6 +1517,7 @@ public sealed partial class SceneRenderer : IDisposable
             }
         }
         Rlgl.SetClipPlanes(.05, _farClip);
+        StatClipPreparationMilliseconds = (float)System.Diagnostics.Stopwatch.GetElapsedTime(clipStartedAt).TotalMilliseconds;
         Raylib.BeginMode3D(Camera);
         Rlgl.EnableDepthTest();
         Rlgl.EnableDepthMask();
@@ -1450,6 +1541,7 @@ public sealed partial class SceneRenderer : IDisposable
         {
             // Keep dependent passes adjacent (destination-alpha masks), but sort individual
             // material parts, not entire GAOs containing both walls and transparent effects.
+            long geometryPreparationStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
             long geometryPreparationAllocatedBefore = CapturePerformanceDiagnostics
                 ? GC.GetAllocatedBytesForCurrentThread() : 0;
             var packets = _drawPackets;
@@ -1469,7 +1561,7 @@ public sealed partial class SceneRenderer : IDisposable
                     float sourceRadius = (sourceMaximum - sourceMinimum).Length() * .5f;
                     if (!IsSphereInFrustum((sourceMinimum + sourceMaximum) * .5f, sourceRadius)) continue;
                 }
-                var geo = GetOrUploadGeometry(obj.RenderGeometryKey); if (geo == null) continue;
+                var geo = GetOrUploadGeometryForOwner(obj); if (geo == null) continue;
                 bool geometryDeformsThisFrame = obj.Actor != null
                     || geo.Source is { Billboards.Count: > 0 }
                     || geo.Source?.Particles != null
@@ -1509,6 +1601,8 @@ public sealed partial class SceneRenderer : IDisposable
                         Vector3.Dot(center - Camera.Position, forward), packets.Count));
                 }
             }
+            StatGeometryPreparationMilliseconds = (float)System.Diagnostics.Stopwatch.GetElapsedTime(geometryPreparationStartedAt).TotalMilliseconds;
+            long drawPassStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
             StatGeometryPreparationAllocatedBytes = CapturePerformanceDiagnostics
                 ? GC.GetAllocatedBytesForCurrentThread() - geometryPreparationAllocatedBefore : 0;
             long drawPassAllocatedBefore = CapturePerformanceDiagnostics
@@ -1540,8 +1634,19 @@ public sealed partial class SceneRenderer : IDisposable
                     JadeUniform("colorMode", layer.ColorMode);
                     bool spritePart = geo.Source is { } sourceGeometry && sourceGeometry.Parts[i].VertexIndices.Length > 0
                         && sourceGeometry.IsBillboardVertex(sourceGeometry.Parts[i].VertexIndices[0]);
+                    // Jaded forces UseRLI for sprite primitives before selecting color inputs.
+                    uint effectiveDrawFlags = obj.DrawFlags | (spritePart ? 0x40u : 0u);
+                    bool particlePart = (obj.CinematicParticles ?? geo.Source?.Particles) != null
+                        && i >= geo.Source!.ParticlePart;
+                    if (particlePart) effectiveDrawFlags &= ~0x08000100u; // PAG clears Lighted and UseAmbient.
+                    JadeUniform("objectDrawFlags", unchecked((int)effectiveDrawFlags));
+                    bool computedLighting = !particlePart && layer.ColorMode is 0 or 6
+                        && UpdateDiffuseLighting(world, obj, geo, i, effectiveDrawFlags);
+                    JadeUniform("computedLighting", computedLighting ? 1 : 0);
+                    bool hasAmbient = TryGetWorldAmbient(world, effectiveDrawFlags, out Vector4 ambient);
+                    JadeUniform("ambientColor", ambient);
                     bool hasAuthoredPointColors = geo.Source?.VertexColors.Length > 0;
-                    bool usesPaint = spritePart || hasAuthoredPointColors || geo.Source?.Particles != null && i >= geo.Source.ParticlePart
+                    bool usesPaint = computedLighting || spritePart || hasAuthoredPointColors || particlePart || hasAmbient
                         || obj.RliColors.Length > 0 && layer.Blend is not (0 or 7);
                     JadeUniform("effectColor", usesPaint ? 1 : 0);
                     JadeUniform("useRliAlpha", layer.Blend != 0 && (obj.RliColors.Length > 0 || spritePart) ? 1 : 0);
@@ -1593,10 +1698,12 @@ public sealed partial class SceneRenderer : IDisposable
                 }
                 StatDrawnTriangles += mesh.TriangleCount;
             }
+            StatDrawPassMilliseconds = (float)System.Diagnostics.Stopwatch.GetElapsedTime(drawPassStartedAt).TotalMilliseconds;
             StatDrawPassAllocatedBytes = CapturePerformanceDiagnostics
                 ? GC.GetAllocatedBytesForCurrentThread() - drawPassAllocatedBefore : 0;
         }
 
+        long overlayStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
         DrawCinematicFlashes();
 
         // Подсветка выбранного объекта: Bounding Box и Selection Wireframe
@@ -1633,6 +1740,8 @@ public sealed partial class SceneRenderer : IDisposable
         DrawCinematicLightnings();
 
         Rlgl.EnableBackfaceCulling();
+        StatOverlayMilliseconds = (float)System.Diagnostics.Stopwatch.GetElapsedTime(overlayStartedAt).TotalMilliseconds;
+        long finalizeStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
         Raylib.EndMode3D();
         DrawCinematicFade(width, height);
         DrawCinematicShutter(width, height);
@@ -1643,6 +1752,7 @@ public sealed partial class SceneRenderer : IDisposable
         Raylib.ClearBackground(new Color(0, 0, 0, 255));
         Rlgl.ColorMask(true, true, true, true);
         Raylib.EndTextureMode();
+        StatRenderFinalizeMilliseconds = (float)System.Diagnostics.Stopwatch.GetElapsedTime(finalizeStartedAt).TotalMilliseconds;
         StatSkinUpdates = _skinUpdatesThisFrame;
         StatRenderMilliseconds = (float)(System.Diagnostics.Stopwatch.GetElapsedTime(renderStartedAt).TotalMilliseconds);
     }
@@ -1880,7 +1990,7 @@ public sealed partial class SceneRenderer : IDisposable
         // Нижний правый угол: статистика и подсказки
         string skinStatus = CinematicMaterials == null ? $"Skin: {StatSkinUpdates}"
             : $"Skin: {StatSkinUpdates}/{StatSkinningMilliseconds:F1} ms";
-        string statText = $"Frame: {Raylib.GetFrameTime() * 1000:F1} ms / {Raylib.GetFPS()} FPS · Objects: {StatVisibleObjects}/{StatTotalObjects} · Tris: {StatDrawnTriangles:N0} · {skinStatus} · Upload: {StatGeometryUploadsThisFrame} · World AI: {StatWorldActorUpdates}/{StatWorldActorUpdateMilliseconds:F1} ms · Cine: {StatCinematicUpdateMilliseconds:F1} ms · Audio: {StatCinematicAudioMilliseconds:F1} ms · Render: {StatRenderMilliseconds:F1} ms (FX {StatPostEffectMilliseconds:F1}) · GPU cache: {StatCachedGeometries} GRO, {StatCachedTextures} TEX";
+        string statText = $"Frame: {Raylib.GetFrameTime() * 1000:F1} ms / {Raylib.GetFPS()} FPS · Objects: {StatVisibleObjects}/{StatTotalObjects} · Tris: {StatDrawnTriangles:N0} · {skinStatus} · Upload: {StatGeometryUploadsThisFrame} · World AI: {StatWorldActorUpdates}/{StatWorldActorUpdateMilliseconds:F1} ms · Cine: {StatCinematicUpdateMilliseconds:F1} ms · Audio: {StatCinematicAudioMilliseconds:F1} ms · Render: {StatRenderMilliseconds:F1} ms (prep {StatGeometryPreparationMilliseconds:F1}, draw {StatDrawPassMilliseconds:F1}, FX {StatPostEffectMilliseconds:F1}) · GPU cache: {StatCachedGeometries} GRO, {StatCachedTextures} TEX";
         Vector2 statSize = ImGui.CalcTextSize(statText);
         Vector2 statPos = origin + size - statSize - new Vector2(12 * scale, 10 * scale);
         drawList.AddRectFilled(statPos - new Vector2(4, 2), statPos + statSize + new Vector2(4, 2), 0xAA101612, 4.0f);
@@ -1902,6 +2012,8 @@ public sealed partial class SceneRenderer : IDisposable
             Raylib.MemFree(_selectionFillMaterial.Maps);
         }
         if (_jadeShader.Id != 0) Raylib.UnloadShader(_jadeShader);
+        _jadeShader = default;
+        ResetJadeUniformCache();
         DisposeCinematicAfterEffects();
         if (_fallbackCheckerTexture.Id != 0)
         {

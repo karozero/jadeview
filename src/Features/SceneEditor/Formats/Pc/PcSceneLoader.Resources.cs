@@ -29,7 +29,7 @@ internal sealed partial class PcSceneLoader
                 Reference(0, 'e');
                 break;
             case 'f':
-                ReadTransformList(record);
+                ReadCollisionMapReferences(record);
                 break;
             case 'g':
                 if (dataBytes[offset + 4] is 1 or 2 or 3 or 5)

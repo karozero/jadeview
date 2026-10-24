@@ -58,6 +58,7 @@ public static class SceneLoader
                     {
                         Key = worldRecord.Key,
                         Name = worldRecord.Name,
+                        Lighting = PcWorldLightingReader.Read(bytes.AsSpan(worldRecord.Offset, worldRecord.Size), worldRecord.Key),
                         RecordRange = new SourceRange(worldRecord.Offset - 4, worldRecord.Size + 4)
                     };
                     int index = 0;
@@ -68,7 +69,22 @@ public static class SceneLoader
                     {
                         var chunk = new ChunkInfo(record.Offset - 4, record.Size + 4, MagicGao, false);
                         var obj = ParseGao(bytes, chunk, record.Key, index++, doc.Diagnostics);
-                        if (obj != null) { obj.Name = record.Name; obj.InitialCapabilities = record.InitialCapabilities; obj.SoundBankKey = record.SoundBank; obj.Modifiers = record.Modifiers.Select(m => new SceneModifier(m.Type, bytes.AsSpan(m.Offset, m.Size).ToArray())).ToList(); world.Objects.Add(obj); }
+                        if (obj != null)
+                        {
+                            obj.Name = record.Name;
+                            obj.InitialCapabilities = record.InitialCapabilities;
+                            obj.SerializedStateFlags = record.SerializedStateFlags;
+                            obj.SoundBankKey = record.SoundBank;
+                            obj.CollisionInstanceKey = record.CollisionInstance;
+                            obj.CollisionMapKey = record.CollisionMap;
+                            obj.LightResourceKey = record.LightKey;
+                            obj.Light = record.Light;
+                            obj.PcBounds = record.Bounds;
+                            obj.Modifiers = record.Modifiers.Select(m => new SceneModifier(m.Type, bytes.AsSpan(m.Offset, m.Size).ToArray())).ToList();
+                            if (record.LightError != null) doc.Diagnostics.Add($"{record.Name}: {record.LightError}");
+                            if (record.BoundsError != null) doc.Diagnostics.Add($"{record.Name}: {record.BoundsError}");
+                            world.Objects.Add(obj);
+                        }
                     }
                     doc.Worlds.Add(world);
                 }
@@ -332,6 +348,7 @@ public static class SceneLoader
         {
             Key = worldKey,
             Name = string.IsNullOrEmpty(worldName) ? $"World {worldKey:X8}" : worldName,
+            Lighting = PcWorldLightingReader.Read(bytes.AsSpan(p, end - p), worldKey),
             RecordRange = new SourceRange(wChunk.Offset, wChunk.Size)
         };
 
@@ -491,11 +508,18 @@ public static class SceneLoader
 
         // Иерархия (Hierarchy)
         uint fatherKey = 0;
+        Matrix4x4? hierarchyLocalMatrix = null;
         if ((idFlags & IdentityFlagHierarchy) != 0)
         {
             if (currP + 4 <= p + dataSize)
             {
                 fatherKey = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(currP, 4));
+                if (currP + 4 + 68 <= p + dataSize)
+                {
+                    // Iris/Jaded serialize father key followed by the distinct 68-byte
+                    // MATH matrix used as st_LocalMatrix (OBJload.c hierarchy reader).
+                    hierarchyLocalMatrix = AnimationMath.Matrix(bytes, currP + 4);
+                }
                 currP += 4 + 68; // FatherKey + LocalMatrix
             }
         }
@@ -521,16 +545,18 @@ public static class SceneLoader
             GaoKey = gaoKey,
             Name = name,
             ParentId = (fatherKey != 0 && fatherKey != 0xFFFFFFFF) ? $"{fatherKey:X8}" : null,
+            SerializedHierarchyLocalMatrix = hierarchyLocalMatrix,
             Transform = transformData,
             InitialTransform = transformData.Clone(),
             GeometryKey = (geoKey != 0 && geoKey != 0xFFFFFFFF) ? geoKey : 0,
             MaterialKey = (matKey != 0 && matKey != 0xFFFFFFFF) ? matKey : 0,
             Flags = idFlags,
             ControlFlags = (mask & 0x7b9c0080)
-                | ((mask & 0x20000000) != 0 ? CinematicObjectState.Invisible : 0)
-                | ((mask & 0x40000000) != 0 ? CinematicObjectState.Inactive : 0),
+                | ((mask & 0x20000000) != 0 ? GameObjectRuntimeFlags.Invisible : 0)
+                | ((mask & 0x40000000) != 0 ? GameObjectRuntimeFlags.Inactive : 0),
             RliColors = rliColors,
             DrawFlags = drawFlags,
+            SerializedStateFlags = mask,
             RecordRange = new SourceRange(gChunk.Offset, gChunk.Size),
             Capabilities = caps
         };

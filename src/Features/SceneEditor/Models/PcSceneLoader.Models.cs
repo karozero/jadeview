@@ -16,6 +16,13 @@ internal sealed partial class PcSceneLoader
         public uint Parent = uint.MaxValue, Prefab = uint.MaxValue;
         public uint Flags, Geometry, Material, Group, Events = uint.MaxValue, Actions = uint.MaxValue, Shape = uint.MaxValue, Skeleton = uint.MaxValue;
         public uint SoundBank = uint.MaxValue;
+        public uint CollisionInstance = uint.MaxValue;
+        public uint CollisionMap = uint.MaxValue;
+        public uint LightKey = uint.MaxValue;
+        public SceneLight? Light;
+        public string? LightError;
+        public PcObjectBounds? Bounds;
+        public string? BoundsError;
         public uint SerializedStateFlags;
         public uint SceneEvents = uint.MaxValue;
         public string Name = "";

@@ -8,9 +8,27 @@ namespace JadeView;
 public sealed class Archive
 {
     public const int BlockSize = 512000;
+    private const int StartKeyOffset = 40;
     public string PathName { get; }
     public long Length { get; }
     public List<Entry> Entries { get; } = [];
+    /// <summary>Serialized BIG startup resource key, as read by Iris BIG_ReadHeader and IrisTool.</summary>
+    public uint StartKey { get; }
+    /// <summary>The unique archive entry named by <see cref="StartKey"/>, or null when missing or ambiguous.</summary>
+    public Entry? StartEntry
+    {
+        get
+        {
+            Entry? match = null;
+            foreach (Entry entry in Entries)
+            {
+                if (entry.Key != StartKey) continue;
+                if (match != null) return null;
+                match = entry;
+            }
+            return match;
+        }
+    }
     public int DirectoryCount { get; private set; }
     readonly long fatOffset, namesOffset;
     readonly int capacity;
@@ -38,6 +56,8 @@ public sealed class Archive
         if (Length < 68 || r.ReadUInt32() != 0x00474942 || r.ReadInt32() != 0x22)
             throw new InvalidDataException("Only original PC BIG 0x22 archives are supported (not BUG/HD/console).");
         int count = r.ReadInt32();
+        s.Position = StartKeyOffset;
+        StartKey = r.ReadUInt32();
         s.Position = 32;
         capacity = r.ReadInt32();
         int fats = r.ReadInt32();

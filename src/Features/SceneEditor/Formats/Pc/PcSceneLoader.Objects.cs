@@ -9,12 +9,16 @@ internal sealed partial class PcSceneLoader
             throw new InvalidDataException($"Expected GAO {record.Key:X8} at {record.Offset:X8}.");
         record.Flags = ReadUInt32(record.Offset + 8);
         record.SerializedStateFlags = ReadUInt32(record.Offset + 12);
-        bool hasOrientedBounds = (record.Flags & 0x80000) != 0;
-        int position = record.Offset + 90 + (hasOrientedBounds ? 48 : 24);
+        ReadOnlySpan<byte> gaoRecord = dataBytes.AsSpan(record.Offset, record.Size);
+        if (!PcObjectBoundsReader.TryRead(gaoRecord, record.Flags, out record.Bounds, out string boundsError))
+            record.BoundsError = boundsError;
+        int position = record.Offset + PcObjectBoundsReader.SerializedOffset
+            + ((record.Flags & PcObjectBounds.OrientedBoundsIdentityFlag) != 0
+                ? PcObjectBoundsReader.OrientedPayloadSize
+                : PcObjectBoundsReader.AxisAlignedPayloadSize);
         ReadBaseObject(record, ref position);
         ReadObjectExtensions(record, ref position, end);
-        ReadOptionalReference(ref position, record.Flags, 0x600, 'd');
-        ReadOptionalReference(ref position, record.Flags, 0x100, 'f');
+        ReadObjectCollisionReferences(record, ref position);
         record.NameFieldOffset = position;
         int nameLength = ReadInt32(position);
         position += 4;
@@ -49,7 +53,19 @@ internal sealed partial class PcSceneLoader
             position += 16;
         }
 
-        ReadObjectDynamics(flags, ref position);
+        ReadObjectMultipartData(flags, ref position);
+    }
+
+    private void ReadObjectCollisionReferences(Record record, ref int position)
+    {
+        // Instance and map are independent references, serialized before the GAO name.
+        // Either instance identity bit selects the same single instance field.
+        if ((record.Flags & 0x600) != 0)
+            record.CollisionInstance = ReadUInt32(position);
+        ReadOptionalReference(ref position, record.Flags, 0x600, 'd');
+        if ((record.Flags & 0x100) != 0)
+            record.CollisionMap = ReadUInt32(position);
+        ReadOptionalReference(ref position, record.Flags, 0x100, 'f');
     }
 
     private void ReadObjectAppearance(Record record, ref int position)
@@ -63,7 +79,7 @@ internal sealed partial class PcSceneLoader
         position = checked(position + 4 + colorCount * 4);
     }
 
-    private void ReadObjectDynamics(uint flags, ref int position)
+    private void ReadObjectMultipartData(uint flags, ref int position)
     {
         if ((flags & 0x200000) == 0)
             return;
@@ -108,6 +124,8 @@ internal sealed partial class PcSceneLoader
             position += 4;
         }
         ReadOptionalReference(ref position, flags, 0x40000, 'w');
+        if ((flags & 0x10) != 0)
+            record.LightKey = ReadUInt32(position);
         ReadOptionalReference(ref position, flags, 0x10, 'm');
         if ((flags & 0x40) != 0)
             position += 92;

@@ -31,22 +31,15 @@ internal sealed partial class PcSceneLoader
 
     private List<uint> ReadWorldRoots()
     {
-        int headerSize = ReadInt32(0);
-        bool hasValidHeader = headerSize >= 8 && headerSize % 8 == 0 && headerSize <= dataLength - 4;
-        if (!hasValidHeader)
-            throw new InvalidDataException("Not a PC WOL stream.");
-        var roots = new List<uint>();
-        for (int offset = 4; offset < 4 + headerSize; offset += 8)
-        {
-            bool isWorldEntry = ReadText(offset + 4, 4) == ".wow" || ReadUInt32(offset) == 0;
-            if (!isWorldEntry)
-                throw new InvalidDataException("Not a PC WOL list.");
-            roots.Add(ReadUInt32(offset));
-        }
+        bool isWorldList = PcWorldListHeaderReader.TryRead(dataBytes.AsSpan(0, dataLength), null,
+            out GameWorldListDescriptor? descriptor, out int consumedBytes, out string error);
+        if (!isWorldList || descriptor == null)
+            throw new InvalidDataException(error);
+        List<uint> roots = descriptor.OrderedWorldRootKeys.ToList();
 
         // The native loader bypasses SPE for the built-in FIX container.
         fixedResources = roots.Count == 1 && roots[0] == 0x5E0084DE;
-        cursor = 4 + headerSize;
+        cursor = consumedBytes;
         return roots;
     }
 
@@ -68,6 +61,8 @@ internal sealed partial class PcSceneLoader
         }
 
         world.WorldMembers.AddRange(expansion.Members);
+        foreach (var member in expansion.Members)
+            ResolveLightComponent(member);
         if (expansion.Members.Any(member => (member.Flags & 2) != 0))
             world.ActorResources = new(cache);
         mergedWorldKeys.UnionWith(expansion.MemberKeys);
@@ -76,6 +71,22 @@ internal sealed partial class PcSceneLoader
     }
 
     private List<Record> CachedObjects(Record list) => list.References.Select(reference => cache.GetValueOrDefault(reference.Key)).Where(record => record?.Kind == 'l').Cast<Record>().ToList();
+
+    private void ResolveLightComponent(Record owner)
+    {
+        if (owner.LightKey is 0 or uint.MaxValue) return;
+        if (!cache.TryGetValue(owner.LightKey, out var resource) || resource.Kind != 'm')
+        {
+            owner.LightError = $"Light resource {owner.LightKey:X8} is absent from the loaded world scope.";
+            return;
+        }
+        if (PcLightReader.TryReadGraphic(dataBytes.AsSpan(resource.Offset, resource.Size), out var light, out string error))
+        {
+            owner.Light = light;
+            owner.LightError = null;
+        }
+        else owner.LightError = $"Light resource {owner.LightKey:X8}: {error}";
+    }
     private List<Record> GroupMembers(uint groupKey)
     {
         if (!cache.TryGetValue(groupKey, out var group))
