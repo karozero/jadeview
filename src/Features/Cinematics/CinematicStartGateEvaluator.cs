@@ -8,18 +8,25 @@ namespace JadeView;
 /// </summary>
 internal static partial class CinematicStartGateEvaluator
 {
-    private const string StartCallback = "Cine_Events_cine_tests_depart";
     internal static CinematicStartGateEvaluation Evaluate(CinematicScriptOwner owner,
         IEnumerable<SceneObject>? worldObjects,
         IEnumerable<(float Time, CinematicLiteralCall Call)>? timelineCalls,
         float playhead)
     {
-        bool callbackAssigned = owner.CallbackNames.Contains(StartCallback, StringComparer.Ordinal);
-        bool callbackReferenced = callbackAssigned
-            || owner.ModelFunctionNames.Contains(StartCallback, StringComparer.Ordinal);
+        bool callbackAssigned = CinematicStartCallbackChain.AssignedFunctions(owner).Length > 0;
+        bool callbackReferenced = callbackAssigned || CinematicStartCallbackChain.IsReferenced(owner);
         if (!callbackReferenced)
             return new(0, CinematicStartGateStatus.Unknown, [],
                 "No Cine_Events start callback is linked to this owner.");
+
+        SceneObject[] previewWorldObjects = worldObjects?.ToArray() ?? [];
+        CinematicStartGateBranch branch = ResolvePredicateBranch(owner, previewWorldObjects);
+        if (branch.Status == CinematicStartGateBranchStatus.PredicatesBypassed)
+            return new(0, CinematicStartGateStatus.Unknown, [],
+                "The preview resolves the callback branch but cannot establish owner activation or script dispatch.")
+            {
+                Branch = branch
+            };
 
         var enabledGates = CinematicStartGateCatalog.StartGates
             .Where(gate => IsEnabled(owner, gate.Mask, gate.Variable)).ToArray();
@@ -27,9 +34,11 @@ internal static partial class CinematicStartGateEvaluator
         var calls = timelineCalls?.ToArray() ?? [];
         var results = enabledGates.Select(gate => gate.Mask switch
         {
-            CinematicStartGateCatalog.Activity => EvaluateActivityGate(owner, worldObjects, gate),
-            CinematicStartGateCatalog.Capability => EvaluateCapabilityGate(owner, worldObjects, gate),
-            CinematicStartGateCatalog.CustomBits => EvaluateCustomBitGate(owner, worldObjects, calls, timelineCallsAvailable, playhead, gate),
+            CinematicStartGateCatalog.Zone1 or CinematicStartGateCatalog.Zone2 =>
+                EvaluateZoneGate(owner, previewWorldObjects, gate),
+            CinematicStartGateCatalog.Activity => EvaluateActivityGate(owner, previewWorldObjects, gate),
+            CinematicStartGateCatalog.Capability => EvaluateCapabilityGate(owner, previewWorldObjects, gate),
+            CinematicStartGateCatalog.CustomBits => EvaluateCustomBitGate(owner, previewWorldObjects, calls, timelineCallsAvailable, playhead, gate),
             CinematicStartGateCatalog.SpecialFlag1 or CinematicStartGateCatalog.SpecialFlag2 => EvaluateSavedFlagGate(owner, calls, playhead, gate),
             _ => Unknown(gate, "The source gate is configured, but its runtime input is not represented "
                 + "by the cinematic preview state.", gate.MissingInputs)
@@ -41,13 +50,15 @@ internal static partial class CinematicStartGateEvaluator
             {
                 Status = CinematicStartGateStatus.Unknown,
                 EvidenceKind = CinematicStartGateEvidenceKind.RuntimeInputUnavailable,
-                Evidence = "The script model references Cine_Events_cine_tests_depart, but no effective owner "
-                    + "callback slot is decoded. " + result.Evidence,
-                RequiredInputs = [.. result.RequiredInputs, "effective owner callback-slot assignment"]
+                Evidence = "The script model references the Cine_Events startup chain, but no effective owner "
+                    + "callback slot enters that chain. " + result.Evidence,
+                RequiredInputs = [.. result.RequiredInputs, "effective callback-slot assignment to the Cine_Events startup chain"]
             }).ToArray();
         }
 
-        CinematicStartGateStatus overallStatus = results.Length == 0
+        CinematicStartGateStatus overallStatus = branch.Status == CinematicStartGateBranchStatus.Unknown
+            ? CinematicStartGateStatus.Unknown
+            : results.Length == 0
             ? CinematicStartGateStatus.Unknown
             : results.Any(result => result.Status == CinematicStartGateStatus.Rejected)
             ? CinematicStartGateStatus.Rejected
@@ -55,7 +66,41 @@ internal static partial class CinematicStartGateEvaluator
                 ? CinematicStartGateStatus.Satisfied
                 : CinematicStartGateStatus.Unknown;
         return new(EnabledMask(results), overallStatus, results,
-            "Preview evidence only. This is not proof that the game instantiated the owner or dispatched its callback.");
+            "Preview evidence only. This is not proof that the game instantiated the owner or dispatched its callback.")
+        {
+            Branch = branch
+        };
+    }
+
+    private static CinematicStartGateBranch ResolvePredicateBranch(CinematicScriptOwner owner,
+        SceneObject[] worldObjects)
+    {
+        SceneObject[] ownerMatches = worldObjects
+            .Where(sceneObject => sceneObject.GaoKey == owner.OwnerKey)
+            .Take(2)
+            .ToArray();
+        if (ownerMatches.Length != 1)
+        {
+            string matchStatus = ownerMatches.Length == 0 ? "is not present" : "is ambiguous";
+            return new(CinematicStartGateBranchStatus.Unknown,
+                $"Iris first tests the current owner's capability mask with OBJ_CapaTest(0x100), but owner {owner.OwnerKey:X8} {matchStatus} in the preview world.",
+                ["unique current owner object", "evaluated preview capabilities"]);
+        }
+
+        SceneObject ownerObject = ownerMatches[0];
+        if (ownerObject.PreviewCapabilities is not uint capabilities)
+            return new(CinematicStartGateBranchStatus.Unknown,
+                $"Iris tests {ownerObject.Name} ({ownerObject.GaoKey:X8}) with OBJ_CapaTest(0x100), but its current preview capability state is unavailable.",
+                ["current preview capability state for the callback owner"]);
+
+        bool bypassesPredicates = (capabilities & 0x100) != 0;
+        return new(bypassesPredicates
+                ? CinematicStartGateBranchStatus.PredicatesBypassed
+                : CinematicStartGateBranchStatus.PredicatesEvaluated,
+            bypassesPredicates
+                ? $"{ownerObject.Name} ({ownerObject.GaoKey:X8}) has capability bit 0x100 set; Iris skips the configured Cine_Events start predicates on this branch."
+                : $"{ownerObject.Name} ({ownerObject.GaoKey:X8}) has capability bit 0x100 clear; Iris evaluates the configured Cine_Events start predicates.",
+            []);
     }
 
     private static CinematicStartGateResult EvaluateActivityGate(CinematicScriptOwner owner,

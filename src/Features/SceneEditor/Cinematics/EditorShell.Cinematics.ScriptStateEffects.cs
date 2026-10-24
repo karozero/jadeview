@@ -17,7 +17,7 @@ public sealed partial class EditorShell
         }
 
         ImGui.Indent();
-        ImGui.TextWrapped("Reachable Iris callback source contains possible visibility, activity, capability, destruction, position, or hierarchy effects. They are not timed or executed by JadeView; source branches, callback dispatch, receiver binding, and runtime activation may remain unresolved.");
+        ImGui.TextWrapped("Reachable Iris callback source contains possible visibility, activity, capability, destruction, position, or hierarchy effects. Recognized identity-flag predicates are compared individually with serialized GAO flags; nested branch conditions are not combined. Callbacks are not timed or executed by JadeView, and runtime activation may remain unresolved.");
         foreach (IGrouping<string, CinematicScriptCallbackStateEffect> apiGroup in candidates
                      .GroupBy(candidate => candidate.Api)
                      .OrderBy(group => group.Key, StringComparer.Ordinal))
@@ -60,6 +60,8 @@ public sealed partial class EditorShell
         else
             foreach (CinematicScriptBranchConditionSource branch in candidate.BranchConditions)
                 ImGui.TextWrapped($"{(branch.Kind == "else" ? "else of " : "if ")}{branch.Expression} · line {branch.Line}");
+        foreach (string finding in candidate.SerializedBranchFindings)
+            ImGui.TextWrapped($"Serialized branch evidence: {finding}");
         ImGui.TextDisabled(candidate.ExecutionStatus);
         ImGui.Unindent();
     }

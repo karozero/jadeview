@@ -101,7 +101,7 @@ public sealed partial class EditorShell
             return;
 
         DrawCategoryTitle("Callback-linked EVE channels");
-        ImGui.TextWrapped("These source-reachable callback owners start this clip's SceneEvents list. Select an owner to inspect its callback; disable it to omit linked tracks from preview and GLB export. Gate inputs are summarized here, but the preview does not execute the runtime tests.");
+        ImGui.TextWrapped("These source-reachable callback owners start this clip's SceneEvents list. Select an owner to inspect its callback; disable it to omit linked tracks from preview and GLB export. The clip is decoded from that same SceneEvents resource, so its own flag writes cannot establish when it started. Configured Cine_Events delays remain available as an explicit estimate; callback dispatch and runtime gates are not executed.");
         foreach (var ownerId in playback.CallbackSceneEventOwners)
         {
             Document.CinematicScriptOwners.TryGetValue(ownerId, out var owner);
@@ -112,6 +112,8 @@ public sealed partial class EditorShell
                 _selectedCinematicScriptOwnerId = ownerId;
             if (owner != null)
                 DrawSceneEventOwnerGateEvidence(owner, ownerId);
+            if (owner != null && DrawCallbackSceneEventStartTiming(owner, ownerId, playback))
+                return;
             ImGui.SameLine();
             bool enabled = !_disabledCinematicCallbackOwners.Contains(ownerId);
             if (!ImGui.Checkbox($"Include##callback-scene-events-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}",
@@ -125,17 +127,72 @@ public sealed partial class EditorShell
         }
     }
 
+    private bool DrawCallbackSceneEventStartTiming(CinematicScriptOwner owner,
+        CinematicScriptOwnerId ownerId, CinematicPlayback playback)
+    {
+        float? flagSignalTime = CinematicTimelineFlagAnalyzer.FindFirstExternalStartFlagTime(
+            owner, playback.Key, playback.ScriptCalls);
+        CinematicOwnerStartTimingEstimate? flagTiming = flagSignalTime is { } signalTime
+            ? CinematicOwnerStartTimingEstimator.Estimate(owner, signalTime)
+            : null;
+        CinematicOwnerStartTimingEstimate configuredTiming = CinematicOwnerStartTimingEstimator.Estimate(owner, 0);
+        bool hasOverride = _previewedCinematicSceneEventStartTimes.TryGetValue(ownerId, out float currentStartTime);
+        bool useFlagTiming = flagTiming != null && !hasOverride;
+        CinematicOwnerStartTimingEstimate timing = useFlagTiming ? flagTiming! : configuredTiming;
+        bool hasUsefulTiming = useFlagTiming || timing.UsedConfiguredTiming && timing.PreviewStartTime > 0;
+        if (!hasUsefulTiming && !hasOverride) return false;
+
+        string buttonLabel = hasOverride
+            ? $"Reset start to 0s##callback-start-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}"
+            : $"Use {(useFlagTiming ? "flag" : "configured")} start {timing.PreviewStartTime:F2}s##callback-start-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}";
+        if (!ImGui.SmallButton(buttonLabel))
+        {
+            if (ImGui.IsItemHovered())
+            {
+                string timingEvidence = hasOverride
+                    ? $"Current preview start is {currentStartTime:F3}s. Reset restores the time-zero preview."
+                : timing.Evidence + (useFlagTiming
+                        ? " The independent selected-clip flag write does not prove this owner activated or its callback ran."
+                        : " This is an explicit preview offset; it does not prove the owner callback ran at time zero.");
+                ImGui.SetTooltip(timingEvidence);
+            }
+            return false;
+        }
+
+        if (hasOverride) _previewedCinematicSceneEventStartTimes.Remove(ownerId);
+        else _previewedCinematicSceneEventStartTimes[ownerId] = timing.PreviewStartTime;
+        RebuildCinematicPlayersForScriptSelection(playback);
+        return true;
+    }
+
     private void DrawSceneEventOwnerGateEvidence(CinematicScriptOwner owner,
         CinematicScriptOwnerId ownerId)
     {
         CinematicPlayback? playback = _cinematicPlayback;
+        var externalStateCalls = CinematicTimelineFlagAnalyzer.ExternalTimelineCalls(owner,
+            playback?.Key, playback?.ScriptStateCalls);
         var evaluation = CinematicStartGateEvaluator.Evaluate(owner, _cinematicWorld?.Objects,
-            playback?.ScriptStateCalls, playback?.Time ?? 0);
-        if (evaluation.Gates.Length > 0)
+            externalStateCalls, playback?.Time ?? 0);
+        if (evaluation.Gates.Length > 0 || evaluation.Branch != null)
         {
             if (ImGui.TreeNode($"Start gates: {evaluation.Status}##typed-scene-event-gates-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}"))
             {
                 ImGui.TextDisabled("Preview evidence only; this does not prove game-side owner activation or callback dispatch.");
+                if (playback != null && externalStateCalls == null)
+                    ImGui.TextDisabled("This owner's SceneEvents writes are excluded from its own start-gate state; prior save/runtime flags are unknown.");
+                if (evaluation.Branch is { } branch)
+                {
+                    string branchLabel = branch.Status switch
+                    {
+                        CinematicStartGateBranchStatus.PredicatesBypassed => "Predicate branch: bypassed",
+                        CinematicStartGateBranchStatus.PredicatesEvaluated => "Predicate branch: evaluated",
+                        _ => "Predicate branch: unknown"
+                    };
+                    ImGui.TextDisabled(branchLabel);
+                    ImGui.TextWrapped(branch.Evidence);
+                    foreach (string input in branch.RequiredInputs)
+                        ImGui.BulletText(input);
+                }
                 foreach (var gate in evaluation.Gates)
                 {
                     Vector4 statusColor = gate.Status switch
@@ -175,6 +232,7 @@ public sealed partial class EditorShell
                 ImGui.TreePop();
             }
 
+            DrawCinematicOwnerInterruptionGateEvidence(owner, ownerId);
             return;
         }
 
@@ -186,15 +244,49 @@ public sealed partial class EditorShell
             ImGui.TextDisabled(dispatchEvidence.Length > 1
                 ? dispatchEvidence[1]
                 : "No source-defined Cine_Events start gate is available for this owner.");
+            DrawCinematicOwnerInterruptionGateEvidence(owner, ownerId);
             return;
         }
 
         ImGui.TextDisabled(evidence[0]);
         if (evidence.Length <= 1
             || !ImGui.TreeNode($"Gate evidence ({evidence.Length - 1})##scene-event-gates-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}"))
+        {
+            DrawCinematicOwnerInterruptionGateEvidence(owner, ownerId);
             return;
+        }
 
         foreach (string detail in evidence.Skip(1)) ImGui.BulletText(detail);
+        ImGui.TreePop();
+        DrawCinematicOwnerInterruptionGateEvidence(owner, ownerId);
+    }
+
+    private void DrawCinematicOwnerInterruptionGateEvidence(CinematicScriptOwner owner,
+        CinematicScriptOwnerId ownerId)
+    {
+        CinematicPlayback? playback = _cinematicPlayback;
+        var evaluation = CinematicInterruptionGateEvaluator.Evaluate(owner,
+            _cinematicWorld?.Objects, playback?.ScriptStateCalls, playback?.Time ?? 0);
+        if (evaluation.EnabledMask is not { } mask) return;
+
+        if (!ImGui.TreeNode($"Exit gates · 0x{mask:X} · {evaluation.Status}##cine-exit-gates-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}"))
+            return;
+        ImGui.TextWrapped(evaluation.Scope);
+        foreach (var gate in evaluation.Gates)
+        {
+            Vector4 statusColor = gate.Status switch
+            {
+                CinematicStartGateStatus.Satisfied => new(0.30f, 0.88f, 0.52f, 1),
+                CinematicStartGateStatus.Rejected => new(0.94f, 0.35f, 0.32f, 1),
+                _ => new(0.62f, 0.66f, 0.67f, 1)
+            };
+            ImGui.TextColored(statusColor, $"{gate.Status}: {gate.Name}");
+            ImGui.Indent();
+            ImGui.TextWrapped(gate.Evidence);
+            foreach (string input in gate.RequiredInputs) ImGui.BulletText(input);
+            ImGui.Unindent();
+        }
+        ImGui.TextDisabled("Predicate snapshot only; this does not trigger TRAStopAll or predict callback polling time.");
         ImGui.TreePop();
     }
 
@@ -204,7 +296,7 @@ public sealed partial class EditorShell
             return;
 
         DrawCategoryTitle("Script-owned EVE preview");
-        ImGui.TextWrapped("These owners have separate SceneEvents lists in the cinematic or paired gameplay world. Preview includes their channels in playback and synchronized export. Flag/message buttons show serialized start-gate candidates; they do not prove that runtime gates passed or that a message stayed in the queue.");
+        ImGui.TextWrapped("These owners have separate SceneEvents lists in the cinematic or paired gameplay world. Preview includes their channels in playback and synchronized export. Flag buttons use matching writes in the selected clip; message buttons show serialized queue candidates. Neither proves that runtime gates passed or that a message stayed in the queue.");
         foreach (var ownerId in playback.PreviewableSceneEventOwners)
         {
             Document.CinematicScriptOwners.TryGetValue(ownerId, out var owner);
@@ -215,9 +307,10 @@ public sealed partial class EditorShell
                 _selectedCinematicScriptOwnerId = ownerId;
             if (owner != null)
                 DrawSceneEventOwnerGateEvidence(owner, ownerId);
+            DrawSceneEventOwnerActionContribution(playback, ownerId);
             float? flagStartTime = owner == null ? null
-                : CinematicTimelineFlagAnalyzer.FindFirstSatisfiedStartFlagTime(owner,
-                    _cinematicPlayback.ScriptStateCalls);
+                : CinematicTimelineFlagAnalyzer.FindFirstExternalStartFlagTime(owner,
+                    playback.Key, playback.ScriptCalls);
             float? messageStartTime = owner == null ? null
                 : FindCinematicMessageGatePreviewTime(owner, playback);
             CinematicOwnerStartTimingEstimate? flagTiming = owner != null && flagStartTime is { } flagTime
@@ -225,7 +318,7 @@ public sealed partial class EditorShell
             CinematicOwnerStartTimingEstimate? messageTiming = owner != null && messageStartTime is { } messageTime
                 ? CinematicOwnerStartTimingEstimator.Estimate(owner, messageTime) : null;
             if (DrawSceneEventPreviewStartButton(ownerId, playback, flagTiming,
-                    "Flag", "First matching saved-flag write")) return;
+                    "Flag", "First matching saved-flag write in the selected clip")) return;
             if (DrawSceneEventPreviewStartButton(ownerId, playback, messageTiming,
                     "Message", "First serialized message sent to the configured start-gate queue with a matching ID and Int1 mask")) return;
             ImGui.SameLine();
@@ -243,6 +336,26 @@ public sealed partial class EditorShell
             RebuildCinematicPlayersForScriptSelection(playback);
             return;
         }
+    }
+
+    private void DrawSceneEventOwnerActionContribution(CinematicPlayback playback,
+        CinematicScriptOwnerId ownerId)
+    {
+        string treeId = $"Body action coverage##script-eve-actions-{ownerId.WorldKey:X8}-{ownerId.OwnerKey:X8}";
+        if (!ImGui.TreeNode(treeId)) return;
+
+        string[] contributions = GetCinematicOwnerActionContributions(playback, ownerId);
+        if (contributions.Length == 0)
+        {
+            ImGui.TextDisabled("Adding this owner's SceneEvents did not resolve an outstanding body-action request.");
+        }
+        else
+        {
+            foreach (string contribution in contributions) ImGui.BulletText(contribution);
+            ImGui.TextDisabled("This compares serialized action requests with the current preview plus this owner. Runtime owner gates and dispatch are not verified.");
+        }
+
+        ImGui.TreePop();
     }
 
     private bool DrawSceneEventPreviewStartButton(CinematicScriptOwnerId ownerId,
@@ -269,6 +382,8 @@ public sealed partial class EditorShell
     {
         if (Document == null || _cinematicWorld == null) return;
         _messageGatePreviewTimeCache.Clear();
+        _cinematicAiTrackMutationCache.Clear();
+        _cinematicOwnerActionContributionCache.Clear();
         uint clipKey = previousPlayback.Key;
         float playhead = previousPlayback.Time;
         bool resumePlayback = previousPlayback.Playing;

@@ -15,4 +15,5 @@ internal sealed record CinematicScriptCallbackStateEffect(
 {
     internal uint? ReceiverKey { get; init; }
     internal string ReceiverEvidence { get; init; } = "Receiver is unresolved from available callback source.";
+    internal string[] SerializedBranchFindings { get; init; } = [];
 }

@@ -137,7 +137,7 @@ public sealed partial class EditorShell
         CinematicScriptCallbackDispatchSite[] dispatchSites =
             CinematicScriptReader.EngineDispatchSitesFor(eventId);
         foreach (var site in dispatchSites)
-            ImGui.TextDisabled($"Iris call site: {site.Source}:{site.Line} · {site.Call}");
+            DrawCinematicCallbackDispatchSite(site);
         if (dispatchSites.Length == 0)
             ImGui.TextDisabled(CinematicEngineCallbackCatalog.IsConfirmedByIrisCallSite(eventId)
                 ? "No direct Iris call site was indexed for this event ID."

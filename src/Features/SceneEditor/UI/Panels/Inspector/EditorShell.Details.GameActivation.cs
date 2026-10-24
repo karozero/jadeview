@@ -35,5 +35,42 @@ public sealed partial class EditorShell
 
         ImGui.TextWrapped(forecast.Scope);
         ImGui.TextDisabled("Activation and EOT membership do not prove that an object is visible, rendered, or active in the retail game's current runtime.");
+
+        if (sceneObject.PreviewControlFlags is null) return;
+
+        GameScriptTimelineActivationForecast timelineForecast =
+            GameScriptTimelineActivationForecaster.Evaluate(sceneObject);
+        ImGui.Separator();
+        ImGui.TextDisabled("Cinematic source-timeline projection");
+        ImGui.TextDisabled($"Current projected flags2: 0x{timelineForecast.RuntimeFlags2:X8}");
+        DrawTimelineActivationPath("Normal time", timelineForecast.NormalTime,
+            timelineForecast.EotMembership);
+        DrawTimelineActivationPath("Special time", timelineForecast.SpecialTime,
+            timelineForecast.EotMembership);
+        ImGui.TextWrapped("Assumes the selected clip's direct EVE state commands run and Iris rebuilds this world's active-object table. A rebuild request made during EVE does not change the EOT used by ANI later in that same world-engine call; the next call rebuilds before EVE and ANI. Callback branches, live world state, and actual dispatch are not simulated.");
+    }
+
+    private static void DrawTimelineActivationPath(string label,
+        GameScriptTimelineActivationPath path, GameScriptEotMembership membership)
+    {
+        string status = path.InActivatedObjectTable switch
+        {
+            true => "would enter active-object table",
+            false => "would remain outside active-object table",
+            _ => "activation is unresolved"
+        };
+        Vector4 statusColor = path.InActivatedObjectTable == true
+            ? Green : ImGui.GetStyle().Colors[(int)ImGuiCol.TextDisabled];
+        ImGui.TextColored(statusColor, $"{label}: {status}");
+        ImGui.Indent();
+        ImGui.TextWrapped(path.Explanation);
+        if (path.InActivatedObjectTable == true)
+        {
+            string tables = membership.TableNames.Length == 0
+                ? "no recognized EOT update table"
+                : string.Join(", ", membership.TableNames);
+            ImGui.TextDisabled($"Would receive: {tables}.");
+        }
+        ImGui.Unindent();
     }
 }

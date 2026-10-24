@@ -22,7 +22,9 @@ internal static class CinematicScriptCallbackStateEffectAnalyzer
                     call.Source, call.Line, call.CallbackPath, "SourceCallCandidate")
                 {
                     ReceiverKey = receiverKey,
-                    ReceiverEvidence = receiverEvidence
+                    ReceiverEvidence = receiverEvidence,
+                    SerializedBranchFindings = CinematicScriptBranchAnalyzer.Describe(
+                        owner, call.BranchConditions)
                 };
             })
             .OrderBy(candidate => candidate.Source, StringComparer.Ordinal)

@@ -14,7 +14,7 @@ This note and the reducer describe a small shared engine-script state slice. It 
 
 ## Separate runtime concepts
 
-`WORUniverseAdd` rebuilding the world's active-object table does not set the world's universe-slot active bit. Object activation is a different scheduler: Jaded `WOR_World_ActivateObjects` (`external/jaded/src/libraries/ENGine/Sources/WORld/WORmain.c:166-190`) rebuilds the per-world active-object table and calls `WOR_ActivateObjectIfFlagsAllow`. Visibility uses another table and predicate in `WOR_World_MakeObjectsVisible` / `WOR_MakeObjectVisibleIfFlagsAllow` (`WORmain.c:102-164,198-225`). The reducer only projects universe slot order, per-slot active bits, and the current-world reference. It does not infer object activation, visibility, sector state, or callbacks from those values.
+`WORUniverseAdd` rebuilding the world's active-object table does not set the world's universe-slot active bit. Object activation is a different scheduler: Jaded `WOR_World_ActivateObjects` (`external/jaded/src/libraries/ENGine/Sources/WORld/WORmain.c:166-190`) rebuilds the per-world active-object table and calls `WOR_ActivateObjectIfFlagsAllow`. Visibility uses another table and predicate in `WOR_World_MakeObjectsVisible` / `WOR_MakeObjectVisibleIfFlagsAllow` (`WORmain.c:102-164,198-225`). Iris also advances engine systems only for universe slots whose active bit is set (`external/irisEng/engine.c:540-582`); this outer gate is separate from an object's activated-table and EOT membership. The reducer only projects universe slot order, per-slot active bits, and the current-world reference. It does not infer object activation, visibility, sector state, or callbacks from those values.
 
 ## Current bounded behavior
 

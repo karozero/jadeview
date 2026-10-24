@@ -10,6 +10,7 @@ public sealed partial class EditorShell
     private ArchiveStartupScriptInventory? _startupInventory;
     private readonly Dictionary<uint, (PcSerializedAiFunction? Function, string Error)> _startupFunctions = [];
     private readonly Dictionary<uint, (PcAiGlobalVariableDescriptor[] Variables, string Error)> _startupVariableCatalogs = [];
+    private readonly Dictionary<uint, (uint[] CallbackKeys, string Error)> _startupVariableCallbackKeys = [];
     private readonly Dictionary<uint, PcAiDirectFunctionCall[]> _startupCallSites = [];
     private readonly Dictionary<uint, PcAiFunctionCallPath[]> _startupCallPaths = [];
     private readonly Dictionary<uint, PcAiConstantArrayTable[]> _startupConstantArrayTables = [];
@@ -26,6 +27,7 @@ public sealed partial class EditorShell
             _startupInventory = ArchiveStartupScriptReader.Read(Archive);
             _startupFunctions.Clear();
             _startupVariableCatalogs.Clear();
+            _startupVariableCallbackKeys.Clear();
             _startupCallSites.Clear();
             _startupCallPaths.Clear();
             _startupConstantArrayTables.Clear();
@@ -123,6 +125,30 @@ public sealed partial class EditorShell
                     ? $" · {string.Join(" → ", path.TransferKinds.Zip(path.CallNodeIndexes,
                         (kind, nodeIndex) => $"{kind}@{nodeIndex}"))}" : string.Empty;
                 ImGui.BulletText($"{functions}{callNodes} · {path.Status}");
+            }
+            ImGui.TreePop();
+        }
+        Dictionary<uint, string> linkedFunctionNames = _startupInventory?.ModelResources
+            .Where(resource => resource.TypeTag == ".ofc" && resource.Status == "Resolved" && resource.Name != null)
+            .GroupBy(resource => resource.Key)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key, group => group.Single().Name!) ?? [];
+        PcAiTrackMutation[] trackMutations = PcAiTrackMutationAnalyzer.Analyze(function, linkedFunctionNames);
+        if (trackMutations.Length > 0
+            && ImGui.TreeNode($"AI track mutation candidates ({trackMutations.Length})##global-ai-track-mutations-{functionKey:X8}"))
+        {
+            ImGui.TextDisabled("These serialized calls can replace or stop AI update tracks. They are not a runtime trace; branch results, dynamic operands, and scheduler timing are not executed.");
+            foreach (PcAiTrackMutation mutation in trackMutations)
+            {
+                string track = mutation.TrackIndex is { } trackIndex
+                    ? $"track {trackIndex}"
+                    : mutation.Operation is "AITrackCurChange" or "AITrackCurChangeNow" or "AITrackCurStop"
+                        ? "current track"
+                        : "track unresolved";
+                string target = mutation.TargetKey is { } targetKey
+                    ? $" → {mutation.TargetName ?? $"OFC {targetKey:X8}"} ({targetKey:X8})"
+                    : string.Empty;
+                ImGui.BulletText($"node {mutation.NodeIndex} · {mutation.Operation} · {track}{target} · {mutation.Status}");
             }
             ImGui.TreePop();
         }
@@ -370,12 +396,44 @@ public sealed partial class EditorShell
         }
 
         ImGui.TextDisabled($"Iris AIVarElem descriptors: {catalog.Variables.Length} · offsets/types/names only; runtime values are unavailable.");
+        DrawArchiveStartupVariableCallbacks(variableKey);
         foreach (PcAiGlobalVariableDescriptor variable in catalog.Variables)
         {
             string dimensions = variable.ArrayDimensions == 0
                 ? string.Empty
                 : $" · {variable.ArrayDimensions}D [{variable.ArrayLength}]";
             ImGui.BulletText($"{variable.Name} · offset 0x{variable.Offset:X8} · {PcAiNodeCatalog.TypeName(variable.Type)} · flags 0x{variable.Flags:X4}{dimensions}");
+        }
+    }
+
+    private void DrawArchiveStartupVariableCallbacks(uint variableKey)
+    {
+        (uint[] CallbackKeys, string Error) callbacks = GetArchiveStartupVariableCallbackKeys(variableKey);
+        if (callbacks.Error.Length > 0)
+        {
+            ImGui.TextDisabled(callbacks.Error);
+            return;
+        }
+
+        DrawCategoryTitle($"OVA callback slots ({callbacks.CallbackKeys.Length})");
+        ImGui.TextDisabled("Iris loads five per-track callback references after the defaults buffer. This is a static reference audit; callbacks are not executed.");
+        for (int slotIndex = 0; slotIndex < callbacks.CallbackKeys.Length; slotIndex++)
+        {
+            uint callbackKey = callbacks.CallbackKeys[slotIndex];
+            if (callbackKey is 0 or uint.MaxValue)
+            {
+                ImGui.BulletText($"Track {slotIndex} · empty");
+                continue;
+            }
+
+            Entry[] matches = Archive?.Entries.Where(entry => entry.Key == callbackKey).Take(2).ToArray() ?? [];
+            string target = matches.Length switch
+            {
+                1 => $"{matches[0].Name} · {callbackKey:X8}",
+                0 => $"{callbackKey:X8} · no matching BIG resource",
+                _ => $"{callbackKey:X8} · ambiguous BIG resource"
+            };
+            ImGui.BulletText($"Track {slotIndex} · {target}");
         }
     }
 
@@ -448,6 +506,35 @@ public sealed partial class EditorShell
         {
             var result = (variables, error);
             _startupVariableCatalogs[variableKey] = result;
+            return result;
+        }
+    }
+
+    private (uint[] CallbackKeys, string Error) GetArchiveStartupVariableCallbackKeys(uint variableKey)
+    {
+        if (_startupVariableCallbackKeys.TryGetValue(variableKey, out var cached)) return cached;
+        if (Archive == null) return Cache([], "No BF archive is open.");
+
+        Entry[] matches = Archive.Entries.Where(entry => entry.Key == variableKey).Take(2).ToArray();
+        if (matches.Length != 1)
+            return Cache([], matches.Length == 0
+                ? $"Global AI OVA {variableKey:X8} is missing from the archive."
+                : $"Global AI OVA {variableKey:X8} has ambiguous archive entries.");
+
+        try
+        {
+            byte[] payload = Archive.Read(matches[0], 16 * 1024 * 1024);
+            return Cache(PcAiGlobalVariableDefaultReader.ReadInitializationCallbackKeys(payload), string.Empty);
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or OverflowException)
+        {
+            return Cache([], exception.Message);
+        }
+
+        (uint[] CallbackKeys, string Error) Cache(uint[] callbackKeys, string error)
+        {
+            var result = (callbackKeys, error);
+            _startupVariableCallbackKeys[variableKey] = result;
             return result;
         }
     }

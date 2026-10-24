@@ -33,4 +33,18 @@ public sealed partial class EditorShell
         }
         ImGui.TextWrapped("Call sites identify where Iris requests a dispatch, but runtime instance gates and branches are not evaluated here.");
     }
+
+    private static void DrawCinematicCallbackDispatchSite(CinematicScriptCallbackDispatchSite site)
+    {
+        ImGui.BulletText($"{site.ExecutionContext} · {site.Source}:{site.Line}");
+        if (!ImGui.TreeNode($"Dispatch conditions##{site.CallbackId}_{site.Source}_{site.Line}"))
+            return;
+
+        ImGui.TextWrapped($"Iris source function: {site.EnclosingFunction} · {site.Call} · {site.ContextEvidence}");
+        ImGui.TextWrapped($"Caller-side condition: {site.CallerEligibility}");
+        ImGui.TextWrapped($"Dispatcher-side condition: {site.DispatcherEligibility}");
+        ImGui.TextWrapped($"Callback target: {site.TargetResolution}");
+        ImGui.TextDisabled("These source conditions are not evaluated against live world, draw, animation, or callback-registration state.");
+        ImGui.TreePop();
+    }
 }

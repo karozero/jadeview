@@ -16,6 +16,9 @@ internal static class ArchiveNestedEventTrackAudit
         int cycleStops = 0;
         int truncatedRoots = 0;
         var samples = new List<object>();
+        int ownerWideAutoLoopRoots = 0;
+        int ownerWideRunningInitPeers = 0;
+        var ownerLoopSamples = new List<object>();
 
         for (int entryIndex = 0; entryIndex < entries.Length; entryIndex++)
         {
@@ -34,6 +37,29 @@ internal static class ArchiveNestedEventTrackAudit
             }
 
             var lists = document.CinematicEmbeddedEventTracks.Values.SelectMany(eventLists => eventLists).ToArray();
+            foreach (var list in lists)
+            foreach (var loopRoot in list.Tracks.Where(track => track.Bone == 255
+                         && (track.ChannelFlags & CinematicEventTrackFlags.AutoLoop) != 0))
+            {
+                var runningInitPeers = list.Tracks.Where(track => track.Index != loopRoot.Index
+                        && (track.ChannelFlags & CinematicEventTrackFlags.RunningInit) != 0)
+                    .Select(track => track.Index).Order().ToArray();
+                ownerWideAutoLoopRoots++;
+                ownerWideRunningInitPeers += runningInitPeers.Length;
+                if (ownerLoopSamples.Count < 1000)
+                    ownerLoopSamples.Add(new
+                    {
+                        Container = entry.Name,
+                        World = list.WorldKey.ToString("X8"),
+                        Owner = list.OwnerKey.ToString("X8"),
+                        list.OwnerName,
+                        Event = list.EventKey.ToString("X8"),
+                        RootChannel = loopRoot.Index,
+                        loopRoot.Duration,
+                        RunningInitPeers = runningInitPeers
+                    });
+            }
+
             foreach (var list in lists)
             foreach (var track in list.Tracks.Where(CinematicNestedEventTrackResolver.HasNestedCalls))
             {
@@ -86,6 +112,9 @@ internal static class ArchiveNestedEventTrackAudit
             AmbiguousOrMissingRouteCount = ambiguousOrMissingRoutes,
             CycleStopCount = cycleStops,
             TruncatedRootCount = truncatedRoots,
+            OwnerWideAutoLoopRootCount = ownerWideAutoLoopRoots,
+            OwnerWideRunningInitPeerCount = ownerWideRunningInitPeers,
+            OwnerWideAutoLoopSamples = ownerLoopSamples,
             Limits = "This is a static traversal of decoded SceneEvents TRA* links within each container. It does not execute callbacks, evaluate gates or prove that any channel was started. Cross-container references are unresolved unless their owner data is present in the same parsed container.",
             Samples = samples
         }, new JsonSerializerOptions { WriteIndented = true }));

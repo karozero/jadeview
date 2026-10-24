@@ -66,7 +66,7 @@ internal static partial class ActorScriptAudit
     {
         var loader = typeof(SceneActor).Assembly.GetType("JadeView.PcSceneLoader")!;
         var read = loader.GetMethod("Read", BindingFlags.Static | BindingFlags.NonPublic)!;
-        object replay = read.Invoke(null, [bytes, archivePath])!;
+        object replay = read.Invoke(null, [bytes, archivePath, null])!;
         string? error = (string?)Field(replay, "Error");
         if (error != null) throw new InvalidDataException(error);
         var records = new List<SourceRecord>();

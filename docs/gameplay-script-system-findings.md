@@ -314,6 +314,19 @@ timer later changes the flags again. This means a trigger is not just a static
 collider: it has enter/exit edges, selected collision semantics, optional actor
 filters, per-owner state, and timed follow-up actions.
 
+Keep this brain separate from the cinematic `Cine_Events` start predicates.
+`Detect_o_Zone`'s Iris callbacks write capability bit `0x100` and saved flags
+as state that other scripts may consume; the capability helper only mutates
+the target's capability word and does not add that target to an AI/EVE world
+scheduler. `Cine_Events` independently tests its own configured zone and
+detector references, then can move its own callback state toward starting EVE
+tracks. Sharing BV/ZDE collision primitives does not establish a call or
+activation edge between the two script owners. Iris contains the BGE-specific
+callback bodies (`ai_compiledscripts_detectors.c:1166-1365` and
+`ai_compiledscripts_global_managers.c:4617-4931`); Jaded provides only the
+generic collision and AI mechanisms, so those BGE field meanings must not be
+inferred from Jaded alone.
+
 JadeView's shared script-owner analyzer now reports that static behavior from
 the callback catalog and effective OVA values. It describes the BV/ZDE
 selector from the owner's serialized identity flags (bit `0x400` set selects
@@ -804,6 +817,49 @@ collision lists, flags2, callback scheduling, or target activity.
 
 ### World transitions and companion event routing
 
+### Message IDs are receiver-local, not a global event enum
+
+The Iris sources contain incompatible handlers for numeric message `49`. The
+companion brain consumes `Int1`/`Int2` as a status/action handoff; the Crochax
+cinematic receiver consumes `f2` as a scale; and the Secundo SFX receiver uses
+`f2`/`f1` as light/alpha factors. The same integer therefore has no reliable
+meaning without the resolved recipient and its active AI callback. Script
+inspection must preserve the sender, target, target owner/model, and callback
+reader together. JadeView's **Potential message routes** already requires a
+statically resolved target and a matching queue reader before presenting a
+route; unknown targets remain raw evidence instead of being assigned a global
+message label. Cinematic timeline descriptions apply the same rule to type 49:
+a reachable companion receiver exposes status/action fields, Crochax exposes its
+scale use, and Secundo SFX exposes the light/alpha fields. Other receivers get
+only generic reader evidence when available. These descriptions identify
+callback semantics but do not claim that the message was delivered or the
+callback executed.
+
+One relevant gameplay-to-pose path is in
+`external/irisEng/ai/ai_bge/ai_compiledscripts_companion.c`:
+`companion_co_exec_get_message` receives message `49`, and for `Int1 == 4`
+stores `Int2` in `Perso_ID_action[des_i_friend]` and `i_attente_action`, then
+re-enters `companion_co_init_select_mode`. The selector calls `ACTActionSet`
+for a valid stored action. `Zone_ChangeStatus` and elevator/enterprise
+companion-management code provide source-level writers for such messages, but
+their presence does not prove a given scene sent one or that its gate passed.
+The start-resource inventory describes `Perso_ID_action` as a 12-element
+integer array at `univers.ova` offset 884; it does not expose the value held in
+that array at a particular cinematic entry.
+The retail `univers.ova` payload (`71003FF2`) has a zero-length serialized
+default-value buffer. This is distinct from an invalid variable offset: the
+descriptors describe runtime slots, but this model file does not provide their
+initial bytes. Iris/Jaded then read the model's callback references after that
+buffer. The startup audit now reports `NoSerializedDefaults` for this case
+instead of marking every slot out of bounds. It does not infer that these slots
+start at zero or identify their live values; callback execution and other
+runtime initialization still need to be traced.
+For Peyj in `FF00791B / BF003BD1`, the archive has only a root-transform clip
+track and no linked action request; the owner graph finds the `_basic_peyj`
+companion brain, but no serialized event evidence identifies the active action
+at clip start. This is a useful generic handoff hypothesis, not a confirmed
+runtime explanation for that specific T-pose.
+
 The shared `ES_au_sol` model (`71003F6E`) appears on 359 owners across 91
 containers in the all-world retail script index. Its `play_events` callback
 contains a generic state branch: at jump node 10 it tests capability `0x100`
@@ -1095,12 +1151,32 @@ the current track; merely finding the function in the model does not start it.
 
 The cinematic has a direct `OBJ_CapaSet(2, 0)` event for the screen owner at
 44.783 s, but the game script first evaluates the external interrupter's
-capability and save flag. This separates three things that can look like one
+capability and save flag. In the ordinary `mpegplayer_init` branch, source node
+15 overwrites the serialized `i_Play` value from interrupter capability `0x100`
+before it selects the video material; a positive `des_i_sf_on_off` can also
+start playback. JadeView now derives the initial video state from the switch
+only when the ordinary branch is identifiable and the relevant save-flag
+controls are zero. Otherwise it retains the existing preview fallback and
+labels that state as estimated. The preview does not claim to know the global
+save flags or whether the native AI callback was dispatched. This separates three things that can look like one
 missing-asset bug: the screen GAO/material may be loaded, its Bink source may
 be attached, and the script may still keep it hidden or on a non-video material
-state. JadeView previews the decoded track and procedural video descriptor,
-but does not yet emulate the screen AI instance's live gate or Bink control
-loop. The report is `artifacts/callback-driven-eve-audits/FF005833-BF00218E-script-graph.json`;
+state. For the ordinary init path with a unique loaded switch, zero special
+save-flag controls, and no sound-status gate, JadeView's initial owner visibility
+matches the source-derived state. It then follows the same start/stop/toggle
+state used by the procedural video preview, and the result is sampled by
+cinematic GLB export. When a nonzero `des_i_SND_modifier`, save-flag branch,
+unresolved switch, or ambiguous owner prevents an exact initial answer, both
+the video and owner use the documented playback fallback and the UI labels it
+estimated. This keeps the screen from being rendered independently of its
+video state without implying that the runtime gate is known. This remains a
+bounded reconstruction of the `mpegplayer` family, not execution of the AI VM
+or proof that a runtime callback ran. The report is
+`artifacts/callback-driven-eve-audits/FF005833-BF00218E-script-graph.json`;
+the retail cinematic export audit now verifies the monitor's GLB scale is zero
+at clip time 0 and changes to one at the serialized 44.783333 s toggle. This
+proves the owner-visibility channel is present in the exported animation, while
+the still-image limitation for the Bink material remains.
 the finding is specific evidence for a reusable rule: conditional appearance
 requires both the owner GAO and the runtime script state, not a blanket
 dependency expansion.
@@ -1284,6 +1360,89 @@ activation/visibility on/off. Jaded routes them from rendering, animation,
 world-sector, and destruction code (`STRrender.c`, `ANIrender.c`, `ENGcall.c`,
 `WORmain.c`, `AIfunctions_obj.c`, and `AIfunctions_way.c`).
 
+Iris's BGE source makes the ordinary script scheduler more concrete and shows
+why these two mechanisms must not be conflated. An OVA's five callback keys
+become AI tracks 0–4 (`external/irisEng/ai_common.c:1124-1325`). On instance
+reset, `AI_ReinitInstance` copies those five model functions into mutable
+instance slots and initializes their jump cursors and timers
+(`ai_common.c:375-430`). `AI_MainCall` visits world AI-table entries and,
+after its per-frame processing, distance and parent-hierarchy checks, advances
+the instance unless runtime flag `flags2 & 0x400000` blocks it
+(`ai_common.c:765-804`). `AI_RunInstance` skips a disabled model, visits the
+active span from `end` through `start`, subtracts frame delta from each track's
+wait timer, and runs due tracks while retaining their jump position
+(`ai_common.c:711-762`). Thus a track key is a default/update function, not a
+one-shot event timestamp.
+
+`AITrackChange` replaces one mutable track function and expands the active span;
+`AITrackStop` clears it and contracts the span (`external/irisEng/ai/ai_aifunctions.c:113-186`).
+By contrast, `AI_ExecCallback(owner, phase)` invokes the model's indexed
+instance function for that phase and then any dynamically registered entries
+with the matching phase id (`ai_common.c:812-895`). `AICBAdd` stores a
+function, phase id, and context object on a destination object's AI instance;
+the context may differ from that destination
+(`external/irisEng/ai/ai_aifunctions.c:409-494`). The engine calls AI updates
+in the regular frame loop after EVE and animation passes
+(`external/irisEng/engine.c:185-214`), while lifecycle callbacks are requested
+from engine/render/animation paths at their specific phases.
+
+Callback phase IDs also do not identify a single dispatch site. Retail Iris
+ID 2 is a world-table pass after dynamics, collision, records and hierarchy
+(`engine.c:226-288`); ID 3 has separate ANI pre-render, ANI initialization and
+world-render sites (`animation.c:2391,2646`; `world.c:2465`); IDs 0/1 occur
+before/after geometry and string rendering (`graphicsobjects/geo.c:772-778,
+888-893`; `geostr.c:2894,3143`). Direct `AI_ExecCallback` requires a live AI
+instance/model, both blocking `flags2` bits clear, and at least one fixed or
+dynamic callback; it runs a matching fixed function before registered entries
+(`ai_common.c:812-897`). Callback-all additionally requires the engine running
+and walks valid entries from the world's AI-callback table (`:899-915`). The
+caller has extra gates: for example, ANI pre-render requires a visible object
+with a skeleton group, while geometry callbacks may redirect a bone GAO to
+its animation initialization/reference GAO (`animation.c:2396-2410`;
+`graphicsobjects/geo.c:766-780,879-895`). JadeView now exposes these shared
+dispatcher checks, site-specific caller conditions and target-routing rules
+beside each indexed call. They are source descriptions, not evaluated state.
+Jaded corroborates the callback architecture, but its direct gate uses its own
+ForceInactive/InPause controls (`AIengine.c:1372-1377`) and must not replace
+the Iris retail-PC `flags2` checks.
+
+Practical consequence for JadeView: replaying an EVE/SceneEvents timeline and
+then evaluating the default five AI tracks as though they were clip tracks
+would be incorrect. A faithful preview needs separate state for (1) instance
+track functions, cursors, timers and track changes, and (2) registered engine
+callbacks keyed by owner, phase and context, plus engine eligibility state.
+Static BF data can seed some defaults and explicit event calls, but cannot
+reveal which runtime gates passed, which tracks were changed before the clip,
+or which callbacks were registered by branches. A preview must label these as
+declared defaults, event-derived changes, or unknown runtime state.
+
+JadeView now has a bounded serialized mutation scan for `AITrackChange`,
+`AITrackStop`, `AITrackCurChange`, `AITrackCurChangeNow`, and
+`AITrackCurStop`. It reports literal track indices and uniquely model-linked
+function references in the global-startup function inspector and archive audit.
+Dynamic operands, non-pointerref targets, out-of-range indices, and unlinked
+functions remain explicit unresolved candidates. The scan is not a VM
+execution trace: it does not resolve branches, execute `AIExecute`, or decide
+whether a track mutation ran. This gives a source-backed way to inspect
+possible track handoffs without inventing the actor's live track state.
+In the installed retail `sally_clean.bf`, the archive audit finds one literal
+current-track handoff candidate in `univ_init.ofc` (`71003FF1`): node 1387
+references `univ_go.ofc` (`71004002`) through `AITrackCurChangeNow`. This
+matches the source operation's role in replacing the current track and
+continuing its scheduler immediately, but the archive alone does not prove
+that the initialization branch ran in the user's session.
+
+The cinematic Script Owners view now applies the same source-backed analysis
+to each owner's reachable model callbacks. In `FF005833 / BF00218E`, it found
+511 possible track mutations across 45 owners. Across 332 current-track calls,
+the indexed graph yields one possible slot for 330 and multiple possible slots
+for two. These slot numbers come from serialized callback roots and may-reach
+edges (`AIExecute` preserves context; literal `AITrackChange` switches to its
+destination slot); they do not reconstruct the live AI track. Dynamic/direct
+engine-callback routes remain unknown, and the displayed function path is not
+an execution trace. See `docs/cinematic-script-system.md` for the UI and its
+runtime limitations.
+
 A lexical census of Iris BGE's compiled C sources finds 312
 `AI_EvalFunc_AICBAdd_C` call sites in 51 script modules: 176 register
 before-display (type 0), 21 after-display (type 1), 93 after-record (type 2),
@@ -1296,9 +1455,15 @@ JadeView's script-owner inspector can therefore report serialized script model
 functions and object links, while an “active now” answer needs additional
 runtime state: EOT membership, current sector/inactive flags, and dynamically
 registered callback tuples. Those are not fully recoverable from a static BF
-archive. The next general script step is to model and expose the registration
-relationships where Iris source and serialized event data prove them, keeping
-declared, registered-by-script, and runtime-confirmed states distinct.
+archive. The cinematic script inspector now exposes source-reachable
+`AICBAdd`/`AICBDel` call candidates with their raw context/destination/function
+operands, uniquely resolved function keys, literal callback IDs, branch
+alternatives, and indexed Iris dispatch sites. Uncertain assignments remain
+visible as alternatives instead of being collapsed to one target. These are
+possible mutations of the callback list, not a reconstruction of the live
+list: branches, initialization/reinitialization, owner eligibility and actual
+dispatch remain unresolved. Jaded's AI interpreter source is the architecture
+cross-check; Iris remains the retail-PC behavior reference.
 
 ### Event-track owners also require world dispatch eligibility
 
@@ -1324,7 +1489,62 @@ dispatch shape, but its gate is expressed through its own control/LOD helpers
 (`external/jaded/src/libraries/AIinterp/Sources/Events/EVEplay.c:1600-1647`).
 Use it as architectural corroboration; keep Iris's flags and predicates for
 the retail-PC preview. This also explains why a script owner may be correctly
-listed in JadeView yet its attached event track or effect does not run. A future
-diagnostic should label event owners as `decoded`, `dispatch-eligible from
-serialized state`, or `runtime-confirmed`; JadeView currently cannot claim the
-last state without a live game trace.
+listed in JadeView yet its attached event track or effect does not run. JadeView's
+owner lifecycle now adds a fresh-load EVE dispatch projection: it combines the
+serialized EVE-table identity bit with both modeled initial world-activation
+modes and reports a candidate, a clear table-request bit, or blocked initial
+activation. The phase remains `runtime unknown`; the projection does not confirm
+that the owner entered the rebuilt table, passed EVE's live distance/inactive
+gates, or advanced a track. A live game trace is still required for
+`runtime-confirmed` status.
+
+### Global universe AI startup and tick gate
+
+The retail archive's start key (`71003FF9`) resolves to a global AI instance,
+model `univers.ova` (`71003FF2`), and seven linked `.ofc` functions. The model
+OVA declares 140 variables; `Perso_ID_action` is a 12-element integer array at
+offset 884. Its serialized initializer buffer is zero bytes long. That means
+the archive contains the variable schema but no initial byte values for those
+slots; it does not establish that the values are zero. JadeView's startup audit
+now reports `NoSerializedDefaults` rather than incorrectly treating the
+descriptors as out-of-bounds reads.
+
+Iris's loader reads five per-track callback keys immediately after that
+defaults buffer. The audit now preserves those slots separately from the
+model's ordinary `.ofc` link list. In this archive the slots decode as
+`[0, 0x0C, 0x08, 0, 0]`; neither nonzero value resolves to a BIG entry. They
+therefore remain unresolved callback references. The seven named `.ofc` links
+in the model are not substituted by slot order: doing so would conflate two
+different serialized tables and invent a callback binding.
+The JadeView OVA inspector now displays these five slots separately, with
+empty, uniquely resolved, missing, and ambiguous BIG-key states.
+The low keys remain a source/archive mismatch: Iris passes each nonzero slot
+to `LOA_MakeFileRef` with the required-reference flag, and `LOA_Resolve`
+performs a BIG-key lookup (`loading.c:257-277, 336-356`); the retail archive
+has no entries keyed `0x0C` or `0x08`. Jaded's desktop editor adds one
+important qualification: when built with `ACTIVE_EDITORS`,
+`BIG_ul_SearchKeyToPos` first calls `LOA_ul_ExFileKey` (`BIGkey.c:292-312`).
+The editor can enable that redirect with `/exfilekey[file]`; the text file
+contains `oldkey newkey` pairs (`EDIapp.cpp:797-817`, `LOAdefs.c:2139-2196`).
+The non-editor/runtime branch searches the archive key table directly. No such
+redirect file has been identified for this retail archive, so the two slots
+remain unresolved in JadeView; they are not evidence that the ordinary model
+`.ofc` list should be substituted.
+
+The loader path is explicit in Iris: `WOR_Universe_Open` calls
+`AI_pst_LoadInstance`, which resolves the AI model and its OVA/OFC references,
+initializes the instance's callback slots, and allocates the save buffer for
+the archive start key (`world.c:2511-2518`, `ai_common.c:1441-1454`). The engine
+frame loop calls `AI_RunInstance` for that universe instance only while
+`AIUnivIsRunning` is true (`engine.c:528-535`). `AI_RunInstance` walks its
+scheduled callback tracks, decrements per-track wait timers, and resumes a
+callback only when its timer reaches zero (`ai_common.c:711-754`). The loaded
+script body `univ_init.ofc` also contains literal assignments to shared state,
+including `i_engine_mode`, `i_INV_OptionsFlags`, and `world_ID`; those are
+serialized instructions, not proof that a particular startup branch executed.
+
+This makes the startup inventory useful for identifying the data and code
+available to the global AI, but not for reconstructing save-dependent values
+or claiming that an initialization callback ran. A future JadeView runtime
+would need an explicit initial-state source and callback scheduler state before
+it could safely emulate these global effects during cinematic preview.

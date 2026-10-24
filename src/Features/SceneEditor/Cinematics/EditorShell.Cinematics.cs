@@ -56,6 +56,8 @@ public sealed partial class EditorShell
         _cinematicFlagFlowOwnerCount = -1;
         _cinematicFlagFlowTrackCount = -1;
         _cinematicFlagFlowLinks.Clear();
+        _cinematicAiTrackMutationCache.Clear();
+        _cinematicOwnerActionContributionCache.Clear();
         _cinematicWorld = null;
         _loadedCinematicEntry = null;
         _cutsceneMode = false;

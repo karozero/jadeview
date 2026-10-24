@@ -74,6 +74,7 @@ public sealed partial class EditorShell
                 foreach (string finding in behavior) ImGui.TextWrapped(finding);
                 ImGui.TextDisabled("Inferred from the shared Iris callback implementation and serialized OVA values; save-game state is not loaded.");
             }
+            DrawCinematicOwnerInterruptionGateEvidence(selected, selected.Id);
             DrawCinematicMessageGateCandidates(selected);
             DrawCinematicScriptFlagLinks(selected);
             DrawCinematicTimelineFlagGates(selected);
@@ -105,24 +106,24 @@ public sealed partial class EditorShell
             }
             if (selected.CallbackSlots is { } callbackSlots)
             {
-                DrawCategoryTitle($"Script-model callback slots ({callbackSlots.Length})");
-                ImGui.TextDisabled("These callbacks are loaded from the resolved script model's OVA. Iris overlays instance OVA values by variable name; it does not replace the model callback list.");
+                DrawCategoryTitle($"AI update tracks · model defaults ({callbackSlots.Length})");
+                ImGui.TextDisabled("These five possible AI track functions are loaded from the resolved script model OVA. Iris overlays instance OVA values by variable name; it does not replace the model track list. The world AI pass advances these mutable tracks independently of EVE timelines and engine-event hooks.");
                 CinematicCallbackSlotRange? configuredRange =
                     CinematicScriptCallbackCoverage.ResolveConfiguredRange(callbackSlots);
                 ImGui.TextDisabled(configuredRange is { } range
-                    ? $"Iris scans configured callback span {range.FirstSlot}–{range.LastSlot} in ascending slot order; empty gaps are skipped."
-                    : "No callback slots are configured on this model, so the AI instance has no callback span to run.");
+                    ? $"Configured AI scheduler span: tracks {range.FirstSlot}–{range.LastSlot}, visited in ascending order; empty gaps are skipped."
+                    : "No AI update tracks are configured on this model, so it has no model track span to run.");
                 foreach (var slot in callbackSlots)
                 {
                     string functionDescription = slot.FunctionKey == 0 ? "empty"
                         : slot.FunctionName is { } functionName
                             ? CinematicScriptReader.DescribeCallbackName(functionName)
                             : $"unmapped function {slot.FunctionKey:X8}";
-                    ImGui.BulletText($"Slot {slot.Index:D2}: {functionDescription}");
+                    ImGui.BulletText($"Track {slot.Index:D2}: {functionDescription}");
                 }
                 if (callbackSlots.Any(slot => slot.FunctionKey != 0 && slot.FunctionName == null))
-                    ImGui.TextDisabled("Unmapped callback keys are shown as raw IDs because the bundled Iris function table has no matching name; their behavior is unknown.");
-                ImGui.TextDisabled("World-table membership, distance, process flags and live timers also determine whether a callback runs; JadeView does not observe those runtime gates.");
+                    ImGui.TextDisabled("Unmapped track keys are shown as raw IDs because the bundled Iris function table has no matching name; their behavior is unknown.");
+                ImGui.TextDisabled("Scripts can replace or stop tracks. World-table membership, distance, process flags and live timers also determine whether a track runs; JadeView does not observe that runtime state.");
             }
             else if (selected.ModelFunctionNames.Length == 0)
             {
@@ -251,12 +252,16 @@ public sealed partial class EditorShell
     private void DrawCinematicTimelineFlagGates(CinematicScriptOwner owner)
     {
         if (_cinematicPlayback == null) return;
+        var externalStateCalls = CinematicTimelineFlagAnalyzer.ExternalTimelineCalls(owner,
+            _cinematicPlayback.Key, _cinematicPlayback.ScriptStateCalls);
         var gates = CinematicTimelineFlagAnalyzer.Analyze(owner,
-            _cinematicPlayback.ScriptStateCalls, _cinematicPlayback.Time);
+            externalStateCalls, _cinematicPlayback.Time);
         if (gates.Length == 0) return;
 
         DrawCategoryTitle("Saved-flag gates at playhead");
-        ImGui.TextDisabled("State is inferred from literal writes in the selected clip and its resolved SceneEvents routes. Flags without a prior write remain unknown; conditional callbacks, other worlds and live save state are not evaluated.");
+        ImGui.TextDisabled(externalStateCalls == null
+            ? "The selected clip is this owner's SceneEvents resource, so its own writes are excluded from predicting its start gates. Prior save/runtime flag state remains unknown."
+            : "State is inferred from literal writes in the selected clip and its resolved SceneEvents routes. Flags without a prior write remain unknown; conditional callbacks, other worlds and live save state are not evaluated.");
         foreach (var gate in gates)
         {
             string required = gate.RequiredSet ? "set" : "clear";
@@ -278,7 +283,31 @@ public sealed partial class EditorShell
                 ? $"; last write {writeTime:F2}s"
                 : "";
             ImGui.BulletText($"Flag {gate.Flag} · requires {required} · {state}{lastWrite} · {result}");
+            if (gate.CurrentSet == null)
+                DrawPotentialSavedFlagWriters(owner, gate.Flag);
         }
+    }
+
+    private void DrawPotentialSavedFlagWriters(CinematicScriptOwner owner, int flag)
+    {
+        var candidates = CinematicScriptFlagFlowAnalyzer.PotentialWritersForFlag(
+            _cinematicFlagFlowLinks.GetValueOrDefault(owner.Id, []), flag);
+        if (candidates.Length == 0) return;
+
+        ImGui.Indent();
+        ImGui.TextDisabled($"Possible writers among loaded script owners ({candidates.Length}); not time-resolved:");
+        foreach (var candidate in candidates.Take(4))
+        {
+            var relatedOwner = candidate.RelatedOwner;
+            string worldName = Document?.Worlds.FirstOrDefault(world => world.Key == relatedOwner.WorldKey)?.Name
+                ?? $"world {relatedOwner.WorldKey:X8}";
+            if (ImGui.Selectable($"{relatedOwner.Name} · {worldName}##flagwriter{owner.OwnerKey:X8}{flag}{relatedOwner.OwnerKey:X8}"))
+                _selectedCinematicScriptOwnerId = relatedOwner.Id;
+            if (ImGui.IsItemHovered()) ImGui.SetTooltip(candidate.Direction);
+        }
+        if (candidates.Length > 4)
+            ImGui.TextDisabled($"Showing 4 of {candidates.Length} possible writer owners.");
+        ImGui.Unindent();
     }
 
     private void DrawCinematicActorActions(CinematicScriptOwner owner)

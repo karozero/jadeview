@@ -11,20 +11,20 @@ internal static class CinematicOwnerStartLifecycleAnalyzer
     private const uint EventTableFlag = 0x02000000;
     private const uint PendingInactiveRuntimeFlag = 0x00400000;
     private const uint DistanceCullExtraFlag = 0x4;
-    private const string CineStartCallback = "Cine_Events_cine_tests_depart";
-
     internal static CinematicOwnerStartLifecycle Analyze(CinematicScriptOwner owner,
         IReadOnlyList<CinematicScriptEventTrack>? decodedEventTracks)
     {
         CinematicScriptCallbackSlot[] configuredCallbacks = owner.CallbackSlots?
             .Where(slot => HasResourceKey(slot.FunctionKey)).ToArray() ?? [];
         bool callbackSlotsDecoded = owner.CallbackSlots != null;
-        bool hasStartCallback = owner.CallbackNames.Contains(CineStartCallback, StringComparer.Ordinal);
-        bool modelReferencesStartCallback = owner.ModelFunctionNames.Contains(CineStartCallback, StringComparer.Ordinal);
+        string[] assignedStartCallbacks = CinematicStartCallbackChain.AssignedFunctions(owner);
+        bool hasAssignedStartCallback = assignedStartCallbacks.Length > 0;
+        bool modelReferencesStartCallback = CinematicStartCallbackChain.IsReferenced(owner)
+            && !hasAssignedStartCallback;
         bool hasSceneEventKey = HasResourceKey(owner.SceneEventsKey);
         bool hasDecodedSceneEventTracks = decodedEventTracks is { Count: > 0 };
         bool eventTableRequested = (owner.SerializedGaoFlags & EventTableFlag) != 0;
-        bool cineEventsModel = hasStartCallback || modelReferencesStartCallback;
+        bool cineEventsModel = CinematicStartCallbackChain.IsReferenced(owner);
         GameScriptEotMembership membership = GameScriptEotMembershipResolver
             .Evaluate(owner.SerializedGaoFlags);
         GameScriptInitialActivationForecast activationForecast = GameScriptInitialActivationForecaster
@@ -37,7 +37,7 @@ internal static class CinematicOwnerStartLifecycleAnalyzer
                 $"World {owner.WorldKey:X8} resolves owner {owner.OwnerKey:X8} to brain {FormatKey(owner.BrainKey)} and AI model {FormatKey(owner.ScriptModelKey)}.",
                 ["These are serialized resource links; resolving them does not imply that the game instantiated or activated the object."]),
             BuildCallbackPhase(owner, configuredCallbacks, callbackSlotsDecoded,
-                hasStartCallback, modelReferencesStartCallback),
+                assignedStartCallbacks, modelReferencesStartCallback),
             new("World and EOT activation", CinematicOwnerLifecycleEvidence.RuntimeUnknown,
                 eventTableRequested
                     ? $"Serialized GAO flag 0x{EventTableFlag:X8} requests event-table participation when world activation builds the EOT tables."
@@ -47,9 +47,10 @@ internal static class CinematicOwnerStartLifecycleAnalyzer
                  $"If activated, GAO identity flags 0x{membership.IdentityFlags:X8} select: {DescribeMembership(membership)}.",
                  "World activation and eventGameObjectsTablePF membership are runtime outcomes.",
                  $"EVE_MainCall also checks runtime flags2 0x{PendingInactiveRuntimeFlag:X8} and, when extraFlag 0x{DistanceCullExtraFlag:X}, a nonzero owner distance."]),
-            BuildCineStartPhase(hasStartCallback, modelReferencesStartCallback),
+            BuildCineStartPhase(assignedStartCallbacks, modelReferencesStartCallback),
             BuildConfiguredTimingPhase(owner, cineEventsModel),
-            BuildEventPhase(owner, decodedEventTracks, hasSceneEventKey, hasDecodedSceneEventTracks)
+            BuildEventPhase(owner, decodedEventTracks, hasSceneEventKey, hasDecodedSceneEventTracks,
+                eventTableRequested, activationForecast)
         ]);
     }
 
@@ -112,7 +113,7 @@ internal static class CinematicOwnerStartLifecycleAnalyzer
 
     private static CinematicOwnerLifecyclePhase BuildCallbackPhase(CinematicScriptOwner owner,
         CinematicScriptCallbackSlot[] configuredCallbacks, bool callbackSlotsDecoded,
-        bool hasStartCallback, bool modelReferencesStartCallback)
+        string[] assignedStartCallbacks, bool modelReferencesStartCallback)
     {
         string assignmentSummary = callbackSlotsDecoded
             ? $"{configuredCallbacks.Length} non-empty callback slot(s) are serialized on the effective owner model."
@@ -121,10 +122,10 @@ internal static class CinematicOwnerStartLifecycleAnalyzer
         {
             "The engine dispatches callback slots from render, animation, and world-frame paths; slot assignment alone does not prove a dispatch."
         };
-        if (hasStartCallback)
-            details.Add($"{CineStartCallback} is present in the effective callback names.");
+        if (assignedStartCallbacks.Length > 0)
+            details.Add(CinematicStartCallbackChain.DescribeFlow(assignedStartCallbacks));
         else if (modelReferencesStartCallback)
-            details.Add($"The model references {CineStartCallback}, but no effective owner callback slot confirms its assignment.");
+            details.Add(CinematicStartCallbackChain.DescribeFlow([]));
         else
             details.Add("No Cine_Events start callback is identified in the available owner/model callback data.");
 
@@ -138,15 +139,15 @@ internal static class CinematicOwnerStartLifecycleAnalyzer
             assignmentSummary, [.. details]);
     }
 
-    private static CinematicOwnerLifecyclePhase BuildCineStartPhase(bool hasStartCallback,
+    private static CinematicOwnerLifecyclePhase BuildCineStartPhase(string[] assignedStartCallbacks,
         bool modelReferencesStartCallback)
     {
-        string summary = hasStartCallback
-            ? $"The owner has the {CineStartCallback} callback needed to enter the Cine_Events departure test."
+        string summary = assignedStartCallbacks.Length > 0
+            ? CinematicStartCallbackChain.DescribeFlow(assignedStartCallbacks)
             : modelReferencesStartCallback
-                ? $"The model contains {CineStartCallback}, but effective owner assignment is unresolved."
+                ? CinematicStartCallbackChain.DescribeFlow([])
                 : "No Cine_Events departure callback is linked by the available callback data.";
-        return new("Cine_Events start predicate", hasStartCallback
+        return new("Cine_Events start predicate", assignedStartCallbacks.Length > 0
                 ? CinematicOwnerLifecycleEvidence.ArchiveResolved
                 : modelReferencesStartCallback
                     ? CinematicOwnerLifecycleEvidence.PartiallyResolved
@@ -158,19 +159,45 @@ internal static class CinematicOwnerStartLifecycleAnalyzer
 
     private static CinematicOwnerLifecyclePhase BuildEventPhase(CinematicScriptOwner owner,
         IReadOnlyList<CinematicScriptEventTrack>? decodedEventTracks,
-        bool hasSceneEventKey, bool hasDecodedSceneEventTracks)
+        bool hasSceneEventKey, bool hasDecodedSceneEventTracks,
+        bool eventTableRequested, GameScriptInitialActivationForecast activationForecast)
     {
         string trackState = hasDecodedSceneEventTracks
             ? $"{decodedEventTracks!.Count} linked SceneEvents track(s) were decoded."
             : hasSceneEventKey
                 ? "The SceneEvents key is serialized, but no linked SceneEvents tracks were decoded for this owner."
                 : "No valid SceneEvents EVE key is serialized on this owner.";
+        string freshLoadProjection = DescribeFreshLoadEventDispatchProjection(
+            eventTableRequested, activationForecast);
         return new("EVE scheduling", CinematicOwnerLifecycleEvidence.RuntimeUnknown,
             hasSceneEventKey
                 ? $"SceneEvents EVE {owner.SceneEventsKey:X8} is linked. Actor Events key: {FormatKey(owner.EventsKey)}. {trackState}"
                 : $"No SceneEvents EVE list is linked. Actor Events key: {FormatKey(owner.EventsKey)}. {trackState}",
-            ["A linked/decoded EVE list is not proof that its owner entered the event table or its tracks are running.",
+            [freshLoadProjection,
+             "The engine advances EVE only while this world's universe-table slot is active; this BF snapshot does not establish that runtime slot state.",
+             "A linked/decoded EVE list is not proof that its owner entered the event table or its tracks are running.",
              "TRAPlayAll marks tracks running after the cinematic start path; EVE then advances eligible tracks. AI-function events may execute arbitrary script side effects."]);
+    }
+
+    private static string DescribeFreshLoadEventDispatchProjection(bool eventTableRequested,
+        GameScriptInitialActivationForecast activationForecast)
+    {
+        if (!eventTableRequested)
+            return "Fresh-load EVE dispatch projection: serialized GAO identity flag 0x02000000 is clear, "
+                + "so this snapshot does not request EVE-table membership. Runtime code may change the flag before EOT construction.";
+
+        GameScriptActivationPathForecast[] eventTableCandidates = activationForecast.Paths
+            .Where(path => path.Eligibility == GameScriptActivationEligibility.Eligible
+                && path.EotMembership?.Tables.HasFlag(GameScriptEotTable.EventObjects) == true)
+            .ToArray();
+        if (eventTableCandidates.Length == 0)
+            return "Fresh-load EVE dispatch projection: the EVE-table identity flag is set, but both modeled "
+                + "initial activation paths are blocked, so this snapshot predicts no activated EVE-table entry. "
+                + "Later runtime activation or flag changes are not modeled.";
+
+        string candidateModes = string.Join(", ", eventTableCandidates.Select(path => path.WorldMode));
+        return $"Fresh-load EVE dispatch projection: the EVE-table identity flag is set and initial activation "
+            + $"projects an EVE-table candidate for {candidateModes}. This is archive-derived eligibility, not observed dispatch.";
     }
 
     private static bool HasResourceKey(uint key) => key is > 2 and < uint.MaxValue;

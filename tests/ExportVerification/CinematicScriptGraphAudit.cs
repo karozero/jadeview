@@ -63,6 +63,8 @@ internal static class CinematicScriptGraphAudit
                 SerializedObjectReferences = owner.ObjectReferences,
                 SerializedOvaValues = owner.Variables,
                 CallbackDrivenSceneEvents = GetCallbackDrivenSceneEventCalls(owner, document),
+                CallbackRegistrationAnalysis = GetCallbackRegistrationAnalysis(owner),
+                AiTrackMutationAnalysis = GetAiTrackMutationAnalysis(owner),
                 CallbackStateEffectCandidates = CinematicScriptCallbackStateEffectAnalyzer.Analyze(owner)
                     .Select(effect => new
                     {
@@ -802,6 +804,66 @@ internal static class CinematicScriptGraphAudit
                     ReferenceLine = reference.Line
                 }))
             .ToArray();
+    }
+
+    private static object GetCallbackRegistrationAnalysis(CinematicScriptOwner owner)
+    {
+        CinematicScriptReachableEngineCall[] reachableCalls =
+            CinematicScriptReader.ReachableEngineCalls(owner);
+        CinematicScriptReachableSourceReference[] sourceReferences =
+            CinematicScriptReader.ReachableSourceReferences(owner);
+        var registrations = CinematicScriptCallbackRegistrationAnalyzer.Analyze(owner,
+            reachableCalls, sourceReferences).Select(candidate => new
+            {
+                candidate.Operation,
+                candidate.CallbackSourceContextOperand,
+                candidate.DestinationInstanceOperand,
+                ContextKey = candidate.ResolvedContextKey?.ToString("X8"),
+                DestinationKey = candidate.ResolvedDestinationKey?.ToString("X8"),
+                candidate.CallbackTypeOperand,
+                candidate.CallbackType,
+                candidate.FunctionOperand,
+                FunctionKey = candidate.FunctionKey?.ToString("X8"),
+                candidate.MatchingRemovalSites,
+                candidate.BranchConditions,
+                candidate.Source,
+                candidate.Line,
+                candidate.CallbackPath
+            }).ToArray();
+        var resets = CinematicScriptCallbackRegistrationAnalyzer.AnalyzeResetSites(owner,
+            reachableCalls).Select(candidate => new
+            {
+                candidate.Source,
+                candidate.Line,
+                candidate.CallbackPath,
+                candidate.BranchConditions
+            }).ToArray();
+        return new { Registrations = registrations, PotentialResetSites = resets };
+    }
+
+    private static object[] GetAiTrackMutationAnalysis(CinematicScriptOwner owner)
+    {
+        CinematicScriptReachableEngineCall[] reachableCalls =
+            CinematicScriptReader.ReachableEngineCalls(owner);
+        return CinematicScriptAiTrackMutationAnalyzer.Analyze(owner, reachableCalls,
+                CinematicScriptReader.ReachableSourceReferences(owner))
+            .Select(candidate => (object)new
+            {
+                candidate.Api,
+                candidate.Effect,
+                candidate.TrackIndex,
+                candidate.TrackDescription,
+                candidate.FunctionOperand,
+                FunctionKey = candidate.FunctionKey?.ToString("X8"),
+                candidate.FunctionDescription,
+                candidate.CurrentTrackSlotCandidates,
+                candidate.HasUnknownCurrentTrackPath,
+                candidate.BranchConditions,
+                candidate.SerializedBranchFindings,
+                candidate.Source,
+                candidate.Line,
+                candidate.CallbackPath
+            }).ToArray();
     }
 
     private static object[] GetCallbackDrivenSceneEventCalls(CinematicScriptOwner owner, SceneDocument document) =>

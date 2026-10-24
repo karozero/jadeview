@@ -23,6 +23,7 @@ internal static class CinematicCompanionActionRequestChecks
         var candidates = new[]
         {
             Message(root.GaoKey, messageType: 49, status: 3, action: 201),
+            Message(root.GaoKey, messageType: 49, status: 2, action: 206),
             Message(root.GaoKey, messageType: 49, status: 4, action: 202),
             Message(root.GaoKey, messageType: 49, status: 3, action: -1),
             Message(root.GaoKey, messageType: 47, status: 3, action: 203),
@@ -31,9 +32,19 @@ internal static class CinematicCompanionActionRequestChecks
         };
         var resolvedCalls = CinematicCompanionActionRequestResolver.Resolve(candidates, actor, worldKey,
             [companionOwner, unrelatedOwner, boneOwnerWithoutHandler]);
-        Require(resolvedCalls is [{ Time: 0.5f, Call.Target: 0x7100596B,
-                Call.Selector: 0x3391, Call.Arguments: [201] }],
-            "Only an immediate companion status message with a resolved companion receiver callback may request a body action.");
+        Require(resolvedCalls.PreviewCalls is
+            [
+                { Time: 0.5f, Call.Target: 0x7100596B, Call.Selector: 0x3391, Call.Arguments: [201] },
+                { Time: 0.5f, Call.Target: 0x7100596B, Call.Selector: 0x3391, Call.Arguments: [206] }
+            ],
+            "Only non-deferred companion status messages with a resolved receiver callback may request a body-action preview.");
+        Require(resolvedCalls.Diagnostics is [{ } diagnostic]
+            && diagnostic.Contains("co_current_mode is 9 or 17", StringComparison.Ordinal)
+            && diagnostic.Contains("old_companion_status", StringComparison.Ordinal)
+            && diagnostic.Contains("following ANI pass", StringComparison.Ordinal)
+            && diagnostic.Contains("continuous timeline", StringComparison.Ordinal)
+            && diagnostic.Contains("frame cadence", StringComparison.Ordinal),
+            "Companion action preview must report Iris status/mode gates and the source-confirmed deferred EVE-to-ANI handoff limit.");
 
         var track = new AnimationTrack
         {
@@ -49,9 +60,17 @@ internal static class CinematicCompanionActionRequestChecks
             [(worldKey, actionKitKey)] = new() { [201] = Action() }
         };
         var bodyTimeline = CinematicBodyTimeline.Create(clip, actor, worldKey, kitActions,
-            [(.5f, merge), .. resolvedCalls]);
-        if (bodyTimeline.ActionCount != 1 || !bodyTimeline.Sample(.5f).Any())
+            [(.5f, merge), .. resolvedCalls.PreviewCalls]);
+        bodyTimeline.AddDiagnostics(resolvedCalls.Diagnostics);
+        var actionAtRequest = bodyTimeline.Sample(.5f).FirstOrDefault();
+        var actionAfterRequest = bodyTimeline.Sample(.625f).FirstOrDefault();
+        if (bodyTimeline.ActionCount != 1 || actionAtRequest.Track == null
+            || actionAtRequest.Time != 0 || actionAfterRequest.Track == null
+            || Math.Abs(actionAfterRequest.Time - 0.125f) > 0.0001f)
             throw new InvalidDataException("The event-track action-kit merge must resolve the following companion action request.");
+        if (!bodyTimeline.Diagnostics.Any(diagnostic => diagnostic.Contains("co_current_mode is 9 or 17",
+            StringComparison.Ordinal)))
+            throw new InvalidDataException("Body animation diagnostics omitted the unresolved companion mode gate.");
 
         var document = new SceneDocument();
         var world = new WorldData { Key = worldKey, Name = "Companion event fixture" };
@@ -87,15 +106,20 @@ internal static class CinematicCompanionActionRequestChecks
         [new CinematicEmbeddedEventTrackList(0x400, "scripted actor actions", worldKey, "SceneEvents", 0x401,
             [new CinematicEmbeddedEventTrack(0, root.GaoKey, -1, 0, 2, 2)
             {
-                Calls = [(.5f, merge), .. resolvedCalls]
+                Calls = [(.5f, merge), Message(root.GaoKey, messageType: 49, status: 3, action: 201)]
             }])];
         document.CinematicActionKitsByOwner[(worldKey, actionKitKey)] = kitActions[(worldKey, actionKitKey)];
         var playback = CinematicPlayback.Discover(document, world, new ResourceResolver()).Single();
         playback.Activate();
         bool playbackUsesMergedCompanionAction = actor.Clip?.CinematicBody?.ActionCount == 1;
+        bool playbackReportsUnknownModeGate = actor.Clip?.CinematicBody?.Diagnostics.Any(diagnostic =>
+            diagnostic.Contains("co_current_mode is 9 or 17", StringComparison.Ordinal)) == true;
+        string playbackDiagnostics = string.Join(" | ", actor.Clip?.CinematicBody?.Diagnostics ?? []);
         playback.Deactivate();
         if (!playbackUsesMergedCompanionAction)
             throw new InvalidDataException("Cinematic playback did not apply the nested EVE companion action request.");
+        if (!playbackReportsUnknownModeGate)
+            throw new InvalidDataException($"Cinematic playback omitted the companion mode-gate diagnostic: {playbackDiagnostics}");
 
         Console.WriteLine("PASS: callback-scoped companion messages resolve body actions after same-time EVE action-kit merges");
     }

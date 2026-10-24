@@ -2,6 +2,25 @@ namespace JadeView;
 
 internal static class CinematicTimelineFlagAnalyzer
 {
+    internal static IEnumerable<(float Time, CinematicLiteralCall Call)>? ExternalTimelineCalls(
+        CinematicScriptOwner owner, uint? sourceClipKey,
+        IEnumerable<(float Time, CinematicLiteralCall Call)>? timelineCalls)
+    {
+        // The selected cinematic clip is decoded from the SceneEvents resource
+        // it previews. Its state writes cannot prove that the same owner passed
+        // the gates that would start that resource.
+        return sourceClipKey is { } clipKey && owner.SceneEventsKey == clipKey
+            ? null
+            : timelineCalls;
+    }
+
+    internal static float? FindFirstExternalStartFlagTime(CinematicScriptOwner owner,
+        uint sourceClipKey, IEnumerable<(float Time, CinematicLiteralCall Call)> timelineCalls)
+    {
+        var externalCalls = ExternalTimelineCalls(owner, sourceClipKey, timelineCalls);
+        return externalCalls == null ? null : FindFirstSatisfiedStartFlagTime(owner, externalCalls);
+    }
+
     internal static float? FindFirstSatisfiedStartFlagTime(CinematicScriptOwner owner,
         IEnumerable<(float Time, CinematicLiteralCall Call)> timelineCalls)
     {
@@ -39,9 +58,9 @@ internal static class CinematicTimelineFlagAnalyzer
     }
 
     internal static CinematicTimelineFlagGate[] Analyze(CinematicScriptOwner owner,
-        IEnumerable<(float Time, CinematicLiteralCall Call)> timelineCalls, float playhead)
+        IEnumerable<(float Time, CinematicLiteralCall Call)>? timelineCalls, float playhead)
     {
-        var writes = timelineCalls
+        var writes = (timelineCalls ?? [])
             .Select(item => DecodeWrite(item.Time, item.Call))
             .OfType<FlagWrite>()
             .Where(write => write.Flag > 0)

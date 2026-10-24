@@ -71,6 +71,14 @@ internal static class CinematicScriptCallbackStateEffectChecks
             && effects[7].StateEffect.Contains("authored objects become invisible/inactive", StringComparison.Ordinal)
             && effects[7].StateEffect.Contains("generated objects may be detached and removed", StringComparison.Ordinal),
             "OBJDestroy must retain its two source-confirmed lifecycle outcomes without inventing the selected target.");
+        var identityGuardedCall = Call("OBJ_FlagInactiveSet", ["1"],
+        [new("if", "AI_EvalFunc_OBJ_FlagsIdentityTest_C(AI_gpst_CurrentGameObject, 0x20)", 122)], 123);
+        CinematicScriptCallbackStateEffect guardedEffect = CinematicScriptCallbackStateEffectAnalyzer.Analyze(
+            owner with { SerializedGaoFlags = 0x20 }, [identityGuardedCall], [])[0];
+        Check(guardedEffect.SerializedBranchFindings.Length == 1
+            && guardedEffect.SerializedBranchFindings[0].Contains("if branch true", StringComparison.Ordinal)
+            && guardedEffect.SerializedBranchFindings[0].Contains("0x00000020", StringComparison.Ordinal),
+            "Callback state-effect candidates should carry recognized serialized identity-predicate evidence.");
         var conditionalReceiverCall = new CinematicScriptReachableEngineCall("test_callback",
             "OBJ_FlagInvisibleSet", "C", ["receiver"], [], [], [], [], "test_script.c", 118,
             "callback[2] -> test_callback",

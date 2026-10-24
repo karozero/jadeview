@@ -181,6 +181,11 @@ internal static class CinematicScriptReader
             || dispatch.StartsWith("register-callback:", StringComparison.Ordinal);
     }
 
+    internal static IReadOnlyDictionary<string, CinematicScriptAiTrackSlotProvenance>
+        PossibleCallbackTrackSlots(CinematicScriptOwner owner) =>
+        CinematicScriptAiTrackSlotProvenanceAnalyzer.Analyze(owner.CallbackSlots,
+            FunctionCalls.Value, owner.ModelFunctionNames.ToHashSet(StringComparer.Ordinal));
+
     internal static CinematicScriptCallbackDispatchSite[] DispatchSitesFor(CinematicScriptFunctionPath[] paths)
     {
         var registeredIds = paths.SelectMany(path => Regex.Matches(path.Path, @"register-callback:(-?\d+)")

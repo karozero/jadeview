@@ -12,10 +12,17 @@ internal static class ArchiveStartupScriptAudit
         public object[] CallBindings { get; init; } = [];
         public object[] ConstantBranches { get; init; } = [];
         public object[] ScalarConstantAssignments { get; init; } = [];
+        public object[] TrackMutations { get; init; } = [];
     }
     private sealed record VariableSummary(string Key, string Name, string Status,
-        VariableDescriptorSummary[] Descriptors,
-        string? Diagnostic);
+        string DefaultValuesStatus, VariableDescriptorSummary[] Descriptors,
+        PcAiGlobalVariableDefault[] Defaults,
+        string? Diagnostic)
+    {
+        public object[] InitializationCallbacks { get; init; } = [];
+    }
+    private sealed record InstanceVariableSnapshot(string? Key, string Status,
+        object[] Values, string? Diagnostic);
     private sealed record VariableDescriptorSummary(int Offset, string Name, ushort Type, string TypeName,
         ushort Flags, int ArrayDimensions, uint ArrayLength);
 
@@ -43,10 +50,12 @@ internal static class ArchiveStartupScriptAudit
             .Where(resource => resource.TypeTag == ".ofc")
             .Select(ReadFunctionSummary)
             .ToArray();
+        InstanceVariableSnapshot instanceVariableSnapshot = ReadInstanceVariableSnapshot(
+            inventory.InstanceVariablesKey);
         string outputPath = Path.Combine(output, "archive-startup-script-inventory.json");
         File.WriteAllText(outputPath, JsonSerializer.Serialize(new
         {
-            SchemaVersion = 2,
+            SchemaVersion = 3,
             Archive = Path.GetFileName(archive.PathName),
             StartKey = inventory.StartKey.ToString("X8"),
             inventory.Status,
@@ -55,6 +64,7 @@ internal static class ArchiveStartupScriptAudit
             inventory.ModelName,
             InstanceVariablesKey = inventory.InstanceVariablesKey?.ToString("X8"),
             inventory.InstanceVariablesName,
+            InstanceVariableSnapshot = instanceVariableSnapshot,
             Resources = inventory.ModelResources.Select(resource => new
             {
                 Key = resource.Key.ToString("X8"),
@@ -65,7 +75,7 @@ internal static class ArchiveStartupScriptAudit
             Variables = variables,
             Functions = functions,
             inventory.Diagnostic,
-            Scope = "Static links and serialized AI nodes from BIG startKey; this is not callback execution or runtime world state."
+            Scope = "Static links and serialized AI nodes from BIG startKey plus the archive-stored instance-variable snapshot; callbacks are not executed and snapshot values are not live runtime state."
         }, new JsonSerializerOptions { WriteIndented = true }));
 
         Console.WriteLine($"GLOBAL AI STARTUP: {outputPath}; startKey={inventory.StartKey:X8}; "
@@ -121,7 +131,8 @@ internal static class ArchiveStartupScriptAudit
                     }).ToArray();
 
                 object[] keyInstructions = parsed.Nodes
-                    .Where(node => node.SymbolName is "AITrackCurChangeNow" or "AIExecute"
+                    .Where(node => node.SymbolName is "AITrackChange" or "AITrackStop" or "AITrackCurChange"
+                        or "AITrackCurChangeNow" or "AITrackCurStop" or "AIExecute"
                         or "WORLoadList" or "WORActive" || node.BranchDescription != null)
                     .Select(node => (object)new
                     {
@@ -181,6 +192,17 @@ internal static class ArchiveStartupScriptAudit
                         assignment.Value,
                         assignment.AssignmentNodeIndex
                     }).ToArray();
+                object[] trackMutations = PcAiTrackMutationAnalyzer.Analyze(parsed, functionNamesByKey)
+                    .Select(mutation => (object)new
+                    {
+                        mutation.NodeIndex,
+                        mutation.Operation,
+                        mutation.TrackIndex,
+                        TargetKey = mutation.TargetKey is { } targetKey ? $"{targetKey:X8}" : null,
+                        mutation.TargetName,
+                        mutation.Status,
+                        Evidence = "Serialized AI-track mutation candidate; branches, stack expressions, and runtime dispatch are not evaluated."
+                    }).ToArray();
                 object[] instructions = parsed.Nodes.Select(node => (object)new
                 {
                     node.Index,
@@ -207,7 +229,8 @@ internal static class ArchiveStartupScriptAudit
                 {
                     CallBindings = callBindings,
                     ConstantBranches = constantBranches,
-                    ScalarConstantAssignments = scalarConstantAssignments
+                    ScalarConstantAssignments = scalarConstantAssignments,
+                    TrackMutations = trackMutations
                 };
             }
             catch (Exception exception) when (exception is InvalidDataException or IOException)
@@ -230,29 +253,104 @@ internal static class ArchiveStartupScriptAudit
             }
         }
 
+        InstanceVariableSnapshot ReadInstanceVariableSnapshot(uint? key)
+        {
+            if (key is not { } instanceKey)
+                return new(null, "Unavailable", [], "The startup AI does not link an instance-variable resource.");
+
+            Entry[] entries = archive.Entries.Where(entry => entry.Key == instanceKey).Take(2).ToArray();
+            if (entries.Length != 1)
+                return new(instanceKey.ToString("X8"), entries.Length == 0 ? "MissingResource" : "AmbiguousResource",
+                    [], "Instance-variable key does not resolve to one archive entry.");
+
+            try
+            {
+                byte[] payload = archive.Read(entries[0], 16 * 1024 * 1024);
+                CinematicScriptVariable[] values = PcVariableSnapshotReader.Read(payload, "instance");
+                object[] serializedValues = values.Select(variable => (object)new
+                {
+                    variable.Name,
+                    variable.Type,
+                    variable.Value,
+                    variable.IntegerArrayValues,
+                    variable.ArrayValueCount
+                }).ToArray();
+                return new(instanceKey.ToString("X8"), "Parsed", serializedValues,
+                    "These values are stored in the archive startup instance OVA, not the live or save-overridden game state.");
+            }
+            catch (Exception exception) when (exception is InvalidDataException or IOException
+                or OverflowException or ArgumentOutOfRangeException)
+            {
+                return new(instanceKey.ToString("X8"), "UnsupportedLayout", [], exception.Message);
+            }
+        }
+
         VariableSummary ReadVariableSummary(ArchiveScriptResourceReference resource)
         {
             if (resource.Status != "Resolved")
                 return new(resource.Key.ToString("X8"), resource.Name ?? "unresolved", resource.Status,
-                    [], "Variable resource link did not resolve uniquely.");
+                    "Unavailable", [], [], "Variable resource link did not resolve uniquely.");
             Entry[] entries = archive.Entries.Where(entry => entry.Key == resource.Key).Take(2).ToArray();
             if (entries.Length != 1)
                 return new(resource.Key.ToString("X8"), resource.Name ?? "unresolved", "AmbiguousResource",
-                    [], "Variable key no longer resolves uniquely.");
+                    "Unavailable", [], [], "Variable key no longer resolves uniquely.");
             try
             {
                 byte[] payload = archive.Read(entries[0], 16 * 1024 * 1024);
                 if (!PcAiGlobalVariableCatalogReader.TryRead(payload,
                     out PcAiGlobalVariableDescriptor[] parsed, out string error))
-                    return new(resource.Key.ToString("X8"), entries[0].Name, "UnsupportedLayout", [], error);
+                    return new(resource.Key.ToString("X8"), entries[0].Name, "UnsupportedLayout",
+                        "Unavailable", [], [], error);
                 VariableDescriptorSummary[] descriptors = parsed.Select(variable => new VariableDescriptorSummary(
                     variable.Offset, variable.Name, variable.Type, PcAiNodeCatalog.TypeName(variable.Type),
                     variable.Flags, variable.ArrayDimensions, variable.ArrayLength)).ToArray();
-                return new(resource.Key.ToString("X8"), entries[0].Name, "Parsed", descriptors, null);
+                try
+                {
+                    PcAiGlobalVariableDefault[] defaults = PcAiGlobalVariableDefaultReader.Read(payload, parsed);
+                    string defaultsStatus = defaults.Length > 0
+                        && defaults.All(value => value.ValueStatus == "NoSerializedDefaults")
+                            ? "NoSerializedDefaults"
+                            : "Parsed";
+                    object[] initializationCallbacks = PcAiGlobalVariableDefaultReader
+                        .ReadInitializationCallbackKeys(payload)
+                        .Select((key, slot) =>
+                        {
+                            Entry[] callbackMatches = key is 0 or uint.MaxValue
+                                ? []
+                                : archive.Entries.Where(entry => entry.Key == key).Take(2).ToArray();
+                            string callbackStatus = key is 0 or uint.MaxValue
+                                ? "NullReference"
+                                : callbackMatches.Length switch
+                                {
+                                    1 => "Resolved",
+                                    0 => "MissingResource",
+                                    _ => "AmbiguousResource"
+                                };
+                            return (object)new
+                            {
+                                Slot = slot,
+                                Key = key.ToString("X8"),
+                                Status = callbackStatus,
+                                Name = callbackMatches.Length == 1 ? callbackMatches[0].Name : null
+                            };
+                        }).ToArray();
+                    return new VariableSummary(resource.Key.ToString("X8"), entries[0].Name,
+                        "Parsed", defaultsStatus, descriptors, defaults, null)
+                    {
+                        InitializationCallbacks = initializationCallbacks
+                    };
+                }
+                catch (Exception exception) when (exception is InvalidDataException or OverflowException
+                    or ArgumentOutOfRangeException)
+                {
+                    return new(resource.Key.ToString("X8"), entries[0].Name, "Parsed",
+                        "UnsupportedLayout", descriptors, [], exception.Message);
+                }
             }
             catch (Exception exception) when (exception is InvalidDataException or IOException)
             {
-                return new(resource.Key.ToString("X8"), entries[0].Name, "ReadError", [], exception.Message);
+                return new(resource.Key.ToString("X8"), entries[0].Name, "ReadError",
+                    "Unavailable", [], [], exception.Message);
             }
         }
     }

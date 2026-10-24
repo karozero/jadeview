@@ -4,69 +4,129 @@
     "Api": "AI_ExecCallback",
     "Source": "animation.c",
     "Line": 2391,
-    "Call": "AI_ExecCallback(v1, 3)"
+    "Call": "AI_ExecCallback(v1, 3)",
+    "EnclosingFunction": "ANI_BeforeRender",
+    "ExecutionContext": "Actor pre-render animation callback",
+    "ContextEvidence": "Iris animation.c:2390-2392,2396-2410",
+    "DispatcherEligibility": "AI_ExecCallback requires extended+AI instance, both blocking flags2 bits clear, a model, and at least one fixed or dynamic callback; fixed matching slot runs before matching dynamic entries.",
+    "CallerEligibility": "Reached through visible-object traversal; object must be valid, flags2 0x4 clear, GAO flags 0x2 set, and have a skeleton group.",
+    "TargetResolution": "The visible actor passed to ANI_BeforeRender."
   },
   {
     "CallbackId": 3,
     "Api": "AI_ExecCallback",
     "Source": "animation.c",
     "Line": 2646,
-    "Call": "AI_ExecCallback(mainGao, 3)"
+    "Call": "AI_ExecCallback(mainGao, 3)",
+    "EnclosingFunction": "ANI_Render",
+    "ExecutionContext": "Actor animation render callback",
+    "ContextEvidence": "Iris animation.c:2631-2648",
+    "DispatcherEligibility": "AI_ExecCallback requires extended+AI instance, both blocking flags2 bits clear, a model, and at least one fixed or dynamic callback; fixed matching slot runs before matching dynamic entries.",
+    "CallerEligibility": "Runs only when animPtr[0] exists and the actor was not initialized in ANI_MainCall; the lead animation is advanced at zero delta before dispatch.",
+    "TargetResolution": "The actor being rendered."
   },
   {
     "CallbackId": 2,
     "Api": "AI_ExecCallbackAll",
     "Source": "engine.c",
     "Line": 288,
-    "Call": "AI_ExecCallbackAll(world, 2)"
+    "Call": "AI_ExecCallbackAll(world, 2)",
+    "EnclosingFunction": "ENG_OneWorldEngineCall",
+    "ExecutionContext": "World update after REC and hierarchy processing",
+    "ContextEvidence": "Iris engine.c:226-288",
+    "DispatcherEligibility": "Engine running; iterates current-world AICallbacksTablePF, skips invalid pointers, then applies AI_ExecCallback gates.",
+    "CallerEligibility": "This world callback-all pass follows dynamics, collision, records, and hierarchy processing in ENG_OneWorldEngineCall.",
+    "TargetResolution": "Each valid object currently in the world AI-callback EOT table."
   },
   {
     "CallbackId": 3,
     "Api": "AI_ExecCallback",
     "Source": "world.c",
     "Line": 2465,
-    "Call": "AI_ExecCallback(v18, 3)"
+    "Call": "AI_ExecCallback(v18, 3)",
+    "EnclosingFunction": "WOR_Render_All_GO",
+    "ExecutionContext": "Per-object world-render callback",
+    "ContextEvidence": "Iris world.c:2419-2465",
+    "DispatcherEligibility": "AI_ExecCallback requires extended+AI instance, both blocking flags2 bits clear, a model, and at least one fixed or dynamic callback; fixed matching slot runs before matching dynamic entries.",
+    "CallerEligibility": "Runs during visible-world-object traversal for a valid object when flags2 0x4 and display flag 0x80000 are clear.",
+    "TargetResolution": "The visible world object passed to WOR_Render_All_GO."
   },
   {
     "CallbackId": 0,
     "Api": "AI_ExecCallback",
     "Source": "graphicsobjects/geo.c",
     "Line": 772,
-    "Call": "AI_ExecCallback(aiCBGao, 0)"
+    "Call": "AI_ExecCallback(aiCBGao, 0)",
+    "EnclosingFunction": "GEO_Render",
+    "ExecutionContext": "Per-GAO geometry callback before geometry processing",
+    "ContextEvidence": "Iris graphicsobjects/geo.c:761-780",
+    "DispatcherEligibility": "AI_ExecCallback requires extended+AI instance, both blocking flags2 bits clear, a model, and at least one fixed or dynamic callback; fixed matching slot runs before matching dynamic entries.",
+    "CallerEligibility": "Only inside the material/draw-list branch before ordinary geometry processing.",
+    "TargetResolution": "The visual GAO if it has AI; otherwise a bone GAO may route to its ANI initialization/reference GAO when that reference has AI."
   },
   {
     "CallbackId": 0,
     "Api": "AI_ExecCallback",
     "Source": "graphicsobjects/geo.c",
     "Line": 778,
-    "Call": "AI_ExecCallback(aiCBGao, 0)"
+    "Call": "AI_ExecCallback(aiCBGao, 0)",
+    "EnclosingFunction": "GEO_Render",
+    "ExecutionContext": "Per-GAO geometry callback before geometry processing",
+    "ContextEvidence": "Iris graphicsobjects/geo.c:761-780",
+    "DispatcherEligibility": "AI_ExecCallback requires extended+AI instance, both blocking flags2 bits clear, a model, and at least one fixed or dynamic callback; fixed matching slot runs before matching dynamic entries.",
+    "CallerEligibility": "Only inside the material/draw-list branch before ordinary geometry processing.",
+    "TargetResolution": "The visual GAO if it has AI; otherwise a bone GAO may route to its ANI initialization/reference GAO when that reference has AI."
   },
   {
     "CallbackId": 1,
     "Api": "AI_ExecCallback",
     "Source": "graphicsobjects/geo.c",
     "Line": 888,
-    "Call": "AI_ExecCallback(gao, 1)"
+    "Call": "AI_ExecCallback(gao, 1)",
+    "EnclosingFunction": "GEO_Render",
+    "ExecutionContext": "Per-GAO geometry callback after geometry processing",
+    "ContextEvidence": "Iris graphicsobjects/geo.c:794,879-895",
+    "DispatcherEligibility": "AI_ExecCallback requires extended+AI instance, both blocking flags2 bits clear, a model, and at least one fixed or dynamic callback; fixed matching slot runs before matching dynamic entries.",
+    "CallerEligibility": "Only after geometry processing inside the valid-vertices path.",
+    "TargetResolution": "The visual GAO if it has AI; otherwise a bone GAO may route to its ANI initialization/reference GAO when that reference has AI."
   },
   {
     "CallbackId": 1,
     "Api": "AI_ExecCallback",
     "Source": "graphicsobjects/geo.c",
     "Line": 893,
-    "Call": "AI_ExecCallback(aiCBGao, 1)"
+    "Call": "AI_ExecCallback(aiCBGao, 1)",
+    "EnclosingFunction": "GEO_Render",
+    "ExecutionContext": "Per-GAO geometry callback after geometry processing",
+    "ContextEvidence": "Iris graphicsobjects/geo.c:794,879-895",
+    "DispatcherEligibility": "AI_ExecCallback requires extended+AI instance, both blocking flags2 bits clear, a model, and at least one fixed or dynamic callback; fixed matching slot runs before matching dynamic entries.",
+    "CallerEligibility": "Only after geometry processing inside the valid-vertices path.",
+    "TargetResolution": "The visual GAO if it has AI; otherwise a bone GAO may route to its ANI initialization/reference GAO when that reference has AI."
   },
   {
     "CallbackId": 0,
     "Api": "AI_ExecCallback",
     "Source": "graphicsobjects/geostr.c",
     "Line": 2894,
-    "Call": "AI_ExecCallback(a1, 0)"
+    "Call": "AI_ExecCallback(a1, 0)",
+    "EnclosingFunction": "STR_Render",
+    "ExecutionContext": "Per-object string-render callback before string rendering",
+    "ContextEvidence": "Iris graphicsobjects/geostr.c:2879-2895",
+    "DispatcherEligibility": "AI_ExecCallback requires extended+AI instance, both blocking flags2 bits clear, a model, and at least one fixed or dynamic callback; fixed matching slot runs before matching dynamic entries.",
+    "CallerEligibility": "Runs when the string render counter differs and the string material exists.",
+    "TargetResolution": "The string GAO."
   },
   {
     "CallbackId": 1,
     "Api": "AI_ExecCallback",
     "Source": "graphicsobjects/geostr.c",
     "Line": 3143,
-    "Call": "AI_ExecCallback(v1, 1)"
+    "Call": "AI_ExecCallback(v1, 1)",
+    "EnclosingFunction": "STR_Render",
+    "ExecutionContext": "Per-object string-render callback after string rendering",
+    "ContextEvidence": "Iris graphicsobjects/geostr.c:3134-3144",
+    "DispatcherEligibility": "AI_ExecCallback requires extended+AI instance, both blocking flags2 bits clear, a model, and at least one fixed or dynamic callback; fixed matching slot runs before matching dynamic entries.",
+    "CallerEligibility": "Runs after STR/GFX rendering when the rendered GAO has an extended component and AI instance.",
+    "TargetResolution": "The string GAO."
   }
 ]

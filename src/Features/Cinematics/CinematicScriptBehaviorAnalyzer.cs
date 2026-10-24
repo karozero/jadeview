@@ -4,7 +4,6 @@ namespace JadeView;
 
 internal static partial class CinematicScriptBehaviorAnalyzer
 {
-    private const string CinematicStartCallback = "Cine_Events_cine_tests_depart";
     private const string CinematicEndCallback = "Cine_Events_Cine_exec_EndOfEvents";
     private const string CinematicGoToEventsCallback = "Cine_Events_Cine_exec_GoToEvents";
     private const string CinematicPlayTrackCallback = "Cine_Events_cine_play_eventtrack";
@@ -37,18 +36,19 @@ internal static partial class CinematicScriptBehaviorAnalyzer
         IEnumerable<SceneObject>? worldObjects = null)
     {
         var diagnostics = new List<string>();
-        if (HasCinematicFunctionReference(owner, CinematicStartCallback))
+        if (CinematicStartCallbackChain.IsReferenced(owner))
         {
-            bool startCallbackIsAssigned = owner.CallbackNames.Contains(CinematicStartCallback,
-                StringComparer.Ordinal);
+            string[] assignedStartCallbacks = CinematicStartCallbackChain.AssignedFunctions(owner);
             diagnostics.Add("Cine_Events lifecycle: firstinit enters init immediately unless f_first_delay is set; "
                 + "init computes enabled tests and transfers to cine_tests_depart. The archive does not show "
                 + "whether gameplay instantiated or enabled this owner.");
-            if (!startCallbackIsAssigned && owner.ModelFunctionNames.Contains(CinematicStartCallback,
-                    StringComparer.Ordinal))
+            if (assignedStartCallbacks.Length > 0)
+                diagnostics.Add(CinematicStartCallbackChain.DescribeFlow(assignedStartCallbacks)
+                    + " Assignment shows availability of the start path, not callback dispatch.");
+            else
                 diagnostics.Add("Cine_Events lifecycle functions are referenced by this script model. The effective "
-                    + "owner callback slots are separate data; source references and call flow describe available "
-                    + "behavior, not proof that each function is assigned or executed.");
+                    + "owner callback slots do not enter the startup chain; source references and call flow do not "
+                    + "prove that the callback was assigned or executed.");
             diagnostics.Add("Iris runtime scheduling: AI_ReinitInstance copies script-model callback slots into "
                 + "instance tracks, and AI_RunInstance dispatches those tracks from the world update. This is "
                 + "the generic script execution path, not proof that this owner was active in a particular playthrough.");
@@ -146,7 +146,7 @@ internal static partial class CinematicScriptBehaviorAnalyzer
     internal static string[] AnalyzeStartGates(CinematicScriptOwner owner,
         IEnumerable<SceneObject>? worldObjects = null)
     {
-        if (!HasCinematicFunctionReference(owner, CinematicStartCallback)) return [];
+        if (!CinematicStartCallbackChain.IsReferenced(owner)) return [];
 
         var diagnostics = new List<string>();
         int testsMask = DeriveStartGateMask(owner);

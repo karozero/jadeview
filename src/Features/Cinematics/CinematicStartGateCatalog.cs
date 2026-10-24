@@ -21,9 +21,9 @@ internal static class CinematicStartGateCatalog
     internal static readonly CinematicStartGateDefinition[] StartGates =
     [
         new(Zone1, "des_o_actor_zone1", "zone 1 collision / optional model filter", "Zone 1 collision",
-            ["live actor position", "zone collision result"]),
+            ["resolved des_o_actor_detec1", "runtime collision overlap/query result"]),
         new(Zone2, "des_o_actor_zone2", "zone 2 collision relation", "Zone 2 relation",
-            ["live actor/zone relation"]),
+            ["resolved des_o_actor_detec2", "runtime zone identity flag 0x400", "runtime collision query result"]),
         new(Activity, "des_o_actor_status1", "actor activity state", "Actor activity",
             ["target runtime flags2 bit 0 (activated-world state)", "des_i_activity_test1"]),
         new(Capability, "des_o_actor_capa1", "actor capability mask", "Actor capabilities", []),

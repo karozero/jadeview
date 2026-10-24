@@ -7,7 +7,9 @@ internal sealed record CinematicScriptFunctionCall(string To, string Dispatch, i
 internal sealed record CinematicScriptFunctionPath(string FunctionName, string Path);
 
 internal sealed record CinematicScriptCallbackDispatchSite(int CallbackId, string Api,
-    string Source, int Line, string Call);
+    string Source, int Line, string Call, string EnclosingFunction, string ExecutionContext,
+    string ContextEvidence, string DispatcherEligibility, string CallerEligibility,
+    string TargetResolution);
 
 internal sealed record CinematicWorldSchedulerOperation(string Operation, string Arguments,
     string[] ArgumentSources, string Source, int Line);

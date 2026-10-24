@@ -167,6 +167,15 @@ internal static partial class CinematicScriptFlagFlowAnalyzer
         return graph.GetValueOrDefault(selected.Id, []);
     }
 
+    internal static CinematicScriptFlagLink[] PotentialWritersForFlag(
+        IEnumerable<CinematicScriptFlagLink> links, int flag) => links
+        .Where(link => link.Flag == flag
+            && link.Relation == CinematicScriptFlagLinkRelation.RelatedOwnerWrites)
+        .DistinctBy(link => link.RelatedOwner.Id)
+        .OrderBy(link => link.RelatedOwner.Name, StringComparer.OrdinalIgnoreCase)
+        .ThenBy(link => link.RelatedOwner.OwnerKey)
+        .ToArray();
+
     internal static Dictionary<CinematicScriptOwnerId, CinematicScriptFlagLink[]> BuildLinkGraph(
         IEnumerable<CinematicScriptOwner> owners,
         IEnumerable<CinematicScriptEventTrack>? eventTracks = null)
@@ -212,13 +221,15 @@ internal static partial class CinematicScriptFlagFlowAnalyzer
             string stateRelation = DescribeStateRelation(writer.Access.WrittenSet, reader.Access.RequiredSet);
 
             linksByOwner[writer.Owner.Id].Add(new(reader.Owner, flag,
+                CinematicScriptFlagLinkRelation.ThisOwnerWrites,
                 $"this owner writes {writer.Access.VariableName} ({writer.Access.Description}); related owner reads {reader.Access.VariableName} ({reader.Access.Description}); {stateRelation}"));
             linksByOwner[reader.Owner.Id].Add(new(writer.Owner, flag,
+                CinematicScriptFlagLinkRelation.RelatedOwnerWrites,
                 $"related owner writes {writer.Access.VariableName} ({writer.Access.Description}); this owner reads {reader.Access.VariableName} ({reader.Access.Description}); {stateRelation}"));
         }
 
         return linksByOwner.ToDictionary(pair => pair.Key,
-            pair => pair.Value.DistinctBy(link => (link.RelatedOwner.Id, link.Flag, link.Direction))
+            pair => pair.Value.DistinctBy(link => (link.RelatedOwner.Id, link.Flag, link.Relation, link.Direction))
                 .OrderBy(link => link.RelatedOwner.Name, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(link => link.Flag)
                 .ToArray());
@@ -337,4 +348,11 @@ internal static partial class CinematicScriptFlagFlowAnalyzer
 
 internal sealed record CinematicScriptFlagAccess(int Flag, string Access, string VariableName, string Description,
     bool? RequiredSet = null, bool? WrittenSet = null);
-internal sealed record CinematicScriptFlagLink(CinematicScriptOwner RelatedOwner, int Flag, string Direction);
+internal enum CinematicScriptFlagLinkRelation
+{
+    ThisOwnerWrites,
+    RelatedOwnerWrites
+}
+
+internal sealed record CinematicScriptFlagLink(CinematicScriptOwner RelatedOwner, int Flag,
+    CinematicScriptFlagLinkRelation Relation, string Direction);

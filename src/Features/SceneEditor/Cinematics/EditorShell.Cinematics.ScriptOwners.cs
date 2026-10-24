@@ -147,15 +147,16 @@ public sealed partial class EditorShell
             }
         }
 
-        if (ImGui.CollapsingHeader("Callback slots"))
+        if (ImGui.CollapsingHeader("AI update tracks"))
         {
             if (selectedOwner.CallbackSlots is { } callbackSlots)
             {
-                DrawCategoryTitle($"Script-model callback slots ({callbackSlots.Length})");
+                DrawCategoryTitle($"AI update tracks · model defaults ({callbackSlots.Length})");
+                ImGui.TextDisabled("Iris loads up to five callback functions as mutable AI tracks. The world AI pass advances due tracks; these are not clip timestamps or engine-event hooks.");
                 var configuredRange = CinematicScriptCallbackCoverage.ResolveConfiguredRange(callbackSlots);
                 ImGui.TextDisabled(configuredRange is { } range
-                    ? $"Iris scans configured callback span {range.FirstSlot}–{range.LastSlot} in ascending slot order; empty gaps are skipped."
-                    : "No callback slots are configured on this model.");
+                    ? $"Configured scheduler span: tracks {range.FirstSlot}–{range.LastSlot}, visited in ascending order; empty gaps are skipped."
+                    : "No AI update tracks are configured on this model.");
                 var functionResources = selectedOwner.FunctionResources.ToDictionary(resource => resource.FunctionKey);
                 foreach (var slot in callbackSlots)
                 {
@@ -167,10 +168,9 @@ public sealed partial class EditorShell
                         : functionResources.TryGetValue(slot.FunctionKey, out var functionResource)
                             ? $" · .ofc {functionResource.Status}"
                             : " · no matching .ofc reference in this model";
-                    ImGui.BulletText($"Slot {slot.Index:D2}: {functionName}{resourceState}");
+                    ImGui.BulletText($"Track {slot.Index:D2}: {functionName}{resourceState}");
                 }
-                ImGui.TextDisabled("Configured callbacks may still be skipped at runtime by callback timers, AI table membership, distance, process flags, and other live state.");
-
+                DrawCinematicScriptAiTrackMutationCandidates(selectedOwner);
 
             }
             else

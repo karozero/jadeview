@@ -26,6 +26,22 @@ internal static class ArchiveCinematicScriptIndex
     private sealed record EventFlagAccess(string LinkName, string EventKey, string EventName,
         int TrackIndex, float Time, string TargetKey, int Flag, string Access, string Function,
         bool? WrittenSet, string Description);
+    private sealed record OwnerTrackMutation(string FunctionKey, string FunctionName,
+        int NodeIndex, string Operation, int? TrackIndex, string? TargetKey,
+        string? TargetName, string Status);
+    private sealed record TrackMutationOwner(string Container, string WorldKey, string WorldName,
+        string OwnerKey, string OwnerName, string BrainKey, string ModelKey,
+        OwnerTrackMutation[] Mutations);
+    private sealed record SerializedFunctionPayload(PcSerializedAiFunction? Function, string Status);
+    private sealed class AiFunctionPayloadCoverage
+    {
+        internal int ModelFunctionReferences;
+        internal int ResolvedFunctionResources;
+        internal int MissingFunctionResources;
+        internal int FullSerializedBodies;
+        internal int CompactMetadataOnly;
+        internal int UnsupportedPayloads;
+    }
     private sealed record UnmappedCallbackExample(string Container, string WorldKey, string WorldName,
         string OwnerKey, string OwnerName, string BrainKey, string ModelKey, int SlotIndex);
 
@@ -100,6 +116,9 @@ internal static class ArchiveCinematicScriptIndex
         var functionContainers = new Dictionary<uint, HashSet<string>>();
         var missingModels = new Dictionary<uint, HashSet<string>>();
         var ownerVariableSnapshots = new List<OwnerVariableSnapshot>();
+        var trackMutationOwners = new List<TrackMutationOwner>();
+        var parsedFunctionsByPayload = new Dictionary<string, SerializedFunctionPayload>(StringComparer.Ordinal);
+        var aiFunctionPayloadCoverage = new AiFunctionPayloadCoverage();
         var decodedEventClips = new Dictionary<(string Container, uint Key), AnimationClip>();
         var unmappedCallbackOwners = new Dictionary<uint, List<UnmappedCallbackExample>>();
         int containerIndex = 0;
@@ -233,6 +252,14 @@ internal static class ArchiveCinematicScriptIndex
                 catch (InvalidDataException)
                 {
                     // Keep callback-slot coverage separate from variable-layout diagnostics.
+                }
+                OwnerTrackMutation[] ownerTrackMutations = ReadOwnerTrackMutations(model, resources,
+                    functionNames, parsedFunctionsByPayload, aiFunctionPayloadCoverage);
+                if (ownerTrackMutations.Length > 0)
+                {
+                    trackMutationOwners.Add(new(entry.Id, owner.World.ToString("X8"), worldName,
+                        owner.Key.ToString("X8"), owner.Name, brainKey.ToString("X8"),
+                        modelKey.ToString("X8"), ownerTrackMutations));
                 }
                 if (callbackSlots != null)
                 {
@@ -568,6 +595,20 @@ internal static class ArchiveCinematicScriptIndex
                 ? sourceFlagAccessOwners.Sum(owner => owner.EventAccesses.Length) : (int?)null,
             CineEventsOwners = cineEventsOwners,
             MessageGateOwners = messageGateOwners,
+            AiFunctionPayloadCoverage = new
+            {
+                aiFunctionPayloadCoverage.ModelFunctionReferences,
+                aiFunctionPayloadCoverage.ResolvedFunctionResources,
+                aiFunctionPayloadCoverage.MissingFunctionResources,
+                UniquePayloads = parsedFunctionsByPayload.Count,
+                aiFunctionPayloadCoverage.FullSerializedBodies,
+                aiFunctionPayloadCoverage.CompactMetadataOnly,
+                aiFunctionPayloadCoverage.UnsupportedPayloads
+            },
+            TrackMutationOwnerCount = trackMutationOwners.Count,
+            TrackMutationCandidateCount = trackMutationOwners.Sum(owner => owner.Mutations.Length),
+            TrackMutationOwnersTruncated = trackMutationOwners.Count > 1000,
+            TrackMutationOwners = trackMutationOwners.Take(1000).ToArray(),
             Limits = "Brain/model reference census plus initial merged OVA values, callback-analyzer accesses, direct Iris ARRGlobalIntFlag* calls, ARRBitTest/Set/Clear calls only when the source buffer resolves to Flag_speciaux_sauve, bounded ARRBitSetRange/ARRBitClearRange calls only when buffer and inclusive endpoints resolve within the 4488-byte Iris buffer, and literal saved-flag commands in owner-linked Events/SceneEvents EVE records. Owner-to-owner edge counts are complete for the recognized accesses, with up to 64 sample links per flag. Unknown saved-buffer aliases, dynamic/reversed/out-of-bounds ranges and unrelated bitsets are not decoded as saved flags. Cross-container script models are reused only when copies are byte-identical; a model-default OVA missing from the owner's scoped resource closure is reported as a variable error rather than guessed. OVA object-reference values remain serialized keys; owner-reference edges use container/world precedence and preserve ambiguous candidates, but do not prove runtime binding. Iris function labels are source-map matches, not proof of execution in this scene. Jaded is a later engine source and is not used as a retail-PC function map. Owner/action dispatch, script conditions and runtime state are not executed.",
             PreviewSignatures = PreviewSignatures.Select(signature => new
             { Role = signature.Key, FunctionKeys = signature.Value.Select(key => key.ToString("X8")).ToArray() }).ToArray(),
@@ -600,6 +641,67 @@ internal static class ArchiveCinematicScriptIndex
         foreach (Match match in pattern.Matches(File.ReadAllText(sourcePath)))
             functionNames[Convert.ToUInt32(match.Groups[1].Value, 16)] = match.Groups[2].Value;
         return functionNames;
+    }
+
+    private static OwnerTrackMutation[] ReadOwnerTrackMutations(RecordView model,
+        IReadOnlyDictionary<(char Kind, uint Key), RecordView> resources,
+        IReadOnlyDictionary<uint, string> functionNames,
+        IDictionary<string, SerializedFunctionPayload> parsedFunctionsByPayload,
+        AiFunctionPayloadCoverage coverage)
+    {
+        uint[] linkedFunctionKeys = model.References.Where(functionNames.ContainsKey)
+            .Distinct().ToArray();
+        coverage.ModelFunctionReferences += linkedFunctionKeys.Length;
+        if (linkedFunctionKeys.Length == 0) return [];
+
+        var linkedFunctionNames = linkedFunctionKeys.ToDictionary(key => key, key => functionNames[key]);
+        var mutations = new List<OwnerTrackMutation>();
+        foreach (uint functionKey in linkedFunctionKeys)
+        {
+            if (!resources.TryGetValue(('r', functionKey), out RecordView? functionRecord))
+            {
+                coverage.MissingFunctionResources++;
+                continue;
+            }
+            coverage.ResolvedFunctionResources++;
+            ReadOnlySpan<byte> payload = functionRecord.Source.AsSpan(functionRecord.Offset, functionRecord.Size);
+            string payloadHash = Convert.ToHexString(SHA256.HashData(payload));
+            if (!parsedFunctionsByPayload.TryGetValue(payloadHash, out SerializedFunctionPayload? parsedPayload))
+            {
+                if (PcSerializedAiFunctionReader.TryRead(payload, out PcSerializedAiFunction? parsedFunction,
+                        out _))
+                {
+                    parsedPayload = new(parsedFunction, "FullSerializedBody");
+                    coverage.FullSerializedBodies++;
+                }
+                else if (PcCompiledScriptFunctionReader.TryRead(payload,
+                             out PcCompiledScriptFunction? compactFunction, out _))
+                {
+                    parsedPayload = new(null, "CompactMetadataOnly");
+                    coverage.CompactMetadataOnly++;
+                }
+                else
+                {
+                    parsedPayload = new(null, "UnsupportedPayload");
+                    coverage.UnsupportedPayloads++;
+                }
+                parsedFunctionsByPayload.Add(payloadHash, parsedPayload);
+            }
+            PcSerializedAiFunction? function = parsedPayload.Function;
+            if (function == null) continue;
+
+            foreach (PcAiTrackMutation mutation in PcAiTrackMutationAnalyzer.Analyze(function,
+                         linkedFunctionNames))
+            {
+                mutations.Add(new(functionKey.ToString("X8"), functionNames[functionKey],
+                    mutation.NodeIndex, mutation.Operation, mutation.TrackIndex,
+                    mutation.TargetKey is { } targetKey ? targetKey.ToString("X8") : null,
+                    mutation.TargetName, mutation.Status));
+            }
+        }
+
+        return mutations.OrderBy(mutation => mutation.FunctionName, StringComparer.Ordinal)
+            .ThenBy(mutation => mutation.NodeIndex).ToArray();
     }
 
     private static SourceFlagAccessOwner? BuildSourceFlagAccessOwner(OwnerVariableSnapshot snapshot,
@@ -917,7 +1019,7 @@ internal static class ArchiveCinematicScriptIndex
     {
         var loader = typeof(SceneActor).Assembly.GetType("JadeView.PcSceneLoader")!;
         var read = loader.GetMethod("Read", BindingFlags.Static | BindingFlags.NonPublic)!;
-        object replay = read.Invoke(null, [bytes, archivePath])!;
+        object replay = read.Invoke(null, [bytes, archivePath, null])!;
         string? error = (string?)GetField(replay, "Error");
         if (error != null) throw new InvalidDataException($"{container}: {error}");
         var result = new List<RecordView>();

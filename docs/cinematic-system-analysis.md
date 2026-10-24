@@ -281,14 +281,14 @@ to a character-specific fallback.
 
 `--archive-cinematic-body-coverage <archive>` compares cinematic actor/clip
 bindings with decoded body-action requests and serialized action kits. The
-latest installed-PC archive run scanned all 91 FF containers, found 38
-cinematic worlds and 1,232 clips, and observed 441 skeletal actor/clip
-bindings with 1,429 resolved body-action segments. 198 bindings also contain
-direct bone tracks and 423 contain root tracks. Of the 145 bindings with no
-resolved body-action segment, 117 have root-transform data and 28 have direct
-bone tracks. Ten bindings contain at least one unresolved action request; seven
-of these still resolve other body actions. These paths overlap: an action kit
-can animate bones while the scene clip supplies actor placement.
+2026-10-24 installed-PC archive run scanned all 91 FF containers, found 38
+cinematic worlds and 208 clips, and observed 454 skeletal actor/clip bindings
+with 1,517 resolved body-action segments. 198 bindings also contain direct
+bone tracks and 429 contain root tracks. Of the 146 bindings with no resolved
+body-action segment, 117 have root-transform data and 26 have direct bone
+tracks. Eleven bindings contain at least one unresolved action request. These
+paths overlap: an action kit can animate bones while the scene clip supplies
+actor placement.
 
 An earlier audit used the legacy global action-kit map rather than the
 world-scoped resolver used by playback. This undercounted body-action segments
@@ -321,15 +321,67 @@ now reports “no skeletal action resolved” only when it decoded a recognized
 body-action request for that actor. The synthetic checks cover both an actual
 missing body action and an unrelated opaque event.
 
-The audit now groups serialized coverage mechanisms separately: 163 bindings
-have both resolved action segments and direct bone tracks, 110 use resolved
-action kits only, 111 are root-transform-only, 22 have direct bone tracks but
-no action segment, and five contain unresolved body-action requests. These are
-evidence categories, not inferred causes. In `BF003BD1`, for example, Peyj has
-a root transform track but no decoded action request or direct bone track;
-JadeView cannot derive his pose from this clip alone. His T-pose therefore
-needs the actor brain/gameplay handoff path traced, rather than an arbitrary
-idle fallback.
+The audit groups current serialized coverage mechanisms as 170 bindings with
+both resolved action segments and direct bone tracks, 130 using resolved action
+kits only, 117 root-transform-only, 26 with direct bone tracks but no action
+segment, and 11 with unresolved body-action requests. These are evidence
+categories, not inferred causes. In `BF003BD1`, for example, Peyj has a root
+transform track but no decoded action request or direct bone track; JadeView
+cannot derive his pose from this clip alone. His T-pose therefore needs the
+actor brain/gameplay handoff path traced, rather than an arbitrary idle fallback.
+
+The Iris companion source clarifies one generic handoff route. `companion_co_exec_get_message`
+consumes message `49`; when `Int1 == 4`, it stores `Int2` in the shared
+`Perso_ID_action[des_i_friend]` slot and the actor's `i_attente_action`, then
+switches back to `companion_co_init_select_mode`. That selector applies the
+stored action with `ACTActionSet` when the slot is not `-1`. The same source's
+`companion_co_init` reads this shared slot during actor setup, so a gameplay
+action can determine the body pose even when a cinematic clip only contains
+root motion.
+
+This is a protocol path, not proof that it ran for Peyj in `BF003BD1`. The
+archive graph has no decoded action request in Peyj's linked event record, and
+the audited source `Events` owner has no calls. Iris source shows generic
+writers of message `49` in status-change/companion-management code, but the
+current archive evidence does not establish that any such writer targeted
+Peyj at this clip's start or which action value was active. JadeView can expose
+this message/action dependency as a candidate once its owner is linked; it
+cannot infer the missing runtime status from the cinematic transform track.
+
+Message numbers are interpreted by the receiving object's AI, not by a single
+global message schema. For example, the Crochax cinematic receiver also handles
+message `49` but treats `f2` as a scale value, while the Secundo SFX receiver
+uses `f2` and `f1` as light/alpha factors. Therefore a scene graph must retain
+sender, target, and target script context when decoding a message; an isolated
+`msgID` is insufficient to infer an action or visual effect. The timeline
+message inspector now reports the matching receiver-specific interpretation
+for companion, Crochax, and Secundo callbacks; unrecognized receivers remain
+raw/generic evidence rather than inheriting companion semantics.
+
+The archive audit now also previews each individually selectable script-owned
+`SceneEvents` source for actor bindings whose action request is missing from the
+clip's default timeline. In the current archive, three actor/clip bindings have
+a separate owner preview that supplies one or more missing actions: Militaire
+in `35009F74` (action 201), Militaire in `3500A4C7`, and PNJ_Faucheur in
+`3500B047` (action 47). This gives a source-linked owner to inspect in JadeView
+instead of guessing an action or copying slots globally. The result is still a
+manual preview candidate; it does not prove that the owner's start gates passed
+in the game. Representative owner-preview audits confirm the limitation:
+Militaire's `CINE_INIT_MILI_EVENTS.gao` supplies action 201 (baseline 0 body
+segments, preview 2), but its `Cine_Events` gates are unknown because Sally's
+runtime activity bit and save flag 2007 are unavailable.
+`CINE_ARRIV_CYCLOP_EVENT.gao` adds Faucheur actions (baseline 4 segments,
+preview 10), while its zone-collision gate and save flags 2046/2449 remain
+unknown. JadeView therefore leaves both owners opt-in rather than treating a
+candidate setup track as confirmed runtime activation. The report is written to
+`artifacts/cinematic-body-coverage-owner-preview/archive-cinematic-body-coverage.json`.
+
+The EVE & actions inspector now has a collapsed **Body action coverage** entry
+for every manual `SceneEvents` owner. Expanding it compares the current body
+timeline with that preview plus the selected owner's serialized track, then
+names actor/action requests that become resolved. Results are cached per
+clip/owner until the preview selection changes. The UI labels them as preview
+evidence; it does not auto-enable the owner or claim its runtime gate passed.
 
 ### Event tracks can be shared by multiple owners
 

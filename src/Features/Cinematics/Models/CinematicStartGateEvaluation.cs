@@ -14,6 +14,18 @@ internal enum CinematicStartGateEvidenceKind
     RuntimeInputUnavailable
 }
 
+internal enum CinematicStartGateBranchStatus
+{
+    PredicatesEvaluated,
+    PredicatesBypassed,
+    Unknown
+}
+
+internal sealed record CinematicStartGateBranch(
+    CinematicStartGateBranchStatus Status,
+    string Evidence,
+    string[] RequiredInputs);
+
 internal sealed record CinematicStartGateResult(
     int Mask,
     string Name,
@@ -29,4 +41,7 @@ internal sealed record CinematicStartGateEvaluation(
     int EnabledMask,
     CinematicStartGateStatus Status,
     CinematicStartGateResult[] Gates,
-    string Scope);
+    string Scope)
+{
+    internal CinematicStartGateBranch? Branch { get; init; }
+}

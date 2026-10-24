@@ -4,8 +4,6 @@ namespace JadeView;
 
 internal static class CinematicOwnerStartTimingEstimator
 {
-    private const string CineStartCallback = "Cine_Events_cine_tests_depart";
-
     internal static CinematicOwnerStartTimingEstimate Estimate(CinematicScriptOwner owner,
         float serializedGateSignalTime)
     {
@@ -37,9 +35,20 @@ internal static class CinematicOwnerStartTimingEstimator
             $"Explicit preview estimate: max(signal {Format(serializedGateSignalTime)}s, f_first_delay {Format(configuredFirstDelay)}s) + des_f_tempo {Format(configuredDepartureDelay)}s. Runtime callback dispatch and other gates are not executed.");
     }
 
+    internal static float? PreviewStopTime(CinematicScriptOwner owner, float previewStartTime)
+    {
+        if (!IsCineEventsOwner(owner) || !float.IsFinite(previewStartTime) || previewStartTime < 0)
+            return null;
+
+        float? totalDuration = ReadFiniteSeconds(owner, "des_f_duree_totale");
+        if (totalDuration is not > 0) return null;
+
+        float stopTime = previewStartTime + totalDuration.Value;
+        return float.IsFinite(stopTime) ? stopTime : null;
+    }
+
     private static bool IsCineEventsOwner(CinematicScriptOwner owner) =>
-        owner.CallbackNames.Contains(CineStartCallback, StringComparer.Ordinal)
-        || owner.ModelFunctionNames.Contains(CineStartCallback, StringComparer.Ordinal);
+        CinematicStartCallbackChain.IsReferenced(owner);
 
     private static float? ReadFiniteSeconds(CinematicScriptOwner owner, string variableName)
     {

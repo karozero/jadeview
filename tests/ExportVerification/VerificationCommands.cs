@@ -10,6 +10,13 @@ internal static class VerificationCommands
             case ["--assets-frame-trace-checks"]:
                 AssetsFrameTraceChecks.Run();
                 break;
+            case ["--cinematic-body-checks"]:
+                CinematicBodyChecks.Verify();
+                break;
+            case ["--cinematic-owner-start-checks"]:
+                CinematicOwnerStartLifecycleChecks.Verify();
+                CinematicStartGateEvaluatorChecks.Verify();
+                break;
             case ["--archive-startup-script-audit", var archive]:
                 ArchiveStartupScriptAudit.Write(archive, output);
                 break;
@@ -24,6 +31,9 @@ internal static class VerificationCommands
                 break;
             case ["--pc-ai-call-binding-checks"]:
                 PcAiFunctionCallBindingChecks.Verify();
+                break;
+            case ["--pc-ai-track-mutation-checks"]:
+                PcAiTrackMutationChecks.Verify();
                 break;
             case ["--pc-ai-constant-branch-checks"]:
                 PcAiConstantBranchChecks.Verify();
@@ -159,6 +169,10 @@ internal static class VerificationCommands
                 BinkFrameAudit.Write(dllPath, videoPath, int.Parse(frameIndex,
                     System.Globalization.CultureInfo.InvariantCulture), output);
                 break;
+            case ["--archive-bink-frame-audit", var archive, var mediaKey, var frameIndex, ..]:
+                BinkFrameAudit.WriteArchive(archive, Convert.ToUInt32(mediaKey, 16),
+                    int.Parse(frameIndex, System.Globalization.CultureInfo.InvariantCulture), output);
+                break;
             case ["--nested-eve-transform-audit", var archive, var container, var clipKey, ..]:
                 CinematicNestedEventTransformAudit.Write(archive, container,
                     Convert.ToUInt32(clipKey, 16), output);
@@ -212,6 +226,12 @@ internal static class VerificationCommands
                 break;
             case ["--cinematic-script-graph-audit", var archive, var container, var clipKey, ..]:
                 CinematicScriptGraphAudit.Write(archive, container, Convert.ToUInt32(clipKey, 16), output);
+                break;
+            case ["--cinematic-owner-action-preview-audit", var archive, var container,
+                var clipKey, var ownerKey, var actorKey]:
+                CinematicOwnerActionPreviewAudit.Write(archive, container,
+                    Convert.ToUInt32(clipKey, 16), Convert.ToUInt32(ownerKey, 16),
+                    Convert.ToUInt32(actorKey, 16), output);
                 break;
             case ["--action-kit-resource-audit", var archive, var container, var ownerKey, ..]:
                 ActionKitResourceAudit.Write(archive, container, Convert.ToUInt32(ownerKey, 16), output);

@@ -111,6 +111,7 @@ public sealed partial class EditorShell
             ImGui.TextDisabled("OVA field annotations match direct C member fields or a unique function-local member assignment. The serialized field value is shown; branch-based pointer overrides and execution are not evaluated.");
             ImGui.TextDisabled("MSGSend annotations show the latest source assignments to the passed buffer before the call; earlier fields may be retained, and conditional branches are not evaluated.");
         }
+        DrawCinematicCallbackRegistrationCandidates(owner, sourceReferences);
         DrawCinematicScriptCallbackStateEffects(owner);
         if (sourceReferences.Length > 0)
         {

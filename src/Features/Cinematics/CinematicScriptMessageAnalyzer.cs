@@ -13,6 +13,8 @@ internal static class CinematicScriptMessageAnalyzer
     private const string CompanionCinematicCallback = "companion_co_action_cine";
     private const string CompanionMessageCallback = "companion_co_exec_reflex";
     private const string CompanionStatusMessageCallback = "companion_co_exec_get_message";
+    private const string CrochaxCinematicCallback = "Crochax_3_Cro3_mode_cine";
+    private const string SecundoSfxCallback = "SFX_Secundo_SFX_Secundo_Reflex";
     private const string SallyMessageCallback = "Sally_sa_exec_message_read";
     private const string AutomaticLipSyncCallback = "Cine_lipsynch_auto_Lips_lecture_messages";
     private const string CameraMainLoopCallback = "camera_cam_1_mainloop";
@@ -38,7 +40,7 @@ internal static class CinematicScriptMessageAnalyzer
                 ?? DescribeSourceMessageReader(message, executionOwner, executionContext);
 
         if (message.Type == CompanionStatusMessage)
-            return Prefix(executionContext, DescribeCompanionStatusMessage(message, executionOwner))
+            return Prefix(executionContext, DescribeType49Message(message, executionOwner))
                 ?? DescribeSourceMessageReader(message, executionOwner, executionContext);
 
         if (message.Type != CompanionCinematicMessage
@@ -165,13 +167,36 @@ internal static class CinematicScriptMessageAnalyzer
             + $"Source callback path: {callbackPath}. Runtime delivery and state are not evaluated.";
     }
 
-    private static string? DescribeCompanionStatusMessage(CinematicTimelineMessage message,
+    private static string? DescribeType49Message(CinematicTimelineMessage message,
         CinematicScriptOwner executionOwner)
     {
-        if (!CinematicScriptReader.TryDescribeCallbackReachability(executionOwner,
-                CompanionStatusMessageCallback, out string callbackPath))
-            return null;
+        if (CinematicScriptReader.TryDescribeCallbackReachability(executionOwner,
+                CompanionStatusMessageCallback, out string companionPath))
+        {
+            return DescribeCompanionStatusMessage(message, companionPath);
+        }
 
+        if (CinematicScriptReader.TryDescribeCallbackReachability(executionOwner,
+                CrochaxCinematicCallback, out string crochaxPath))
+        {
+            string scale = message.Float2.ToString("G", CultureInfo.InvariantCulture);
+            return $"Iris Crochax cinematic callback consumes message 49: Float2={scale} sets the receiver's scale; the callback rescales its child bone lengths and applies the zoom to its bone objects. Source callback path: {crochaxPath}. Runtime message delivery is not evaluated.";
+        }
+
+        if (CinematicScriptReader.TryDescribeCallbackReachability(executionOwner,
+                SecundoSfxCallback, out string secundoPath))
+        {
+            string lightFactor = message.Float2.ToString("G", CultureInfo.InvariantCulture);
+            string localAlpha = message.Float1.ToString("G", CultureInfo.InvariantCulture);
+            return $"Iris Secundo SFX callback consumes message 49: Float2={lightFactor} is stored as the external light factor and Float1={localAlpha} as local alpha. Source callback path: {secundoPath}. This identifies the receiver fields, not their final rendered result; runtime message delivery is not evaluated.";
+        }
+
+        return null;
+    }
+
+    private static string DescribeCompanionStatusMessage(CinematicTimelineMessage message,
+        string callbackPath)
+    {
         string actionBehavior = message.Int1 == 4
             ? $"status 4 stores Int2={message.Int2} as a deferred companion action"
             : message.Int2 == -1
