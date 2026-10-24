@@ -2,6 +2,7 @@
 #define NATIVE_SCRIPT_CAPTURE_HOST_H
 
 #include "../../external/irisEng/ai/ai_bge/ai_compiledscripts_inc.h"
+#include "native_layout_contract.h"
 
 #define FLAG_WORD_COUNT 128
 #define INTENT_CAPACITY 8
