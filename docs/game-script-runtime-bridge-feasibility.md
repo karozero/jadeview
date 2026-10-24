@@ -133,5 +133,12 @@ path that would try to consume 504 bytes.
 generated exact-source slices are under ignored
 `artifacts/native-script-bridge/ofc-registry-probe/`. This is a metadata and
 callback-pointer identity proof only: the one-row registry slice is not the
-full 2,530-entry table, the cache is controlled, no callback or world state is
+full table (the current source definition and header both declare an active
+extent of 2,530), the cache is controlled, no callback or world state is
 executed, and none of this establishes retail BGE 2003 runtime ABI parity.
+
+The extent is derived and checked against the header rather than fixed in the
+probe. Manifest `Registry.ExtentContract` records the definition/declaration
+source spans and hashes. `Registry.RowByteOffset`, `RowByteCount` and
+`RowSha256` preserve the selected row's original encoded byte span, including
+Windows-1252 source bytes; no UTF-8 re-encoding is used for that row hash.
