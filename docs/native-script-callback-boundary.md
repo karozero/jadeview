@@ -39,7 +39,7 @@ The real archive audit confirms the owner, model and callback key at the seriali
 
 ## Read-only loader closure measurement
 
-The dependency tool now accepts `-FunctionName`; `/Gy` emits per-function COMDAT sections, so the report can isolate one section rather than mixing every function in `ai_common.c` or `loading.c`. Its categories distinguish unresolved engine imports, direct calls to functions defined in the same translation unit, and direct undefined data references. Example:
+The dependency tool now accepts `-FunctionName`; `/Gy` emits per-function COMDAT sections, so the report can isolate one section rather than mixing every function in `ai_common.c` or `loading.c`. Its categories distinguish unresolved engine imports, direct relocation references to functions defined in the same translation unit, and direct undefined data references. A relocation may encode either a call or an address reference, so this audit deliberately does not label every internal edge as a call. Example:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/NativeScriptBridge/measure-callback-imports.ps1 -SourcePath external/irisEng/ai_common.c -FunctionName AI_ul_CallbackLoadFunction
@@ -47,11 +47,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/NativeScriptBridge/mea
 
 Selected section results (direct references only; counts are not transitive link closures):
 
-| Function section | Unresolved function imports | Same-TU direct calls | Undefined data refs |
+| Function section | Unresolved function imports | Same-TU function references | Undefined data refs |
 | --- | ---: | ---: | ---: |
-| `AI_ul_CallbackLoadInstance` | 5 | 0 | 1 |
-| `AI_ul_CallbackLoadModel` | 8 | 0 | 1 |
-| `AI_ul_CallbackLoadVars` | 12 | 0 | 4 |
+| `AI_ul_CallbackLoadInstance` | 5 | 2 | 1 |
+| `AI_ul_CallbackLoadModel` | 8 | 2 | 1 |
+| `AI_ul_CallbackLoadVars` | 12 | 1 | 4 |
 | `AI_ul_CallbackLoadFunction` | 12 | 0 | 3 |
 | `AI_ResolveInstanceRef` | 0 | 2 | 0 |
 | `AI_ReinitInstance` | 2 | 0 | 1 |
@@ -63,7 +63,7 @@ Selected section results (direct references only; counts are not transitive link
 | `AI_RunInstance` | 0 | 1 | 10 |
 | `AI_MainCall` | 4 | 1 | 3 |
 
-For example, `AI_ResolveInstanceRef` has no unresolved imports in its own function section, but makes same-file calls to `AI_ResolveModelRef` and `AI_InstanceAfterLoading`. The tool reports those internal edges; it does not recursively resolve their imports, and an indirect call through `loaStackElem->funcPtr` is inherently data-driven. `ai_common.c` as a whole has 41 direct unresolved function names and 34 undefined data references, while `loading.c` as a whole has 26 and 30 respectively; these translation-unit totals are much broader and should not be mistaken for a necessary single-callback link set.
+For example, `AI_ul_CallbackLoadModel` has two same-file function references, to `AI_ul_CallbackLoadFunction` and `AI_ul_CallbackLoadVars`; these are callbacks stored into the LOA reference queue, not evidence either callback was invoked. `AI_ResolveInstanceRef` references `AI_ResolveModelRef` and `AI_InstanceAfterLoading`. The tool reports these direct relocation edges; it does not recursively resolve their imports, and an indirect call through `loaStackElem->funcPtr` is inherently data-driven. `ai_common.c` as a whole has 41 direct unresolved function names and 34 undefined data references, while `loading.c` as a whole has 26 and 30 respectively; these translation-unit totals are much broader and should not be mistaken for a necessary single-callback link set.
 
 The loader mechanism is concrete in `external/irisEng/loading.c:336-370`: `LOA_Resolve` walks the pending reference ring, finds each key's BF position, looks up an already loaded address or invokes the queued resource callback, optionally records the result in the address cache according to reference flags, writes the pointer to the owner's destination, then releases the global read buffer. Missing keys with required flag bit 0 trigger `DBG_assert`. `LOA_MakeFileRef` only queues key/destination/callback/flags into global `LOA_gast_Stack` (`loading.c:314-333`). That makes a small read-only owner loader plausible, but it still requires real bigfile key lookup, byte reads and resource callbacks. `BIG_pc_ReadFileTmp` directly calls `LOA_FetchFile`, `BIG_fread`/`BIG_fseek`, and `BIG_p_RequestBuffer` (`external/irisEng/bigfiles.c:834-864`); its read-mode branches and global stream/buffer state are part of the contract.
 

@@ -9,3 +9,9 @@ This is a callback-body proof only. The host provides one controlled callback-ke
 The build intentionally links the original callback source directly and does not copy its implementation. A newly referenced native function without a matching test adapter causes link failure. This narrow harness is private engineering evidence; resolve source licensing before distribution.
 
 The shared `native_layout_contract.h` rejects incompatible host layouts at compile time (32-bit pointers, measured AI node/function/variable layouts and five instance callback slots). Both the x86 positive build and an intentionally rejected x64 compile were verified. These checks constrain the helper ABI; they do not prove retail resource compatibility.
+
+## Resource-reference queue probe
+
+Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/NativeScriptBridge/test-resource-loader-probe.ps1` to check two real script-owner fixtures. The probe extracts byte-exact Iris AIC/AIM loader callback bodies, verifies all selected fixture resource sizes and SHA-256 hashes, then executes only `AI_ul_CallbackLoadInstance` and `AI_ul_CallbackLoadModel` in a bounded x86 host. It asserts the queued OVA/OFC keys, destination pointer fields, callback addresses, and LOA flags. Negative cases check hash mismatch and truncated AIC rejection.
+
+The probe does not invoke the queued callbacks, read OVA/OFC contents, drain the LOA queue, activate an AI/world owner, build EOT tables, or run a game tick. Generated source and run logs remain under ignored `artifacts/native-script-bridge/resource-loader-probe/`; this is private feasibility evidence, not a distributable runtime.
