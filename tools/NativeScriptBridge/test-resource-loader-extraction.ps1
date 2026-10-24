@@ -9,19 +9,7 @@ function Assert-EqualHash {
     }
 }
 
-# Import only the two pure helpers. Dot-sourcing the full script would perform extraction.
-$parseErrors = $null
-$tokens = $null
-$syntax = [System.Management.Automation.Language.Parser]::ParseFile($extractor, [ref]$tokens, [ref]$parseErrors)
-if ($parseErrors.Count) { throw "Extractor has PowerShell syntax errors: $parseErrors" }
-foreach ($name in @('Get-BytesSha256', 'Get-FunctionBody')) {
-    $definitions = @($syntax.FindAll({
-        param($node)
-        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
-    }, $true))
-    if ($definitions.Count -ne 1) { throw "Expected one helper definition: $name" }
-    . ([scriptblock]::Create($definitions[0].Extent.Text))
-}
+Import-Module (Join-Path $PSScriptRoot 'ExactSourceExtraction.psm1') -Force
 
 # Non-ASCII content before and inside the function distinguishes byte and character offsets.
 $accent = [char]0xE9

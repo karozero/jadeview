@@ -8,120 +8,7 @@ $sourceDefinitions = @(
     @{ Path = 'external/irisEng/loading.c'; Names = @('LOA_ReadLong', 'LOA_ReadShort', 'LOA_ReadFloat', 'LOA_ReadString', 'LOA_ReadCharArray', 'LOA_ReadVector', 'LOA_MakeFileRef') }
 )
 
-function Get-BytesSha256 {
-    param([byte[]] $Bytes)
-
-    $sha256 = [System.Security.Cryptography.SHA256]::Create()
-    try {
-        $hashBytes = $sha256.ComputeHash($Bytes)
-        return [BitConverter]::ToString($hashBytes).Replace('-', '')
-    }
-    finally {
-        $sha256.Dispose()
-    }
-}
-
-function Get-FunctionBody {
-    param([string] $SourceText, [byte[]] $SourceBytes, [System.Text.Encoding] $SourceEncoding, [string] $FunctionName, [string] $SourcePath)
-
-    $signaturePattern = '(?m)^[\t ]*[A-Za-z_][A-Za-z0-9_\t \*]*\b' + [regex]::Escape($FunctionName) + '\s*\('
-    $signatureMatches = [regex]::Matches($SourceText, $signaturePattern)
-    $definitions = [System.Collections.Generic.List[object]]::new()
-    foreach ($signatureMatch in $signatureMatches) {
-        $openParenthesis = $SourceText.IndexOf('(', $signatureMatch.Index)
-        $parenthesisDepth = 0
-        $closeParenthesis = -1
-        for ($index = $openParenthesis; $index -lt $SourceText.Length; $index++) {
-            if ($SourceText[$index] -eq '(') { $parenthesisDepth++ }
-            if ($SourceText[$index] -eq ')') {
-                $parenthesisDepth--
-                if ($parenthesisDepth -eq 0) {
-                    $closeParenthesis = $index
-                    break
-                }
-            }
-        }
-        if ($closeParenthesis -lt 0) { continue }
-
-        $openBrace = -1
-        for ($index = $closeParenthesis + 1; $index -lt $SourceText.Length; $index++) {
-            if ([char]::IsWhiteSpace($SourceText[$index])) { continue }
-            if ($SourceText[$index] -eq '/' -and $index + 1 -lt $SourceText.Length -and $SourceText[$index + 1] -eq '/') {
-                $newline = $SourceText.IndexOf("`n", $index + 2)
-                if ($newline -lt 0) { break }
-                $index = $newline
-                continue
-            }
-            if ($SourceText[$index] -eq '/' -and $index + 1 -lt $SourceText.Length -and $SourceText[$index + 1] -eq '*') {
-                $commentEnd = $SourceText.IndexOf('*/', $index + 2, [System.StringComparison]::Ordinal)
-                if ($commentEnd -lt 0) { break }
-                $index = $commentEnd + 1
-                continue
-            }
-            if ($SourceText[$index] -eq '{') { $openBrace = $index }
-            break
-        }
-        if ($openBrace -lt 0) { continue }
-
-        $braceDepth = 0
-        $lexicalState = 'code'
-        for ($index = $openBrace; $index -lt $SourceText.Length; $index++) {
-            $current = $SourceText[$index]
-            $next = if ($index + 1 -lt $SourceText.Length) { $SourceText[$index + 1] } else { [char]0 }
-
-            if ($lexicalState -eq 'line-comment') {
-                if ($current -eq "`n") { $lexicalState = 'code' }
-                continue
-            }
-            if ($lexicalState -eq 'block-comment') {
-                if ($current -eq '*' -and $next -eq '/') { $lexicalState = 'code'; $index++ }
-                continue
-            }
-            if ($lexicalState -eq 'string' -or $lexicalState -eq 'character') {
-                if ($current -eq '\') { $index++; continue }
-                if ($lexicalState -eq 'string' -and $current -eq '"') { $lexicalState = 'code'; continue }
-                if ($lexicalState -eq 'character' -and $current -eq "'") { $lexicalState = 'code'; continue }
-                continue
-            }
-
-            if ($current -eq '/' -and $next -eq '/') { $lexicalState = 'line-comment'; $index++; continue }
-            if ($current -eq '/' -and $next -eq '*') { $lexicalState = 'block-comment'; $index++; continue }
-            if ($current -eq '"') { $lexicalState = 'string'; continue }
-            if ($current -eq "'") { $lexicalState = 'character'; continue }
-            if ($current -eq '{') { $braceDepth++ }
-            if ($current -eq '}') {
-                $braceDepth--
-                if ($braceDepth -eq 0) {
-                    $endExclusive = $index + 1
-                    $bodyText = $SourceText.Substring($signatureMatch.Index, $endExclusive - $signatureMatch.Index)
-                    $startLine = ([regex]::Matches($SourceText.Substring(0, $signatureMatch.Index), "`n")).Count + 1
-                    $endLine = $startLine + ([regex]::Matches($bodyText, "`n")).Count
-                    $bodyByteOffset = $SourceEncoding.GetByteCount($SourceText.Substring(0, $signatureMatch.Index))
-                    $bodyByteCount = $SourceEncoding.GetByteCount($bodyText)
-                    $bodyBytes = [byte[]]::new($bodyByteCount)
-                    [Array]::Copy($SourceBytes, $bodyByteOffset, $bodyBytes, 0, $bodyByteCount)
-                    $definitions.Add([pscustomobject]@{
-                        Name = $FunctionName
-                        Source = $SourcePath
-                        StartLine = $startLine
-                        EndLine = $endLine
-                        ByteOffset = $bodyByteOffset
-                        ByteCount = $bodyByteCount
-                        Text = $bodyText
-                        Bytes = $bodyBytes
-                        BodySha256 = Get-BytesSha256 -Bytes $bodyBytes
-                    })
-                    break
-                }
-            }
-        }
-    }
-
-    if ($definitions.Count -ne 1) {
-        throw "Expected exactly one function definition '$FunctionName' in $SourcePath, found $($definitions.Count)."
-    }
-    return $definitions[0]
-}
+Import-Module (Join-Path $PSScriptRoot 'ExactSourceExtraction.psm1') -Force
 
 function Assert-ExtractorLexingChecks {
     $sample = "void Sample(void) { const char *text = `"}`"; /* } */ // }`r`nchar quote = '}'; }"
@@ -155,24 +42,14 @@ $extractedFunctions = [System.Collections.Generic.List[object]]::new()
 $sourceRecords = [System.Collections.Generic.List[object]]::new()
 foreach ($sourceDefinition in $sourceDefinitions) {
     $sourceFile = Join-Path $repoRoot $sourceDefinition.Path
-    $sourceBytes = [System.IO.File]::ReadAllBytes($sourceFile)
-    $sourceEncoding = [System.Text.UTF8Encoding]::new($false, $true)
-    $sourceEncodingName = 'UTF-8'
-    try {
-        $sourceText = $sourceEncoding.GetString($sourceBytes)
-    }
-    catch {
-        $sourceEncoding = [System.Text.Encoding]::GetEncoding(1252)
-        $sourceText = $sourceEncoding.GetString($sourceBytes)
-        $sourceEncodingName = 'Windows-1252'
-    }
-    $sourceHash = (Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256).Hash
-    $lineEnding = 'LF'
-    if ($sourceText.Contains("`r`n")) {
-        $lineEnding = 'CRLF'
-        if ($sourceText.Replace("`r`n", '').Contains("`n")) { $lineEnding = 'Mixed' }
-    }
-    $hasBom = $sourceBytes.Length -ge 3 -and $sourceBytes[0] -eq 0xEF -and $sourceBytes[1] -eq 0xBB -and $sourceBytes[2] -eq 0xBF
+    $document = Read-ExactSourceFile -Path $sourceFile
+    $sourceBytes = $document.Bytes
+    $sourceText = $document.Text
+    $sourceEncoding = $document.Encoding
+    $sourceEncodingName = $document.EncodingName
+    $sourceHash = $document.Sha256
+    $lineEnding = $document.LineEnding
+    $hasBom = $document.HasBom
     $sourceRecords.Add([pscustomobject]@{
         Path = $sourceDefinition.Path
         Sha256 = $sourceHash
