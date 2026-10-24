@@ -9,13 +9,90 @@ internal static class CinematicNestedEventTransformChecks
         VerifyNestedPlaybackAndPlayAll();
         VerifyNestedLocalRotationPlaybackAndExport(outputDirectory);
         VerifyNestedLifecycleUsesCinematicClock();
+        VerifyNestedMessagesUseLifecycleClock();
+        VerifyTrackClockStateSnapshots();
         VerifyNestedTrackFlags(outputDirectory);
+        VerifyNestedFlashReferenceUsesResolvedOwner();
         VerifyCallbackBoundSceneEvents(outputDirectory);
         VerifyRunningInitHonorsOwnerSelection();
         VerifyManualSceneEventOwnerPreview(outputDirectory);
         VerifyStopAndAmbiguousRoutesAreOmitted();
+        VerifyUnresolvedRoutesAreVisible();
         VerifyPlaybackAndExport(outputDirectory);
         Console.WriteLine("PASS: explicit nested SceneEvents transform playback, offsets, stop gates and world resolution");
+    }
+
+    private static void VerifyTrackClockStateSnapshots()
+    {
+        var lifecycleClock = new CinematicTrackPlaybackClock(0, 10, 4,
+            0,
+            [
+                (1.5f, "TRAPause"),
+                (2, "TRAUnPause"),
+                (2.5f, "TRAStop"),
+                (3, "TRAPlay")
+            ]);
+        bool pausedState = lifecycleClock.TryGetSnapshot(1.75f, out var paused)
+            && paused.Paused && paused.Running && MathF.Abs(paused.LocalTime - 1.5f) < .001f;
+        bool resumedState = lifecycleClock.TryGetSnapshot(2.25f, out var resumed)
+            && !resumed.Paused && resumed.Running && MathF.Abs(resumed.LocalTime - 1.75f) < .001f;
+        bool stoppedState = lifecycleClock.TryGetSnapshot(2.75f, out var stopped)
+            && !stopped.Running && !stopped.Paused && MathF.Abs(stopped.LocalTime - 2) < .001f;
+        bool replayState = lifecycleClock.TryGetSnapshot(3.25f, out var replayed)
+            && replayed.Running && !replayed.Paused && replayed.RunIndex == 1
+            && MathF.Abs(replayed.LocalTime - .25f) < .001f;
+        string[] lifecycleTransitions = lifecycleClock.Transitions.Select(item => item.Operation).ToArray();
+
+        var autoLoopClock = new CinematicTrackPlaybackClock(0, 1, 2.5f,
+            CinematicEventTrackFlags.AutoLoop, []);
+        bool loopState = autoLoopClock.TryGetSnapshot(1.25f, out var looped)
+            && looped.Running && looped.RunIndex == 1 && MathF.Abs(looped.LocalTime - .25f) < .001f
+            && autoLoopClock.Transitions.Any(item => item.Operation == "AutoLoop" && item.Time == 1);
+
+        var autoStopClock = new CinematicTrackPlaybackClock(0, 1, 2,
+            CinematicEventTrackFlags.AutoStop, []);
+        bool autoStopState = autoStopClock.TryGetSnapshot(1, out var autoStopped)
+            && !autoStopped.Running && MathF.Abs(autoStopped.LocalTime - 1) < .001f
+            && autoStopClock.Transitions.Any(item => item.Operation == "AutoStop" && item.Time == 1);
+
+        if (!pausedState || !resumedState || !stoppedState || !replayState || !loopState || !autoStopState
+            || !lifecycleTransitions.SequenceEqual(["Start", "TRAPause", "TRAUnPause", "TRAStop", "TRAPlay"]))
+            throw new InvalidDataException($"The EVE clock must expose deterministic pause/resume, stop/replay, AutoLoop and AutoStop snapshots and transitions. paused={pausedState}, resumed={resumedState}, stopped={stoppedState}, replayed={replayState}, loop={loopState}, autoStop={autoStopState}; events={string.Join(",", lifecycleTransitions)}.");
+        Console.WriteLine("PASS: EVE state reducer exposes deterministic lifecycle transitions and playhead snapshots");
+    }
+
+    private static void VerifyNestedFlashReferenceUsesResolvedOwner()
+    {
+        const uint worldKey = 0x10;
+        const uint ownerKey = 0x200;
+        const uint separateTargetKey = 0x300;
+        var world = World(worldKey, ownerKey, separateTargetKey);
+        var clip = Clip(0x100, 1, 0x3B64, 0);
+        var document = new SceneDocument();
+        var ownerFlashTrack = TransformSource(1);
+        ownerFlashTrack.Target = 0;
+        ownerFlashTrack.Keys[0].Flags = 0x84;
+        var ownerFollowerTrack = TransformSource(2);
+        ownerFollowerTrack.Target = 0;
+        var separateTrack = TransformSource(3);
+        separateTrack.Target = separateTargetKey;
+        AddList(document, List(ownerKey, worldKey, 0x250,
+        [
+            new CinematicEmbeddedEventTrack(0, 0, -1, CinematicEventTrackFlags.RunningInit, 1, 1) { SourceTrack = ownerFlashTrack },
+            new CinematicEmbeddedEventTrack(1, 0, -1, CinematicEventTrackFlags.RunningInit, 1, 1) { SourceTrack = ownerFollowerTrack },
+            new CinematicEmbeddedEventTrack(2, separateTargetKey, -1, CinematicEventTrackFlags.RunningInit, 1, 1) { SourceTrack = separateTrack }
+        ]));
+
+        AnimationTrack[] tracks = CinematicNestedEventTransformTracks.ReadTimeline(clip, world, document)
+            .TransformTracks;
+        bool ownerFlashInherited = tracks.Length == 3
+            && tracks[0].Target == ownerKey && tracks[0].UsesFlashReference
+            && tracks[1].Target == ownerKey && tracks[1].UsesFlashReference;
+        bool separateTargetUnaffected = tracks.Length == 3
+            && tracks[2].Target == separateTargetKey && !tracks[2].UsesFlashReference;
+        if (!ownerFlashInherited || !separateTargetUnaffected)
+            throw new InvalidDataException("A targetless nested EVE track must use its event-list owner as the GO context for Flash-reference inheritance, without leaking that state to another target.");
+        Console.WriteLine("PASS: nested EVE Flash-reference lookup resolves null targets to the event-list owner");
     }
 
     private static void VerifyIndexedPlaybackUsesCinematicTime()
@@ -56,9 +133,30 @@ internal static class CinematicNestedEventTransformChecks
         };
         AddList(document, List(0x100, 0x10, 0x150, [rootChannel]));
         AddList(document, List(0x200, 0x10, 0x250, nestedChannels));
-        AnimationTrack[] nested = Read(world, document, Clip(0x100, 1, 0x3B64, 0));
+        var nestedClip = Clip(0x100, 1, 0x3B64, 0);
+        AnimationTrack[] nested = Read(world, document, nestedClip);
+        CinematicNestedEventTimeline nestedTimeline = CinematicNestedEventTransformTracks.ReadTimeline(
+            nestedClip, world, document);
         bool nestedOffset = nested.Length == 1 && nested[0].Target == 0x400
             && nested[0].Keys[0].Time == 1.5f;
+        var directCallLedger = nestedTimeline.OwnerExecutionLedger.Single(entry =>
+            entry.OwnerId.OwnerKey == 0x100
+            && entry.Route == CinematicOwnerExecutionRoute.CinematicEventCall);
+        var nestedCallLedger = nestedTimeline.OwnerExecutionLedger.Single(entry =>
+            entry.OwnerId.OwnerKey == 0x200
+            && entry.Route == CinematicOwnerExecutionRoute.NestedEventCall);
+        var nestedChannelClock = nestedTimeline.OwnerChannelExecutions.Single(entry =>
+            entry.OwnerId.OwnerKey == 0x200 && entry.ChannelIndex == 1);
+        bool nestedChannelStateUsesTimeline = nestedChannelClock.Clock.TryGetSnapshot(1.75f,
+            out var nestedChannelState) && nestedChannelState.Running
+            && MathF.Abs(nestedChannelState.LocalTime - .25f) < .001f;
+        if (!nestedOffset || !directCallLedger.ChannelIndices.SequenceEqual([0])
+            || directCallLedger.PreviewStartTime != 1
+            || !nestedCallLedger.ChannelIndices.SequenceEqual([1])
+            || nestedCallLedger.PreviewStartTime != 1.5f
+            || nestedCallLedger.RuntimeGate != CinematicRuntimeGateStatus.Unknown
+            || !nestedChannelStateUsesTimeline)
+            throw new InvalidDataException("The execution ledger must trace direct and nested calls to their distinct list owners, channels, and cinematic times, and evaluate nested EVE state on that shared clock without claiming runtime gate success.");
 
         AddList(document, List(0x100, 0x10, 0x151,
         [
@@ -67,7 +165,7 @@ internal static class CinematicNestedEventTransformChecks
             new CinematicEmbeddedEventTrack(2, 0x400, -1, 0, 1, 1)
         ]));
         AnimationTrack[] all = Read(world, document, Clip(0x100, 2, 0x3B60));
-        if (!nestedOffset || all.Length != 2 || all.Select(track => track.Target).Order().SequenceEqual([0x300u, 0x400u]) == false)
+        if (all.Length != 2 || all.Select(track => track.Target).Order().SequenceEqual([0x300u, 0x400u]) == false)
             throw new InvalidDataException("Nested TRAPlay and TRAPlayAll must evaluate transform-bearing SceneEvents on their scheduled cinematic times.");
     }
 
@@ -170,7 +268,8 @@ internal static class CinematicNestedEventTransformChecks
         var owner = new CinematicScriptOwner(0x100, 0, 0, 0x10, uint.MaxValue, clip.Key,
             "callback owner", ["Cine_Events_Cine_exec_GoToEvents"], [], [])
         {
-            ModelFunctionNames = ["Cine_Events_Cine_exec_GoToEvents"]
+            ModelFunctionNames = ["Cine_Events_Cine_exec_GoToEvents"],
+            CallbackSlots = [new(3, 0x2916, "Cine_Events_Cine_exec_GoToEvents")]
         };
         var document = new SceneDocument();
         document.Worlds.Add(world);
@@ -223,6 +322,31 @@ internal static class CinematicNestedEventTransformChecks
             || timeline.PreviewableSceneEventOwners.Length != 0
             || disabledTimeline.TransformTracks.Length != 0 || disabledTimeline.Commands.Length != 0)
             throw new InvalidDataException("Disabling one callback owner must suppress its SceneEvents overlays while retaining source provenance for the UI.");
+        var callbackLedger = timeline.OwnerExecutionLedger.Single(entry =>
+            entry.OwnerId == owner.Id && entry.Route == CinematicOwnerExecutionRoute.CallbackReachability);
+        var disabledLedger = disabledTimeline.OwnerExecutionLedger.Single(entry =>
+            entry.OwnerId == owner.Id && entry.Route == CinematicOwnerExecutionRoute.CallbackReachability);
+        var runningInitLedger = timeline.OwnerExecutionLedger.Single(entry =>
+            entry.OwnerId == owner.Id && entry.Route == CinematicOwnerExecutionRoute.RunningInit);
+        if (callbackLedger.PreviewStatus != CinematicOwnerPreviewStatus.Included
+            || disabledLedger.PreviewStatus != CinematicOwnerPreviewStatus.Disabled
+            || callbackLedger.RuntimeGate != CinematicRuntimeGateStatus.Unknown
+            || !callbackLedger.ChannelIndices.SequenceEqual([0])
+            || callbackLedger.CallbackSources.Length != 1
+            || callbackLedger.CallbackSources[0].Status != CinematicCallbackSourceBindingStatus.Bound
+            || callbackLedger.CallbackSources[0].SlotIndex != 3
+            || callbackLedger.CallbackSources[0].SlotFunctionName != "Cine_Events_Cine_exec_GoToEvents"
+            || runningInitLedger.PreviewStatus != CinematicOwnerPreviewStatus.Included)
+            throw new InvalidDataException("The owner ledger must preserve callback and RunningInit provenance, user suppression, channel indices, and unknown runtime-gate state.");
+
+        document.CinematicScriptOwners[owner.Id] = owner with { CallbackSlots = null };
+        var unavailableSlotTable = CinematicNestedEventTransformTracks.ReadTimeline(clip, world, document)
+            .OwnerExecutionLedger.Single(entry => entry.OwnerId == owner.Id
+                && entry.Route == CinematicOwnerExecutionRoute.CallbackReachability)
+            .CallbackSources.Single();
+        document.CinematicScriptOwners[owner.Id] = owner;
+        if (unavailableSlotTable.Status != CinematicCallbackSourceBindingStatus.SlotTableUnavailable)
+            throw new InvalidDataException("Callback provenance must preserve an unavailable slot table as unknown instead of guessing a slot index.");
 
         var disabledPlayback = CinematicPlayback.Discover(document, world, new(), null,
             new HashSet<CinematicScriptOwnerId> { owner.Id }).Single();
@@ -282,11 +406,26 @@ internal static class CinematicNestedEventTransformChecks
         var unselected = CinematicNestedEventTransformTracks.ReadTimeline(clip, world, document);
         var selected = CinematicNestedEventTransformTracks.ReadTimeline(clip, world, document,
             previewedSceneEventOwners: new HashSet<CinematicScriptOwnerId> { owner.Id });
+        var scheduled = CinematicNestedEventTransformTracks.ReadTimeline(clip, world, document,
+            previewedSceneEventOwners: new HashSet<CinematicScriptOwnerId> { owner.Id },
+            previewedSceneEventStartTimes: new Dictionary<CinematicScriptOwnerId, float> { [owner.Id] = 1.25f });
         if (!unselected.PreviewableSceneEventOwners.SequenceEqual([owner.Id])
             || unselected.TransformTracks.Length != 0
             || selected.TransformTracks.Length != 1
             || selected.TransformTracks[0].Target != owner.OwnerKey)
             throw new InvalidDataException("A script-owned RunningInit channel must obey its owner preview switch instead of bypassing it during default scheduling.");
+        var availableLedger = unselected.OwnerExecutionLedger.Single(entry =>
+            entry.OwnerId == owner.Id && entry.Route == CinematicOwnerExecutionRoute.ManualPreview);
+        var selectedLedger = scheduled.OwnerExecutionLedger.Single(entry =>
+            entry.OwnerId == owner.Id && entry.Route == CinematicOwnerExecutionRoute.ManualPreview);
+        var runningInitLedger = unselected.OwnerExecutionLedger.Single(entry =>
+            entry.OwnerId == owner.Id && entry.Route == CinematicOwnerExecutionRoute.RunningInit);
+        if (availableLedger.PreviewStatus != CinematicOwnerPreviewStatus.Available
+            || selectedLedger.PreviewStatus != CinematicOwnerPreviewStatus.Included
+            || selectedLedger.PreviewStartTime != 1.25f
+            || runningInitLedger.PreviewStatus != CinematicOwnerPreviewStatus.Available
+            || availableLedger.RuntimeGate != CinematicRuntimeGateStatus.Unknown)
+            throw new InvalidDataException("The owner ledger must distinguish an available manual route from a selected preview and retain its chosen start time without claiming runtime gate success.");
     }
 
     private static void VerifyNestedLifecycleUsesCinematicClock()
@@ -374,6 +513,110 @@ internal static class CinematicNestedEventTransformChecks
         actor.Evaluate(0);
         if (MathF.Abs(actorRoot.PreviewMatrix!.Value.M41 - 2.5f) > .001f)
             throw new InvalidDataException("Cinematic actor roots must use the same nested EVE stop clock as scene objects.");
+    }
+
+    private static void VerifyNestedMessagesUseLifecycleClock()
+    {
+        const uint worldKey = 0x10;
+        const uint rootOwnerKey = 0x100;
+        const uint childOwnerKey = 0x200;
+        const uint executionObjectKey = 0x300;
+        var world = World(worldKey, rootOwnerKey, childOwnerKey, executionObjectKey);
+        var document = new SceneDocument();
+
+        var rootChannel = new CinematicEmbeddedEventTrack(0, rootOwnerKey, -1, 0, 4, 4)
+        {
+            Calls =
+            [
+                (.5f, new(childOwnerKey, 0x3B64, [0])), // TRAPlay
+                (1.5f, new(childOwnerKey, 0x3B66, [0])), // TRAPause
+                (2.5f, new(childOwnerKey, 0x3B67, [0])), // TRAUnPause
+                (3.5f, new(childOwnerKey, 0x3B65, [0])) // TRAStop
+            ]
+        };
+        var childChannel = new CinematicEmbeddedEventTrack(0, executionObjectKey, -1, 0, 2, 2)
+        {
+            Messages =
+            [
+                (.25f, Message(.25f, 30)),
+                (.25f, Message(.25f, 30)), // duplicate serialized route must not duplicate a cue
+                (1.25f, Message(1.25f, 53))
+            ]
+        };
+        AddList(document, List(rootOwnerKey, worldKey, 0x150, [rootChannel]));
+        AddList(document, List(childOwnerKey, worldKey, 0x250, [childChannel]));
+
+        var pausedTimeline = ReadTimeline(world, document);
+        var pausedMessages = pausedTimeline.Messages.Select(item => (item.Time, item.Message.Type)).ToArray();
+        bool pauseAndResumeMapBothMessageTypes = pausedMessages.SequenceEqual([(0.75f, 30), (2.75f, 53)]);
+        var firstScheduledMessage = pausedTimeline.ScheduledMessages.Single(item =>
+            item.TimelineTime == .75f && item.Message.Type == 30);
+        bool messageProvenanceAndClockAreExplicit = firstScheduledMessage.WorldKey == worldKey
+            && firstScheduledMessage.EventListOwnerKey == childOwnerKey
+            && firstScheduledMessage.EventKey == 0x250
+            && firstScheduledMessage.ChannelIndex == 0
+            && firstScheduledMessage.PreviewRoute == CinematicOwnerExecutionRoute.NestedEventCall
+            && MathF.Abs(firstScheduledMessage.ChannelSourceTime - .25f) < .001f
+            && firstScheduledMessage.Message.ExecutionObjectKey == executionObjectKey
+            && firstScheduledMessage.Message.ExecutionObjectKey != firstScheduledMessage.EventListOwnerKey
+            && firstScheduledMessage.IrisQueueOwnerCandidateKey == executionObjectKey
+            && firstScheduledMessage.QueueOwnerEvidence == CinematicMessageQueueOwnerEvidence.IrisEveTrackContext
+            && firstScheduledMessage.ChannelState is { Running: true, Paused: false } snapshot
+            && MathF.Abs(snapshot.LocalTime - .25f) < .001f
+            && firstScheduledMessage.DeliveryLimit.Contains("queue", StringComparison.OrdinalIgnoreCase);
+
+        rootChannel = rootChannel with
+        {
+            Calls =
+            [
+                (.5f, new(childOwnerKey, 0x3B64, [0])), // TRAPlay
+                (1f, new(childOwnerKey, 0x3B65, [0])), // TRAStop
+                (2f, new(childOwnerKey, 0x3B64, [0])) // replay from local time zero
+            ]
+        };
+        childChannel = childChannel with
+        {
+            Messages = [(.25f, Message(.25f, 30)), (1.25f, Message(1.25f, 53))]
+        };
+        AddList(document, List(rootOwnerKey, worldKey, 0x150, [rootChannel]));
+        AddList(document, List(childOwnerKey, worldKey, 0x250, [childChannel]));
+        var replayedMessages = ReadMessageTimes(world, document);
+        bool stopSuppressesAndReplayRestartsMessages = replayedMessages.SequenceEqual([(0.75f, 30), (2.25f, 30), (3.25f, 53)]);
+
+        rootChannel = rootChannel with { Calls = [(.5f, new(childOwnerKey, 0x3B60, []))] }; // TRAPlayAll
+        childChannel = childChannel with
+        {
+            ChannelFlags = CinematicEventTrackFlags.AutoLoop,
+            Duration = 1,
+            Messages = [(.25f, Message(.25f, 53))]
+        };
+        AddList(document, List(rootOwnerKey, worldKey, 0x150, [rootChannel]));
+        AddList(document, List(childOwnerKey, worldKey, 0x250, [childChannel]));
+        var loopedMessages = ReadMessageTimes(world, document);
+        bool loopDuplicatesMessageAtEachRun = loopedMessages.SequenceEqual(
+            [(.75f, 53), (1.75f, 53), (2.75f, 53), (3.75f, 53), (4.75f, 53)]);
+
+        if (!pauseAndResumeMapBothMessageTypes || !messageProvenanceAndClockAreExplicit
+            || !stopSuppressesAndReplayRestartsMessages
+            || !loopDuplicatesMessageAtEachRun)
+            throw new InvalidDataException($"Nested typed messages must follow their EVE channel's pause, stop/replay and AutoLoop clock and retain owner/channel/route provenance separately from message execution context, with the queue owner labeled as an Iris-model candidate. pause={Format(pausedMessages)}; provenance={messageProvenanceAndClockAreExplicit} (owner={firstScheduledMessage.EventListOwnerKey:X8}, event={firstScheduledMessage.EventKey:X8}, channel={firstScheduledMessage.ChannelIndex}, route={firstScheduledMessage.PreviewRoute}, source={firstScheduledMessage.ChannelSourceTime:G}, context={firstScheduledMessage.Message.ExecutionObjectKey:X8}, queueCandidate={firstScheduledMessage.IrisQueueOwnerCandidateKey:X8}, queueEvidence={firstScheduledMessage.QueueOwnerEvidence}, state={firstScheduledMessage.ChannelState}); replay={Format(replayedMessages)}; loop={Format(loopedMessages)}.");
+
+        Console.WriteLine("PASS: nested messages preserve owner/channel/route and EVE snapshot separately from message execution context");
+        Console.WriteLine("PASS: nested type-30/type-53 messages share EVE pause, stop/replay and AutoLoop clocks");
+
+        CinematicNestedEventTimeline ReadTimeline(WorldData currentWorld, SceneDocument currentDocument) =>
+            CinematicNestedEventTransformTracks.ReadTimeline(
+                Clip(rootOwnerKey, 0, 0x3B60), currentWorld, currentDocument);
+
+        (float Time, int Type)[] ReadMessageTimes(WorldData currentWorld, SceneDocument currentDocument) =>
+            ReadTimeline(currentWorld, currentDocument).Messages
+                .Select(item => (item.Time, item.Message.Type)).ToArray();
+
+        CinematicTimelineMessage Message(float time, int type) => new(time, executionObjectKey,
+            0, 0, Vector3.Zero, Vector3.Zero, 0, 0, 0, 0, type);
+
+        static string Format((float Time, int Type)[] messages) =>
+            string.Join(", ", messages.Select(item => $"{item.Type}@{item.Time:G}"));
     }
 
     private static void VerifyNestedTrackFlags(string outputDirectory)
@@ -688,6 +931,78 @@ internal static class CinematicNestedEventTransformChecks
             throw new InvalidDataException("A nested event list from multiple nonmatching worlds must remain unresolved.");
     }
 
+    private static void VerifyUnresolvedRoutesAreVisible()
+    {
+        var world = World(0x10, 0x100, 0x200, 0x300);
+        var document = new SceneDocument();
+        var missingList = CinematicNestedEventTransformTracks.ReadTimeline(
+            Clip(0x100, .75f, 0x3B64, 7), world, document);
+        bool missingTargetIsReported = missingList.RouteDiagnostics.Single().Failure
+            == CinematicEventRouteFailure.MissingSceneEventList;
+
+        AddList(document, List(0x100, world.Key, 0x150, [TransformChannel(0, 0x200, 0, 1)]));
+        var missingChannel = CinematicNestedEventTransformTracks.ReadTimeline(
+            Clip(0x100, .75f, 0x3B64, 7), world, document);
+        bool absentChannelIsReported = missingChannel.RouteDiagnostics.Single().Failure
+            == CinematicEventRouteFailure.MissingChannel;
+
+        var missingArgument = CinematicNestedEventTransformTracks.ReadTimeline(
+            Clip(0x100, .75f, 0x3B64), world, document);
+        bool absentArgumentIsReported = missingArgument.RouteDiagnostics.Single().Failure
+            == CinematicEventRouteFailure.MissingChannelArgument;
+
+        AddList(document, List(0x100, 0x11, 0x151, [TransformChannel(0, 0x200, 0, 1)]));
+        AddList(document, List(0x100, 0x12, 0x152, [TransformChannel(0, 0x200, 0, 1)]));
+        var ambiguousWorld = World(0x13, 0x100, 0x200, 0x300);
+        var ambiguous = CinematicNestedEventTransformTracks.ReadTimeline(
+            Clip(0x100, .75f, 0x3B64, 0), ambiguousWorld, document);
+        bool crossWorldAmbiguityIsReported = ambiguous.RouteDiagnostics.Single().Failure
+            == CinematicEventRouteFailure.AmbiguousWorldScope;
+
+        var nestedDocument = new SceneDocument();
+        var rootTrack = TransformChannel(0, 0x200, 0, 1) with
+        {
+            Calls = [(.5f, new CinematicLiteralCall(0x300, 0x3B64, [4]))]
+        };
+        AddList(nestedDocument, List(0x100, world.Key, 0x150, [rootTrack]));
+        var nested = CinematicNestedEventTransformTracks.ReadTimeline(
+            Clip(0x100, 0, 0x3B60), world, nestedDocument);
+        CinematicEventRouteDiagnostic nestedDiagnostic = nested.RouteDiagnostics.Single();
+        bool nestedSourceIsPreserved = nestedDiagnostic.SourceOwnerKey == 0x100
+            && nestedDiagnostic.SourceEventKey == 0x150
+            && nestedDiagnostic.SourceChannelIndex == 0
+            && MathF.Abs(nestedDiagnostic.Time - .5f) < .001f;
+
+        var playbackWorld = World(0x20, 0x400, 0x500, 0x600);
+        var playbackDocument = new SceneDocument();
+        var playbackClip = Clip(0x400, .5f, 0x3B64, 3);
+        playbackClip.CinematicWorldKey = playbackWorld.Key;
+        playbackClip.Cinematic = true;
+        playbackClip.SceneMotion = true;
+        playbackClip.Loaded = true;
+        playbackClip.Tracks.AddRange(new uint[] { 0x500, 0x600 }.Select(targetKey => new AnimationTrack
+        {
+            Target = targetKey,
+            Bone = -1,
+            Keys = [new AnimationKey { Time = 0, Duration = 2, Position = Vector3.Zero }]
+        }));
+        playbackWorld.CinematicClips[playbackClip.Key] = playbackClip;
+        playbackDocument.CinematicClips[playbackClip.Key] = playbackClip;
+        var playback = CinematicPlayback.Discover(playbackDocument, playbackWorld, new()).Single();
+        CinematicNleTimelineLane routeLane = CinematicNleTimelineBuilder
+            .Build(playback, playbackWorld, playbackDocument)
+            .Single(lane => lane.Name == "Unresolved EVE routes");
+        bool nleExposesRoute = MathF.Abs(routeLane.Items.Single().Start - .5f) < .001f
+            && routeLane.Items[0].Label.Contains("TRAPlay", StringComparison.Ordinal)
+            && routeLane.Items[0].Details.Contains("no SceneEvents list", StringComparison.Ordinal);
+
+        if (!missingTargetIsReported || !absentChannelIsReported || !absentArgumentIsReported
+            || !crossWorldAmbiguityIsReported || !nestedSourceIsPreserved || !nleExposesRoute)
+            throw new InvalidDataException("Unresolved TRAPlay routes should be inspectable and retain their source: "
+                + $"missing={missingTargetIsReported}, channel={absentChannelIsReported}, argument={absentArgumentIsReported}, "
+                + $"world={crossWorldAmbiguityIsReported}, nested={nestedSourceIsPreserved}, nle={nleExposesRoute}.");
+    }
+
     private static void VerifyManualSceneEventOwnerPreview(string outputDirectory)
     {
         var cinematicWorld = World(0x10, 0x100, 0x200);
@@ -722,6 +1037,9 @@ internal static class CinematicNestedEventTransformChecks
         var unselected = CinematicNestedEventTransformTracks.ReadTimeline(clip, assembledWorld, document);
         var selected = CinematicNestedEventTransformTracks.ReadTimeline(clip, assembledWorld, document,
             previewedSceneEventOwners: new HashSet<CinematicScriptOwnerId> { owner.Id });
+        var scheduled = CinematicNestedEventTransformTracks.ReadTimeline(clip, assembledWorld, document,
+            previewedSceneEventOwners: new HashSet<CinematicScriptOwnerId> { owner.Id },
+            previewedSceneEventStartTimes: new Dictionary<CinematicScriptOwnerId, float> { [owner.Id] = 1.25f });
         var state = new CinematicObjectState(clip, assembledWorld, [], selected.Commands);
         state.Evaluate(.49f);
         bool commandWaitsForItsSourceTime = assembledWorld.Objects.Single(item => item.GaoKey == 0x400).IsControlHidden;
@@ -733,6 +1051,8 @@ internal static class CinematicNestedEventTransformChecks
             || !selected.PreviewableSceneEventOwners.SequenceEqual([owner.Id])
             || selected.TransformTracks.Length != 1 || selected.TransformTracks[0].Target != 0x400
             || selected.TransformTracks[0].Keys[0].Position?.X != 8
+            || scheduled.TransformTracks.Length != 1 || scheduled.TransformTracks[0].Keys[0].Time != 1.25f
+            || scheduled.Commands.Single(item => item.Call.Selector == 8115).Time != 1.75f
             || !commandWaitsForItsSourceTime || !commandAppliesAtSourceTime)
             throw new InvalidDataException($"A paired-world SceneEvents preview failed: candidates={unselected.PreviewableSceneEventOwners.Length}, "
                 + $"defaultTracks={unselected.TransformTracks.Length}, defaultCalls={unselected.Commands.Length}, "
@@ -747,11 +1067,17 @@ internal static class CinematicNestedEventTransformChecks
             GameHidden = true,
             CinematicClipKey = clip.Key,
             CinematicDocument = document,
-            PreviewedCinematicSceneEventOwners = new HashSet<CinematicScriptOwnerId> { owner.Id }
+            PreviewedCinematicSceneEventOwners = new HashSet<CinematicScriptOwnerId> { owner.Id },
+            PreviewedCinematicSceneEventStartTimes = new Dictionary<CinematicScriptOwnerId, float> { [owner.Id] = 1.25f }
         });
         using var exported = new GlbReader(exportPath);
-        if (exported.Root.GetProperty("animations").GetArrayLength() != 1)
-            throw new InvalidDataException("Manually previewed source-owned EVE transforms must be included in synchronized scene export.");
+        int animationCount = exported.Root.GetProperty("animations").GetArrayLength();
+        int targetNode = Enumerable.Range(0, exported.Root.GetProperty("nodes").GetArrayLength())
+            .Single(index => exported.Root.GetProperty("nodes")[index].GetProperty("name").GetString()
+                == "object 00000400");
+        Matrix4x4 scheduledPose = exported.World(targetNode, 0, 1.25f);
+        if (animationCount != 1 || MathF.Abs(scheduledPose.M41 - 8) > .001f)
+            throw new InvalidDataException("A flag-time SceneEvents preview must preserve its delayed start in synchronized scene export.");
     }
 
     private static void VerifyPlaybackAndExport(string outputDirectory)

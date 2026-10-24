@@ -5,15 +5,12 @@ namespace JadeView;
 // Evaluate tint for static reflection/detail baking, matching renderer color modes.
 internal static class MaterialLayerTint
 {
-    internal static Vector4 Evaluate(SceneObject sceneObject, Geometry geometry, int vertex, ResolvedMaterial? material, JadeMaterialLayer layer)
+    internal static Vector4 Evaluate(SceneObject sceneObject, Geometry geometry, int vertex, ResolvedMaterial? material,
+        JadeMaterialLayer layer, Vector4? computedDiffuse = null, Vector4? materialConstant = null)
     {
         var tint = Vector4.One;
-        if (layer.ColorMode == 2 && material?.SourceBytes is { Length: >= 16 } bytes)
-        {
-            uint packed = Preview.U32(bytes, 12);
-            tint = new Vector4(packed & 255, packed >> 8 & 255, packed >> 16 & 255, 0) / 255;
-        }
-        uint paint = VertexPaint(sceneObject, geometry, vertex);
+        if (layer.ColorMode == 2) tint = materialConstant ?? ReadConstant(material);
+        uint paint = GeometryVertexColor.PackedColor(sceneObject, geometry, vertex);
         bool usesInstanceColor = (geometry.IsBillboardVertex(vertex)
             || sceneObject.RliColors.Length > 0 && layer.Blend is not (0 or 7))
             && layer.ColorMode is 0 or 6;
@@ -29,13 +26,19 @@ internal static class MaterialLayerTint
         }
         bool usesInstanceAlpha = (sceneObject.RliColors.Length > 0 || geometry.IsBillboardVertex(vertex)) && layer.Blend != 0
             && layer.ColorMode is 0 or 6;
-        if (usesInstanceAlpha) tint.W = GeometryVertexColor.InstanceAlpha(sceneObject, geometry, vertex, paint);
+        if (computedDiffuse is Vector4 computed && layer.ColorMode is 0 or 6) tint = computed;
+        if (usesInstanceAlpha && computedDiffuse == null)
+            tint.W = GeometryVertexColor.InstanceAlpha(sceneObject, geometry, vertex, paint);
         if ((layer.Flags & JadeMaterialFlags.OverrideAlpha) != 0) tint.W = layer.OverrideAlpha;
         return tint;
     }
-    private static uint VertexPaint(SceneObject sceneObject, Geometry geometry, int vertex)
+
+    internal static Vector4 ReadConstant(ResolvedMaterial? material)
     {
-        if (vertex < sceneObject.RliColors.Length) return sceneObject.RliColors[vertex];
-        return vertex < geometry.VertexColors.Length ? geometry.VertexColors[vertex] : 0;
+        if (material?.SourceBytes is not { Length: >= 16 } bytes) return Vector4.One;
+        uint packed = Preview.U32(bytes, 12);
+        // The renderer reads only the packed RGB and explicitly supplies W=1.
+        // Palette constants and shockwave snapshots may later override alpha.
+        return new Vector4(packed & 255, packed >> 8 & 255, packed >> 16 & 255, 255) / 255f;
     }
 }

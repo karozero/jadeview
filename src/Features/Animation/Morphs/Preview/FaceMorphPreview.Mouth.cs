@@ -27,7 +27,7 @@ public sealed partial class FaceMorphPreview
         if (mouth == null) return;
         var captured = mouth;
         mouth = null;
-        captured.Baseline.CopyTo(weights, 0);
+        ReplaceWeights(captured.Baseline);
         ChannelsActive = captured.Channels != null;
         if (captured.Channels != null) channelStates = captured.Channels;
     }

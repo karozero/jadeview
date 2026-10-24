@@ -3,7 +3,7 @@ using System.Buffers.Binary;
 namespace JadeView;
 
 public sealed record CinematicFacialEvent(float Time, uint ActorTargetKey, bool? AutomaticMouth, float MouthFactor,
-    float MouthSpeed, CinematicMorphCommand?[] Commands)
+    float MouthSpeed, CinematicMorphCommand?[] Commands, bool BlinkRequested = false)
 {
     private const int MessageTypeOffset = 0x30;
     private const int MouthCommandOffset = 0x18;
@@ -17,27 +17,81 @@ public sealed record CinematicFacialEvent(float Time, uint ActorTargetKey, bool?
                 || ReadWord(message, MessageTypeOffset) != 53)
                 continue;
 
-            float mouthCommand = BitConverter.UInt32BitsToSingle(ReadWord(message, MouthCommandOffset));
-            float residual = CommandResidual(mouthCommand);
-            bool? automaticMouth = mouthCommand == 0 ? null : residual < 0;
-            float mouthFactor = Math.Clamp((MathF.Abs(residual) - .5f) * 10f, 0, 1);
-            float mouthSpeed = unchecked((int)ReadWord(message, MouthSpeedOffset));
-            if (automaticMouth == true && !IsSupportedSpeed(mouthSpeed)) continue;
-
-            float sharedSpeed = BitConverter.UInt32BitsToSingle(ReadWord(message, 0x20));
-            var commands = new CinematicMorphCommand?[]
-            {
-                ReadCommand(message, 0, 0x08, sharedSpeed),
-                ReadCommand(message, 1, 0x0C, sharedSpeed)
-            };
-            return new(key.Time, ReadWord(message, 0), automaticMouth, mouthFactor, mouthSpeed, commands);
+            var decoded = Decode(key.Time, ReadWord(message, 0),
+                BitConverter.UInt32BitsToSingle(ReadWord(message, 0x08)),
+                BitConverter.UInt32BitsToSingle(ReadWord(message, 0x0C)),
+                BitConverter.UInt32BitsToSingle(ReadWord(message, MouthCommandOffset)),
+                BitConverter.UInt32BitsToSingle(ReadWord(message, 0x20)),
+                unchecked((int)ReadWord(message, MouthSpeedOffset)));
+            if (decoded != null) return decoded;
         }
         return null;
     }
 
-    private static CinematicMorphCommand? ReadCommand(byte[] message, int channel, int offset, float speed)
+    internal static CinematicFacialEvent? Decode(CinematicTimelineMessage message)
     {
-        float packed = BitConverter.UInt32BitsToSingle(ReadWord(message, offset));
+        if (message.Type != 53) return null;
+        return Decode(message.Time, message.Gao, message.Vector1.X, message.Vector1.Y,
+            message.Vector2.Y, message.Float1, message.Int1);
+    }
+
+    internal static CinematicFacialEvent? Decode(CinematicTimelineMessage message,
+        CinematicFacialMessageHandler handler)
+    {
+        if (message.Type != 53 || handler == CinematicFacialMessageHandler.Unknown
+            || handler == CinematicFacialMessageHandler.Sally && message.Int2 == -1)
+            return null;
+
+        CinematicMorphCommand?[] commands = handler switch
+        {
+            CinematicFacialMessageHandler.AutomaticLipSync => [],
+            CinematicFacialMessageHandler.Companion =>
+            [
+                ReadCommand(0, message.Vector1.X, message.Float2),
+                ReadCommand(1, message.Vector1.Y, message.Float2),
+                ReadCommand(4, message.Vector2.Y, message.Int1)
+            ],
+            CinematicFacialMessageHandler.Sally =>
+            [
+                ReadCommand(0, message.Vector1.X, message.Float2),
+                ReadCommand(1, message.Vector1.Y, message.Float2),
+                ReadCommand(2, message.Vector1.Z, message.Float1),
+                ReadCommand(3, message.Vector2.X, message.Int1),
+                ReadCommand(4, message.Vector2.Y, message.Int1)
+            ],
+            _ => []
+        };
+
+        float mouthCommand = message.Vector2.Y;
+        float mouthSpeed = message.Int1;
+        float residual = CommandResidual(mouthCommand);
+        bool? automaticMouth = mouthCommand == 0 ? null : residual < 0;
+        float mouthFactor = Math.Clamp((MathF.Abs(residual) - .5f) * 10f, 0, 1);
+        if (automaticMouth == true && !IsSupportedSpeed(mouthSpeed)) return null;
+
+        bool blinkRequested = handler == CinematicFacialMessageHandler.Sally && message.Int2 != 0;
+        return new(message.Time, message.Gao, automaticMouth, mouthFactor, mouthSpeed, commands, blinkRequested);
+    }
+
+    private static CinematicFacialEvent? Decode(float time, uint actorTargetKey,
+        float firstChannelCommand, float secondChannelCommand, float mouthCommand,
+        float sharedSpeed, float mouthSpeed)
+    {
+        float residual = CommandResidual(mouthCommand);
+        bool? automaticMouth = mouthCommand == 0 ? null : residual < 0;
+        float mouthFactor = Math.Clamp((MathF.Abs(residual) - .5f) * 10f, 0, 1);
+        if (automaticMouth == true && !IsSupportedSpeed(mouthSpeed)) return null;
+
+        var commands = new CinematicMorphCommand?[]
+        {
+            ReadCommand(0, firstChannelCommand, sharedSpeed),
+            ReadCommand(1, secondChannelCommand, sharedSpeed)
+        };
+        return new(time, actorTargetKey, automaticMouth, mouthFactor, mouthSpeed, commands);
+    }
+
+    private static CinematicMorphCommand? ReadCommand(int channel, float packed, float speed)
+    {
         if (packed == 0 || !float.IsFinite(packed) || packed < int.MinValue || packed >= 2147483648f
             || !IsSupportedSpeed(speed)) return null;
 
@@ -90,6 +144,14 @@ public sealed record CinematicFacialEvent(float Time, uint ActorTargetKey, bool?
 
     private static uint ReadWord(byte[] source, int offset) =>
         BinaryPrimitives.ReadUInt32LittleEndian(source.AsSpan(offset, sizeof(uint)));
+}
+
+internal enum CinematicFacialMessageHandler
+{
+    Unknown,
+    AutomaticLipSync,
+    Companion,
+    Sally
 }
 
 public sealed record CinematicMorphCommand(int Channel, int Group, float Factor, float Speed);

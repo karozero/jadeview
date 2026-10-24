@@ -60,6 +60,7 @@ internal static class CinematicFacialSignalChecks
         if (actor.CinematicClockOwned) throw new InvalidDataException("Cinematic clock ownership leaked after exit.");
         Console.WriteLine("PASS: continuous facial helper from separate event/transform tracks, shared clock, seek and cleanup");
         VerifyDirectChannelCalls();
+        VerifyNestedTimelineMessagesUseScheduledClock();
 
         void VerifyWeight(float time, float expected)
         {
@@ -131,6 +132,131 @@ internal static class CinematicFacialSignalChecks
                 throw new InvalidDataException($"Morph channel script call at {time} produced {state}, expected {expectedWeight}/{expectedProgression}.");
         }
     }
+
+    private static void VerifyNestedTimelineMessagesUseScheduledClock()
+    {
+        const uint worldKey = 0x201;
+        const uint clipKey = 0x202;
+        const uint eventOwnerKey = 0x203;
+        const uint actorKey = 0x204;
+        const uint cameraKey = 0x205;
+        var actorRoot = new SceneObject
+        {
+            GaoKey = actorKey,
+            GeometryKey = 100,
+            Modifiers = [new(4, MorphPreviewChecks.Payload(1))]
+        };
+        var actor = new SceneActor { Root = actorRoot, Members = [actorRoot] };
+        actorRoot.Actor = actor;
+        var camera = new SceneObject { GaoKey = cameraKey, Name = "Camera" };
+        var eventOwner = new SceneObject { GaoKey = eventOwnerKey };
+        var clip = new AnimationClip
+        {
+            Loaded = true,
+            Key = clipKey,
+            Duration = 4,
+            CinematicWorldKey = worldKey,
+            Cinematic = true,
+            SceneMotion = true,
+            Tracks =
+            [
+                new() { Bone = -1, Target = actorKey, Keys = [new() { Duration = 4 }] },
+                new() { Bone = -1, Target = cameraKey, Keys = [new() { Duration = 4, Position = Vector3.UnitZ }] },
+                new() { Bone = -1, Target = eventOwnerKey, Keys = [CinematicTestEvents.Call(1, eventOwnerKey, 0x3B64, 0)] }
+            ]
+        };
+        var nestedMessage = new CinematicTimelineMessage(.5f, eventOwnerKey, 0, 0,
+            new Vector3(-4001, -4001, -4001), new Vector3(-4001, -4001, 0), 2, 3, 10, 0, 53);
+        var nestedDialogueMessage = new CinematicTimelineMessage(.25f, eventOwnerKey, actorKey, 0,
+            Vector3.Zero, Vector3.Zero, 0, 0, 0, 0, 30);
+        var channel = new CinematicEmbeddedEventTrack(0, actorKey, -1, 0, 1, 2)
+        {
+            Messages = [(.25f, nestedDialogueMessage), (.5f, nestedMessage)]
+        };
+        var document = new SceneDocument();
+        document.CinematicClips.Add(clipKey, clip);
+        document.CinematicEmbeddedEventTracks[(worldKey, eventOwnerKey)] =
+        [new(eventOwnerKey, "test owner", worldKey, "SceneEvents", clipKey, [channel])];
+        var lipSyncOwner = new CinematicScriptOwner(eventOwnerKey, 0, 0, worldKey, uint.MaxValue,
+            clipKey, "lip-sync receiver", ["Cine_lipsynch_auto_Lips_lecture_messages"],
+            [new("des_o_acteur", actorKey, "instance", "facial actor")], []);
+        document.CinematicScriptOwners[lipSyncOwner.Id] = lipSyncOwner;
+        var world = new WorldData { Key = worldKey };
+        world.Objects.AddRange([actorRoot, camera, eventOwner]);
+        world.Actors.Add(actor);
+        world.CinematicClips.Add(clipKey, clip);
+        var resolver = new ResourceResolver();
+        ((Dictionary<uint, Geometry>)typeof(ResourceResolver)
+            .GetField("_geometries", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(resolver)!)
+            .Add(100, new Geometry { Key = 100, Positions = [Vector3.Zero] });
+
+        var playback = CinematicPlayback.Discover(document, world, resolver).Single();
+        var message = playback.ScriptMessages.Single(item => item.Message.Type == 53);
+        var dialogueMessage = playback.ScriptMessages.Single(item => item.Message.Type == 30);
+        var facial = CinematicFacialEvent.Decode(message.Message,
+            CinematicFacialMessageHandler.AutomaticLipSync);
+        var companionFacial = CinematicFacialEvent.Decode(message.Message,
+            CinematicFacialMessageHandler.Companion);
+        var sallyFacial = CinematicFacialEvent.Decode(message.Message,
+            CinematicFacialMessageHandler.Sally);
+        if (MathF.Abs(message.Time - 1.5f) > .001f || MathF.Abs(dialogueMessage.Time - 1.25f) > .001f
+            || facial?.AutomaticMouth != true
+            || facial.ActorTargetKey != 0 || facial.Commands.Any(command => command != null)
+            || CinematicPlayback.ResolveFacialTargetKey(CinematicFacialMessageHandler.AutomaticLipSync,
+                eventOwnerKey, message.Message.Gao, lipSyncOwner) != actorKey
+            || CinematicPlayback.ResolveFacialTargetKey(CinematicFacialMessageHandler.AutomaticLipSync,
+                eventOwnerKey, cameraKey, lipSyncOwner) != cameraKey
+            || CinematicPlayback.ResolveFacialTargetKey(CinematicFacialMessageHandler.AutomaticLipSync,
+                eventOwnerKey, 0, lipSyncOwner with
+                {
+                    ObjectReferences = [new("des_o_acteur", 0, "instance", null)]
+                }) != eventOwnerKey
+            || CinematicPlayback.ResolveFacialTargetKey(CinematicFacialMessageHandler.AutomaticLipSync,
+                eventOwnerKey, 0, lipSyncOwner with
+                {
+                    ObjectReferences = [new("des_o_acteur", 1, "instance", "AI_MainActor slot 1")]
+                }) != null
+            || Channels(companionFacial) != "0,1,4" || Channels(sallyFacial) != "0,1,2,3,4")
+            throw new InvalidDataException($"Nested type-53 EVE messages must retain their clock, resolve the callback-specific target, and decode only fields used by the receiver. time={message.Time}; actor={message.Message.Gao:X8}; auto={Channels(facial)}; companion={Channels(companionFacial)}; sally={Channels(sallyFacial)}.");
+        playback.Activate();
+        playback.Seek(1.5f);
+        bool hasMouthEvent = playback.FacialDiagnostics.Any(item =>
+            item.Contains("1 mouth start/stop commands", StringComparison.Ordinal));
+        playback.Seek(1.25f);
+        playback.Seek(1.5f);
+        if (!hasMouthEvent || !playback.FacialDiagnostics.Any(item =>
+                item.Contains("1 mouth start/stop commands", StringComparison.Ordinal)))
+            throw new InvalidDataException("Nested type-53 EVE messages were exposed but did not enter the actor's facial playback timeline.");
+        playback.Deactivate();
+
+        document.CinematicScriptOwners[lipSyncOwner.Id] = lipSyncOwner with
+        {
+            CallbackNames = ["Sally_sa_exec_message_read"]
+        };
+        var resetMessage = CinematicFacialEvent.Decode(nestedMessage with { Int2 = -1 },
+            CinematicFacialMessageHandler.Sally);
+        if (resetMessage != null)
+            throw new InvalidDataException("Sally type-53 Int2=-1 resets expression mode and must not decode vector fields as new morph commands.");
+        var expressionPlayback = CinematicPlayback.Discover(document, world, resolver).Single();
+        expressionPlayback.Activate();
+        expressionPlayback.Seek(1.5f);
+        if (expressionPlayback.FacialDiagnostics.Any()
+            || expressionPlayback.ScriptMessages.All(item => item.Message.Type != 53))
+            throw new InvalidDataException("Sally and companion facial messages target their execution actor, not the automatic-lipsync OVA override; this synthetic owner does not route the event to the other actor.");
+        expressionPlayback.Deactivate();
+
+        document.CinematicScriptOwners[lipSyncOwner.Id] = lipSyncOwner with
+        {
+            CallbackNames = ["Sally_sa_exec_message_read", "Cine_lipsynch_auto_Lips_lecture_messages"]
+        };
+        if (CinematicPlayback.Discover(document, world, resolver).Single().FacialDiagnostics.Any())
+            throw new InvalidDataException("A script owner with multiple reachable type-53 receiver families must remain unresolved instead of choosing one decoder by priority.");
+        Console.WriteLine("PASS: nested EVE message clock, actor routing and callback-specific type-53 semantics");
+    }
+
+    private static string Channels(CinematicFacialEvent? facialEvent) => facialEvent == null
+        ? "none"
+        : string.Join(',', facialEvent.Commands.Where(command => command != null).Select(command => command!.Channel));
 
     private static AnimationOpaquePayload ChannelCall(int selector, float value)
     {

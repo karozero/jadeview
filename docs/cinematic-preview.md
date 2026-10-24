@@ -88,8 +88,10 @@ game changes the RLI destination color/factor from effect callbacks as well as i
 world-cycle controller, and the viewport does not yet execute those callbacks.
 
 Environment controllers are discovered through native `world_cycle` entry points
-and typed object variables. Their active sky, environment and fog references are
-included in assembly. The preview reads instance-overridden day, dawn, sunset
+and typed object variables. Their owners and referenced sky, environment and fog
+objects are included when they belong to the cinematic, matching base, or
+environment-variant world; initially inactive controllers remain available so a
+later explicit event can activate them. The preview reads instance-overridden day, dawn, sunset
 and night palettes, then applies the source packed-color interpolation using the
 sun object's current Z position to the referenced sky/environment material
 constants. It also previews the controller's native local-alpha fade on environment
@@ -98,6 +100,14 @@ The controller's RLI destination color and time-of-day factor are also applied t
 vertex-color material modes using the engine's subtractive lighting path. Saved
 planet rotation/hour and attack state are not restored; realtime lights, water
 and fog parameters are still not simulated, so full lighting parity is pending.
+
+The controller owner is checked against its current preview control flags on
+every evaluation. A decoded literal `OBJ_FlagInactiveSet(0)` can therefore
+activate the controller during the cinematic, and `OBJ_FlagInactiveSet(1)` can
+deactivate it again; reverse seeking restores the serialized owner state. This
+is limited to explicit clip or joined `SceneEvents` commands. It does not infer
+that an owner callback or saved-flag gate ran, and GLB export does not animate
+this world-cycle controller state.
 
 Generated SPG sprites retain their interpolated vertex alpha, including vertices
 beyond the carrier's RLI array. This fixes the opaque fallback used for procedural
@@ -531,6 +541,21 @@ clock. Zero lens commands retain the preceding angle; invalid values are ignored
 Horizontal FOV converts to vertical FOV for the actual viewport aspect, and
 leaving source-camera follow restores the editor lens. Native screen-format
 constraints, positional smoothing and the full camera script remain incomplete.
+Enabled or scheduled nested EVE tracks can also set world view slot 0 through
+`VIEWFocaleSet(viewIndex, angleRadians)`. JadeView joins these instantaneous
+setters to the matching camera execution receiver and the same lens timeline
+used by message 60. Other view slots and setters from unrelated receivers are
+left out rather than applied to every camera. In the retail intro graph,
+`CINE_INCANTATION_ARRIVEE_PEYJ_EVENTS.gao` sets view 0 to 0.5 radians at
+16.067 s while assigning `Cine_Intro_Cam.gao` to that view. When this owner's
+EVE list is explicitly previewed, JadeView applies the call to viewport playback
+and synchronized GLB lens keys; its serialized start gates are not assumed to
+have passed in the game. The archive audit
+`--cinematic-camera-script-fov-audit <archive> <container> <clip> <owner> <time>`
+verifies the selected-owner path end to end. The `FF0045A2 / 3500B8EA` export
+with owner `BF001FFA` was imported in Blender 5.2.3; its camera-lens curve
+matched the GLB samples with less than 0.000001 mm error. This validates GLB
+and Blender import consistency, not native game playback.
 
 GLB exports lens animation using `KHR_animation_pointer` on camera `yfov`, in
 the same animation as bodies, faces and camera motion. Blender 5.2.2 import was

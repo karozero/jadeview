@@ -23,13 +23,13 @@ public sealed partial class SceneExporter
         }).ToArray();
     }
 
-    private static Vector2 ReferenceReflectionUv(Vector3 normal, JadeMaterialLayer layer, uint drawFlags)
+    private Vector2 ReferenceReflectionUv(Vector3 normal, JadeMaterialLayer layer, uint drawFlags)
     {
         // A fixed frontal actor-space view. Translation and scene placement must
         // not shift the reflection. This is a static approximation of uvMode 2.
         var projected = new Vector2(normal.X, normal.Z) * .5f;
         if ((drawFlags & 0x8000) != 0) projected.X = -projected.X;
-        var matrix = layer.UvMatrix(0, out var shift);
+        var matrix = layer.UvMatrix(ExportMaterialTime, out var shift);
         var transformed = new Vector2(matrix.X * projected.X + matrix.Y * projected.Y + shift.X,
             matrix.Z * projected.X + matrix.W * projected.Y + shift.Y);
         return new Vector2(.5f) - transformed;

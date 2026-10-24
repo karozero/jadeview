@@ -80,12 +80,18 @@ internal static class CinematicScriptMessageAnalyzer
             string actorOverride = message.Gao is 0 or uint.MaxValue
                 ? "The message does not override the configured target actor. "
                 : $"The message routes the lip-sync target to GAO {message.Gao:X8}. ";
-            return $"Iris automatic lip-sync callback consumes message 53: {actorOverride}Int1 supplies the mouth-channel speed ({message.Int1}); Vector2.Y supplies the progression/form value ({message.Vector2.Y:G}), which the callback splits into a form index and fractional factor. Source callback path: {automaticLipSyncPath}. This is script-level facial animation data, not a phoneme transcript or an audio-driven analysis; runtime branch and execution are not evaluated.";
+            float mouthResidual = GetMouthControlResidual(message.Vector2.Y);
+            string mouthControl = message.Vector2.Y == 0
+                ? "zero Vector2.Y leaves the current automatic-cycle state unchanged"
+                : mouthResidual < 0
+                    ? $"Vector2.Y ({message.Vector2.Y:G}) produces a negative fractional remainder and requests the controller's automatic 32-form mouth cycle"
+                    : $"Vector2.Y ({message.Vector2.Y:G}) produces a nonnegative fractional remainder, selects a fixed form and factor, and disables automatic cycling";
+            return $"Iris automatic lip-sync callback consumes message 53: {actorOverride}Int1 supplies the mouth-channel speed ({message.Int1}); {mouthControl}. The callback derives the form/factor from this value and advances the channel using game delta time. Source callback path: {automaticLipSyncPath}. This is script-level facial animation data, not a phoneme transcript or audio-driven analysis; runtime branch and execution are not evaluated.";
         }
 
         if (CinematicScriptReader.TryDescribeCallbackReachability(receiver, CompanionMessageCallback,
                 out string companionPath))
-            return $"Iris companion callback consumes message 53 and updates expression/mouth morph-channel targets from the message vectors, speed fields, and integer progression. Source callback path: {companionPath}. The callback uses several configured channels; this message is facial control rather than a body-action request, and runtime execution is not evaluated.";
+            return $"Iris companion callback consumes message 53: Vector1.X/Y set morph channels 0/1 at Float2 speed; Vector2.Y sets channel 4 at Int1 speed and also selects automatic mouth cycling. Source callback path: {companionPath}. The callback does not use Vector1.Z or Vector2.X for these channel updates; queue delivery and runtime execution are not evaluated.";
 
         if (CinematicScriptReader.TryDescribeCallbackReachability(receiver, SallyMessageCallback,
                 out string sallyPath))
@@ -93,10 +99,22 @@ internal static class CinematicScriptMessageAnalyzer
             string mode = message.Int2 == -1
                 ? "clears the cinematic-expression mode"
                 : "enables the cinematic-expression mode";
-            return $"Iris Sally script consumes message 53 and {mode} (Int2={message.Int2}); the message vectors and speeds feed its expression-control path. Source callback path: {sallyPath}. This does not prove that the nested callback ran or that facial morphs were evaluated in the preview.";
+            string expressionFields = message.Int2 == -1
+                ? "This reset branch discards the vector fields and does not issue new morph targets."
+                : "Vector1.X/Y/Z set morph channels 0/1/2 at Float2/Float2/Float1 speed, and Vector2.X/Y set channels 3/4 at Int1 speed. Vector2.Y also selects automatic mouth cycling; Int2 is copied to Sally's blink state.";
+            return $"Iris Sally script consumes message 53 and {mode} (Int2={message.Int2}). {expressionFields} Source callback path: {sallyPath}. JadeView does not yet simulate blink state, and callback execution is not proven.";
         }
 
         return null;
+    }
+
+    private static float GetMouthControlResidual(float value)
+    {
+        if (!float.IsFinite(value) || value < int.MinValue || value >= 2147483648f) return 0;
+        int roundedCommand = (int)Math.Round(value, MidpointRounding.ToEven);
+        float normalizedCommand = roundedCommand / 1000f;
+        int formIndex = roundedCommand / 1000;
+        return normalizedCommand - formIndex;
     }
 
     private static string? DescribeCameraMessage(CinematicTimelineMessage message, CinematicScriptOwner executionOwner)

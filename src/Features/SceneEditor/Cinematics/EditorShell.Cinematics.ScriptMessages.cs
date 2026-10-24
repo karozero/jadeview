@@ -11,45 +11,35 @@ public sealed partial class EditorShell
     private CinematicScriptMessageTrack[]? _messageGateTrackCache;
     private readonly Dictionary<CinematicScriptOwnerId, CinematicScriptMessageGateAnalysis?>
         _messageGateAnalysisCache = [];
+    private readonly Dictionary<(CinematicScriptOwnerId Owner, uint WorldKey, uint ClipKey,
+        CinematicScheduledMessage[] ScheduledMessages), float?> _messageGatePreviewTimeCache = [];
 
     private void DrawCinematicMessageGateCandidates(CinematicScriptOwner gateOwner)
     {
-        if (Document == null) return;
-        if (!ReferenceEquals(_messageGateCacheDocument, Document))
-        {
-            _messageGateCacheDocument = Document;
-            _messageGateReferencesCache = null;
-            _messageGateTrackCache = null;
-            _messageGateAnalysisCache.Clear();
-        }
+        if (Document is not { } document || !EnsureMessageGateCache()) return;
+        var messageTracks = _messageGateTrackCache!;
+        var namedReferences = _messageGateReferencesCache!;
 
         if (!_messageGateAnalysisCache.TryGetValue(gateOwner.Id, out var analysis))
         {
-            _messageGateReferencesCache ??= CinematicScriptNamedReferenceCatalog.ForDocument(Document);
-            _messageGateTrackCache ??= Document.CinematicMessageTracks
-                .Concat(CinematicScriptMessageTrack.FromScriptEventTracks(
-                    Document.CinematicScriptEventTracks.Values.SelectMany(tracks => tracks)))
-                .Concat(CinematicScriptMessageTrack.FromCinematicClips(Document.CinematicClips.Values))
-                .Concat(CinematicScriptMessageTrack.FromEmbeddedEventTracks(
-                    Document.CinematicEmbeddedEventTracks.Values.SelectMany(eventLists => eventLists)))
-                .Concat(CinematicScriptMessageTrack.FromActorClips(Document.Worlds))
-                .ToArray();
             var matches = CinematicScriptBehaviorAnalyzer.FindMessageGateCandidates(gateOwner,
-                _messageGateTrackCache, _messageGateReferencesCache);
+                messageTracks, namedReferences);
             var engineMatches = CinematicScriptBehaviorAnalyzer.FindExtendedMessageGateCandidates(gateOwner,
-                _messageGateTrackCache, _messageGateReferencesCache);
-            if (matches != null || engineMatches != null)
+                messageTracks, namedReferences);
+            var ownerQueueCandidates = CinematicScriptBehaviorAnalyzer.FindOwnerQueueMessageCandidates(
+                gateOwner, messageTracks, namedReferences);
+            if (matches != null || engineMatches != null || ownerQueueCandidates != null)
             {
                 var differentContexts = CinematicScriptBehaviorAnalyzer.FindMessageGateContextMismatches(
-                    gateOwner, _messageGateTrackCache, _messageGateReferencesCache) ?? [];
+                    gateOwner, messageTracks, namedReferences) ?? [];
                 var engineDifferentTargets =
                     CinematicScriptBehaviorAnalyzer.FindExtendedMessageGateTargetMismatches(gateOwner,
-                        _messageGateTrackCache, _messageGateReferencesCache) ?? [];
+                        messageTracks, namedReferences) ?? [];
                 var engineInt1MaskMismatches =
                     CinematicScriptBehaviorAnalyzer.FindExtendedMessageGateInt1MaskMismatches(gateOwner,
-                        _messageGateTrackCache, _messageGateReferencesCache) ?? [];
+                        messageTracks, namedReferences) ?? [];
                 analysis = new(matches ?? [], differentContexts, engineMatches ?? [], engineDifferentTargets,
-                    engineInt1MaskMismatches);
+                    engineInt1MaskMismatches, ownerQueueCandidates ?? []);
             }
             _messageGateAnalysisCache[gateOwner.Id] = analysis;
         }
@@ -74,8 +64,24 @@ public sealed partial class EditorShell
         }
 
         DrawCategoryTitle($"Literal engine-message sends matching this gate ({analysis.EngineMatches.Length})");
-        ImGui.TextDisabled("MSGSendEx writes a zero Int1; MSGSendAll carries an explicit Int1. MSGSendEx and MSGSendAll enqueue on the current execution object's queue, while MSGSendAllOwner uses a separate registered owner queue and is not joined here. Matches satisfy the configured queue, message ID and Int1 mask, but queue capacity and execution order remain runtime-dependent.");
+        ImGui.TextDisabled("MSGSendEx writes a zero Int1; MSGSendAll carries an explicit Int1. MSGSendEx and MSGSendAll enqueue on the current execution object's queue. These matches satisfy the configured queue, message ID and Int1 mask, but queue capacity and execution order remain runtime-dependent.");
         DrawEngineMessageGateRows(analysis.EngineMatches);
+
+        if (analysis.OwnerQueueCandidates.Length > 0)
+        {
+            DrawCategoryTitle($"MSGSendAllOwner sends; registered queue unresolved ({analysis.OwnerQueueCandidates.Length})");
+            var startupRegistration = CinematicScriptGlobalQueueCatalog.StartupRegistration;
+            bool gateMatchesStartupOwner = analysis.OwnerQueueCandidates[0].GateQueueObject.Key
+                == startupRegistration.StartupOwnerKey;
+            string startupRelation = gateMatchesStartupOwner
+                ? "The configured gate queue matches that startup owner key."
+                : "The configured gate queue differs from the startup owner key and would require another registration.";
+            ImGui.TextDisabled($"The calls match this gate's message ID and Int1. Iris sends them to {startupRegistration.QueueSymbol} via {startupRegistration.RegistrationApi}.");
+            ImGui.TextDisabled($"Startup candidate: {startupRegistration.StartupOwnerName} ({startupRegistration.StartupOwnerKey:X8}) · {startupRegistration.StartupSource}:{startupRegistration.StartupLine}");
+            ImGui.TextDisabled($"{startupRelation} World teardown clears the pointer at {startupRegistration.WorldTeardownSource}:{startupRegistration.WorldTeardownLine}.");
+            ImGui.TextDisabled($"A runtime {startupRegistration.RegistrationApi} call can replace this candidate; the live queue recipient is not established here.");
+            DrawOwnerQueueMessageRows(analysis.OwnerQueueCandidates);
+        }
 
         if (analysis.EngineDifferentTargets.Length > 0)
         {
@@ -95,7 +101,7 @@ public sealed partial class EditorShell
             foreach (var candidate in candidates.Take(32))
             {
                 var trackOwner = CinematicScriptOwnerResolver.Resolve(candidate.Track.OwnerKey,
-                    candidate.Track.WorldKey, Document.CinematicScriptOwners.Values);
+                    candidate.Track.WorldKey, document.CinematicScriptOwners.Values);
                 string channelDescription = candidate.Track.ChannelIndex is { } channel
                     ? $"channel {channel} · " : "";
                 string additionalSources = candidate.Sources.Length > 1
@@ -127,7 +133,7 @@ public sealed partial class EditorShell
             foreach (var candidate in candidates.Take(32))
             {
                 var trackOwner = CinematicScriptOwnerResolver.Resolve(candidate.Track.OwnerKey,
-                    candidate.Track.WorldKey, Document.CinematicScriptOwners.Values);
+                    candidate.Track.WorldKey, document.CinematicScriptOwners.Values);
                 string channelDescription = candidate.Track.ChannelIndex is { } channel
                     ? $"channel {channel} · " : "";
                 string payload = unchecked((float)(int)candidate.Call.Arguments[1])
@@ -155,5 +161,86 @@ public sealed partial class EditorShell
             if (candidates.Length > 32)
                 ImGui.TextDisabled($"Showing 32 of {candidates.Length} MSGSendEx commands.");
         }
+
+        void DrawOwnerQueueMessageRows(CinematicScriptOwnerQueueMessageCandidate[] candidates)
+        {
+            foreach (var candidate in candidates.Take(32))
+            {
+                var trackOwner = CinematicScriptOwnerResolver.Resolve(candidate.Track.OwnerKey,
+                    candidate.Track.WorldKey, document.CinematicScriptOwners.Values);
+                string channelDescription = candidate.Track.ChannelIndex is { } channel
+                    ? $"channel {channel} · " : "";
+                _ = CinematicEngineFunctionCatalog.TryReadMessageGateFields(candidate.Call,
+                    out int messageId, out int int1, out _);
+                string label = $"{candidate.Track.Name} · {candidate.Track.LinkName} "
+                    + $"{candidate.Track.EventKey:X8} · {channelDescription}{candidate.Time:F2}s "
+                    + $"→ MSGSendAllOwner id {messageId}, Int1={int1}; registered queue target unresolved "
+                    + $"(gate expects {candidate.GateQueueObject.Name} ({candidate.GateQueueObject.Key:X8}))";
+                string selectableId = $"{label}##msgsendallowner{candidate.Track.WorldKey:X8}"
+                    + $"{candidate.Track.OwnerKey:X8}{candidate.Track.EventKey:X8}"
+                    + $"{candidate.Track.ChannelIndex}{candidate.Time:R}{candidate.Call.Target:X8}";
+                if (trackOwner == null)
+                    ImGui.TextDisabled(label);
+                else if (ImGui.Selectable(selectableId))
+                    _selectedCinematicScriptOwnerId = trackOwner.Id;
+
+                if (candidate.PriorSameChannelRegistrations.Length == 0)
+                {
+                    ImGui.TextDisabled("No earlier MSGRegOwner found in this serialized EVE channel.");
+                    continue;
+                }
+
+                foreach (var registration in candidate.PriorSameChannelRegistrations)
+                {
+                    string registeredOwner = registration.RegisteredOwnerCandidate is { } resolvedOwner
+                        ? $"{resolvedOwner.Name} ({resolvedOwner.Key:X8})"
+                        : $"unresolved key {registration.Call.Target:X8}";
+                    ImGui.TextDisabled($"  Possible prior MSGRegOwner at {registration.Time:F2}s: "
+                        + $"{registeredOwner}; another EVE channel or runtime order may overwrite it.");
+                }
+            }
+
+            if (candidates.Length > 32)
+                ImGui.TextDisabled($"Showing 32 of {candidates.Length} MSGSendAllOwner calls.");
+        }
+    }
+
+    private float? FindCinematicMessageGatePreviewTime(CinematicScriptOwner owner,
+        CinematicPlayback playback)
+    {
+        if (!EnsureMessageGateCache()) return null;
+        var cacheKey = (owner.Id, playback.WorldKey, playback.Key, playback.ScheduledMessages);
+        if (_messageGatePreviewTimeCache.TryGetValue(cacheKey, out float? cachedTime))
+            return cachedTime;
+
+        float? messageTime = CinematicTimelineMessageGateAnalyzer.FindFirstMatchingMessageTime(owner,
+            playback.WorldKey, playback.Key, playback.Duration,
+            _messageGateTrackCache!, _messageGateReferencesCache!, playback.ScheduledMessages);
+        _messageGatePreviewTimeCache[cacheKey] = messageTime;
+        return messageTime;
+    }
+
+    private bool EnsureMessageGateCache()
+    {
+        if (Document == null) return false;
+        if (!ReferenceEquals(_messageGateCacheDocument, Document))
+        {
+            _messageGateCacheDocument = Document;
+            _messageGateReferencesCache = null;
+            _messageGateTrackCache = null;
+            _messageGateAnalysisCache.Clear();
+            _messageGatePreviewTimeCache.Clear();
+        }
+
+        _messageGateReferencesCache ??= CinematicScriptNamedReferenceCatalog.ForDocument(Document);
+        _messageGateTrackCache ??= Document.CinematicMessageTracks
+            .Concat(CinematicScriptMessageTrack.FromScriptEventTracks(
+                Document.CinematicScriptEventTracks.Values.SelectMany(tracks => tracks)))
+            .Concat(CinematicScriptMessageTrack.FromCinematicClips(Document.CinematicClips.Values))
+            .Concat(CinematicScriptMessageTrack.FromEmbeddedEventTracks(
+                Document.CinematicEmbeddedEventTracks.Values.SelectMany(eventLists => eventLists)))
+            .Concat(CinematicScriptMessageTrack.FromActorClips(Document.Worlds))
+            .ToArray();
+        return true;
     }
 }

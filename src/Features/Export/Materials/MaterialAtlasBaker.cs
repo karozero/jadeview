@@ -65,6 +65,7 @@ internal sealed class MaterialAtlasBaker(MaterialAtlasLayout layout, IReadOnlyLi
         if (composition == MaterialLayerComposition.SourceAlphaOverlay)
             return color * (1 - alpha) + secondLayer * alpha;
         var overlay = sources[2].Sample(Interpolate(uvs[2], weights));
+        if (tints != null) overlay *= Interpolate(tints[2], weights);
         return color * alpha + overlay * (1 - alpha);
     }
 

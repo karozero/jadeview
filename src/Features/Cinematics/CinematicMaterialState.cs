@@ -23,13 +23,26 @@ internal sealed class CinematicMaterialState
     internal Vector4 FogColor { get; private set; }
     internal float FogNear { get; private set; }
     internal float FogFar { get; private set; }
+    internal Vector4 AmbientColor { get; private set; }
+    internal Vector4 AmbientColor2 { get; private set; }
+    internal bool HasAmbient { get; private set; }
+    internal CinematicMaterialLayerSnapshot CaptureLayers() => new(Time,
+        new Dictionary<(uint, int), JadeMaterialLayer>(evaluated),
+        new Dictionary<(uint, int, int), byte>(environmentAlphas),
+        new Dictionary<(uint, int), Vector4>(environmentConstants),
+        new Dictionary<uint, float>(shockwaveTransparency))
+    {
+        RliColor = RliColor, RliFactor = RliFactor,
+        AmbientColor = AmbientColor, AmbientColor2 = AmbientColor2, HasAmbient = HasAmbient
+    };
 
     internal CinematicMaterialState(AnimationClip clip, WorldData world,
         IReadOnlyDictionary<uint, ResolvedMaterial> materials)
         : this(clip, world, materials, []) { }
 
     internal CinematicMaterialState(AnimationClip clip, WorldData world, IReadOnlyDictionary<uint, ResolvedMaterial> materials,
-        IEnumerable<CinematicEnvironmentController> controllers)
+        IEnumerable<CinematicEnvironmentController> controllers,
+        IEnumerable<(float Time, CinematicLiteralCall Call)>? nestedCommands = null)
     {
         this.world = world;
         var activeControllerKeys = world.Objects
@@ -37,8 +50,9 @@ internal sealed class CinematicMaterialState
             .Select(sceneObject => sceneObject.GaoKey).ToHashSet();
         environmentControllers = controllers.Where(controller => activeControllerKeys.Contains(controller.OwnerKey)).ToArray();
         changes = CinematicLiteralCall.ReadTimeline(clip)
+            .Concat(nestedCommands ?? [])
             .Select(item => Decode(item.Time, item.Call, world, materials))
-            .OfType<Change>().OrderBy(change => change.Time).ToArray();
+            .OfType<Change>().Distinct().OrderBy(change => change.Time).ToArray();
         foreach (uint key in changes.Select(change => change.Material).Distinct())
         {
             var layers = JadeMaterialLayer.Read(materials.GetValueOrDefault(key)?.SourceBytes);
@@ -84,6 +98,9 @@ internal sealed class CinematicMaterialState
         FogColor = worldCycle.FogColor;
         FogNear = worldCycle.FogNear;
         FogFar = worldCycle.FogFar;
+        AmbientColor = worldCycle.AmbientColor;
+        AmbientColor2 = worldCycle.AmbientColor2;
+        HasAmbient = worldCycle.HasAmbient;
         if (shockwaves != null)
         {
             float maximumShockwaveTransparency = 0;

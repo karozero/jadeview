@@ -9,6 +9,7 @@ internal static class CinematicSceneScopeChecks
         var other = new WorldData { Key = 2000, Name = "Other_cine" };
         var setup = new WorldData { Key = 3000, Name = "Setup" };
         var environmentVariant = new WorldData { Key = 4000, Name = "Room_Waf" };
+        var baseWorld = new WorldData { Key = 5000, Name = "Room" };
         var required = Actor(7);
         var unrelated = Actor(8);
         var grouped = Actor(51);
@@ -23,8 +24,10 @@ internal static class CinematicSceneScopeChecks
         setup.Objects.AddRange([scriptDependency, unrelatedScriptDependency]);
         var environment = new SceneObject { GaoKey = 61 };
         var unusedEnvironment = new SceneObject { GaoKey = 71 };
-        setup.Objects.AddRange([new() { GaoKey = 60 }, environment,
+        baseWorld.Objects.AddRange([new() { GaoKey = 60 }, environment,
             new() { GaoKey = 70, ControlFlags = CinematicObjectState.Inactive }, unusedEnvironment]);
+        var unrelatedWorldCycleTarget = new SceneObject { GaoKey = 161, Name = "Unrelated cycle target" };
+        other.Objects.AddRange([new() { GaoKey = 160 }, unrelatedWorldCycleTarget]);
         var variantLandmark = new SceneObject { GaoKey = 81, Name = "Variant landmark", GeometryKey = 82 };
         var hiddenVariantGeometry = new SceneObject { GaoKey = 83, GeometryKey = 84, DrawFlags = 0 };
         var unrelatedVariantActor = Actor(85);
@@ -50,8 +53,9 @@ internal static class CinematicSceneScopeChecks
             Tracks = [new() { Bone = -1, Target = 8 }]
         };
         var document = new SceneDocument();
-        document.CinematicEnvironmentControllers.Add(60, new(60, setup.Key, [61]));
-        document.CinematicEnvironmentControllers.Add(70, new(70, setup.Key, [71]));
+        document.CinematicEnvironmentControllers.Add(new(baseWorld.Key, 60), new(60, baseWorld.Key, [61]));
+        document.CinematicEnvironmentControllers.Add(new(baseWorld.Key, 70), new(70, baseWorld.Key, [71]));
+        document.CinematicEnvironmentControllers.Add(new(other.Key, 160), new(160, other.Key, [161]));
         document.CinematicScriptOwners[new(current.Key, 1200)] = new(1200, 0, 0, current.Key,
             uint.MaxValue, source.Key, "Sequence owner", [],
             [new("des_o_actor", scriptLinked.Root.GaoKey, "instance", scriptLinked.Root.Name)], []);
@@ -62,7 +66,7 @@ internal static class CinematicSceneScopeChecks
         document.CinematicScriptOwners[new(current.Key, 1400)] = new(1400, 0, 0, current.Key,
             2001, uint.MaxValue, "Unrelated sequence owner", [],
             [new("des_o_unrelated", unrelatedScriptDependency.GaoKey, "instance", unrelatedScriptDependency.Name)], []);
-        document.Worlds.AddRange([current, other, setup, environmentVariant]);
+        document.Worlds.AddRange([current, other, setup, environmentVariant, baseWorld]);
         document.CinematicClips.Add(source.Key, source);
         document.CinematicClips.Add(otherSource.Key, otherSource);
         var assembled = CinematicWorldAssembler.Assemble(document, current);
@@ -70,12 +74,13 @@ internal static class CinematicSceneScopeChecks
             || !assembled.Actors.Contains(scriptLinked) || assembled.Actors.Contains(unrelated)
             || !assembled.Objects.Contains(target) || !assembled.Objects.Contains(scriptDependency)
             || assembled.Objects.Contains(unrelatedScriptDependency) || !assembled.Objects.Contains(environment)
-            || assembled.Objects.Contains(unusedEnvironment) || !assembled.Objects.Contains(variantLandmark)
+            || !assembled.Objects.Contains(unusedEnvironment)
+            || assembled.Objects.Contains(unrelatedWorldCycleTarget) || !assembled.Objects.Contains(variantLandmark)
             || assembled.Objects.Contains(hiddenVariantGeometry) || assembled.Objects.Contains(unrelatedVariantActor.Root)
             || assembled.CinematicClips.Count != 1
             || assembled.CinematicClips.ContainsKey(otherSource.Key))
-            throw new InvalidDataException("Scene assembly lost literal camera references or mixed another cinematic world.");
-        Console.WriteLine("PASS: per-world clip scope, literal-only scene dependencies and camera-only actor/target inclusion");
+            throw new InvalidDataException("Scene assembly lost literal dependencies, omitted initially inactive controller assets, or mixed another cinematic world.");
+        Console.WriteLine("PASS: per-world clip scope, scene-scoped environment controllers and camera-only actor/target inclusion");
     }
 
     private static void VerifySourceObjectDependencies()

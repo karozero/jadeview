@@ -57,6 +57,7 @@ internal static partial class ActorLoader
             foreach (var root in originals.Where(o => (o.Flags & 2) != 0))
             {
                 var r = Find(root.GaoKey); if (r == null) continue;
+                root.SerializedStateFlags = r.SerializedStateFlags;
                 var children = Group(r.Actions); if (children.Count == 0) continue;
                 var actor = new SceneActor { Root = root }; actor.Members.Add(root); root.Actor = actor;
                 actor.MouthController = PcMorphControllerDiscovery.Discover(r, Find, record => origins[record], root.Name, out var mouthDiagnostic);
@@ -66,6 +67,13 @@ internal static partial class ActorLoader
                 {
                     var node = SceneLoader.ParseGao(origins[child], new(child.Offset - 4, child.Size + 4, 0, false), child.Key, 0, doc.Diagnostics);
                     if (node == null) { actor.Bones.Add(null); continue; }
+                    node.SerializedStateFlags = child.SerializedStateFlags;
+                    node.PcBounds = child.Bounds;
+                    node.CollisionInstanceKey = child.CollisionInstance;
+                    node.CollisionMapKey = child.CollisionMap;
+                    if (child.BoundsError != null) doc.Diagnostics.Add($"{child.Name}: {child.BoundsError}");
+                    node.LightResourceKey = child.LightKey;
+                    node.Light = child.Light;
                     node.Modifiers = child.Modifiers.Select(m => new SceneModifier(m.Type, origins[child].AsSpan(m.Offset, m.Size).ToArray())).ToList();
                     node.Name = child.Name; node.Id = $"{root.Id}/part/{actor.Bones.Count}/{child.Key:X8}";
                     node.Actor = actor; node.ActorNode = Node(origins[child], node);
@@ -75,7 +83,15 @@ internal static partial class ActorLoader
                     foreach (var source in Group(child.Prefab))
                     {
                         var model = SceneLoader.ParseGao(origins[source], new(source.Offset - 4, source.Size + 4, 0, false), source.Key, 0, doc.Diagnostics);
-                        if (model == null) continue; model.Modifiers = source.Modifiers.Select(m => new SceneModifier(m.Type, origins[source].AsSpan(m.Offset, m.Size).ToArray())).ToList(); model.ActorNode = Node(origins[source], model); models.Add(model);
+                        if (model == null) continue;
+                        model.SerializedStateFlags = source.SerializedStateFlags;
+                        model.PcBounds = source.Bounds;
+                        model.CollisionInstanceKey = source.CollisionInstance;
+                        model.CollisionMapKey = source.CollisionMap;
+                        if (source.BoundsError != null) doc.Diagnostics.Add($"{source.Name}: {source.BoundsError}");
+                        model.LightResourceKey = source.LightKey;
+                        model.Light = source.Light;
+                        model.Modifiers = source.Modifiers.Select(m => new SceneModifier(m.Type, origins[source].AsSpan(m.Offset, m.Size).ToArray())).ToList(); model.ActorNode = Node(origins[source], model); models.Add(model);
                     }
                     if (models.Count > 0) actor.SourceMeshes[boneIndex] = models;
                     actor.Members.Add(node); actor.Bones.Add(node);
@@ -126,6 +142,7 @@ internal static partial class ActorLoader
                     sceneObject.GroupMemberKeys = Group(source.Prefab).Select(member => member.Key).ToArray();
             }
         }
+        doc.CollisionResources = PcCollisionResourceCatalogBuilder.Build(all, origins, doc);
         foreach (var world in doc.Worlds)
         {
             var cinematicSources = doc.CinematicClips.Values

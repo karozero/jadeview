@@ -14,7 +14,8 @@ internal sealed class CinematicCameraExportSampler : IDisposable
     {
         this.binding = binding;
         var dependencies = (binding.Routing?.Dependencies ?? new[] { binding.Source, binding.Target }.OfType<SceneObject>())
-            .Append(binding.Source).Distinct().ToArray();
+            .Append(binding.Source).Distinct();
+        dependencies = CinematicHierarchyPose.IncludeParentChain(dependencies, binding.PoseObjects);
         tracks = dependencies.ToDictionary(item => item, item => sourceTracks
             .Where(track => track.Bone < 0 && track.Target == item.GaoKey).ToArray());
         try
@@ -35,10 +36,13 @@ internal sealed class CinematicCameraExportSampler : IDisposable
     internal Matrix4x4 Evaluate(float time)
     {
         if (binding.Routing != null)
-            return binding.Routing.Evaluate(time, binding.Source, item => ReadPose(item, time));
-        var pose = ReadPose(binding.Source, time);
+            return binding.Routing.Evaluate(time, binding.Source,
+                item => CinematicHierarchyPose.ResolveRenderMatrix(item, binding.PoseObjects, dependency => ReadPose(dependency, time)));
+        var pose = CinematicHierarchyPose.ResolveRenderMatrix(binding.Source, binding.PoseObjects,
+            dependency => ReadPose(dependency, time));
         return binding.Target == null ? pose
-            : CinematicCameraBinding.AimAt(pose, ReadPose(binding.Target, time).Translation);
+            : CinematicCameraBinding.AimAt(pose, CinematicHierarchyPose.ResolveRenderMatrix(binding.Target,
+                binding.PoseObjects, dependency => ReadPose(dependency, time)).Translation);
     }
 
     private Matrix4x4 ReadPose(SceneObject item, float time)

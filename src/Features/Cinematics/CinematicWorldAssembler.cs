@@ -13,6 +13,10 @@ public static class CinematicWorldAssembler
         var environmentVariantWorlds = document.Worlds.Where(world => hasCinematicSuffix
             && !sceneWorlds.Contains(world)
             && world.Name.StartsWith(environmentName + "_", StringComparison.OrdinalIgnoreCase)).ToArray();
+        var environmentWorldKeys = sceneWorlds.Concat(environmentVariantWorlds)
+            .Select(world => world.Key).ToHashSet();
+        CinematicEnvironmentController[] environmentControllers = document.CinematicEnvironmentControllers.Values
+            .Where(controller => environmentWorldKeys.Contains(controller.WorldKey)).ToArray();
         var clips = CinematicSceneClips.ForWorld(document, cinematicWorld);
         var targetKeys = CinematicSceneClips.References(clips);
         var nestedTimelines = clips.Select(clip =>
@@ -23,12 +27,11 @@ public static class CinematicWorldAssembler
             targetKeys.UnionWith(timeline.Commands.Select(command => command.Call.Target));
         }
         IncludeScriptReferencedObjects(targetKeys, clips, cinematicWorld.Key, document);
-        var activeControllers = document.Worlds.SelectMany(world => world.Objects)
-            .Where(item => (item.ControlFlags & CinematicObjectState.Inactive) == 0)
-            .Select(item => item.GaoKey).ToHashSet();
-        foreach (var controller in document.CinematicEnvironmentControllers.Values
-            .Where(controller => activeControllers.Contains(controller.OwnerKey)))
+        foreach (var controller in environmentControllers)
+        {
+            targetKeys.Add(controller.OwnerKey);
             targetKeys.UnionWith(controller.ObjectKeys);
+        }
         CinematicSceneClips.IncludeGroupMembers(targetKeys, sceneWorlds.SelectMany(world => world.Objects)
             .Concat(document.Worlds.SelectMany(world => world.Objects)));
         var sceneActors = sceneWorlds.SelectMany(world => world.Actors).ToHashSet();
@@ -48,7 +51,16 @@ public static class CinematicWorldAssembler
                 .Where(sceneObject => sceneObject.Actor == null && targetKeys.Contains(sceneObject.GaoKey)))
             .Where(sceneObject => sceneObject.Actor == null || includedActors.Contains(sceneObject.Actor))
             .Distinct();
-        var assembled = new WorldData { Key = cinematicWorld.Key, Name = cinematicWorld.Name + " · assembled" };
+        var assembled = new WorldData
+        {
+            Key = cinematicWorld.Key,
+            Name = cinematicWorld.Name + " · assembled",
+            CinematicEnvironmentControllers = environmentControllers,
+            // Native WOL merge replaces ambient with each incoming WOW header.
+            // A cinematic definition's header is not the final merged environment.
+            Lighting = document.Worlds.Select(world => world.Lighting).LastOrDefault(lighting => lighting != null)
+                ?? cinematicWorld.Lighting
+        };
         assembled.Objects.AddRange(UniqueObjects(objects));
         assembled.Actors.AddRange(actors);
         foreach (var clip in clips) assembled.CinematicClips.Add(clip.Key, clip);

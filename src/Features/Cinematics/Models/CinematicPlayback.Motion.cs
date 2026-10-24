@@ -4,7 +4,15 @@ public sealed partial class CinematicPlayback
 {
     private void EvaluateActors()
     {
+        ClearScriptHierarchyWorldMatrices();
+        EvaluateActorsBase();
+        ApplyScriptHierarchyWorldMatrices();
+    }
+
+    private void EvaluateActorsBase()
+    {
         localRotations.ResetTargets();
+        gameScriptMoves.ResetTargets();
         int actorIndex = 0;
         foreach (var (actor, clip) in actorClips)
         {
@@ -21,8 +29,10 @@ public sealed partial class CinematicPlayback
         foreach (var track in objectTracks)
             EvaluateObject(track.Object, track.Tracks, Time);
 
-        eventTrackPreview.Evaluate(Time);
-        orientTo.Evaluate(Time);
+        eventTrackPreview.Evaluate(Time, world.Objects, sceneObjectTracksByTarget);
+        orientTo.Evaluate(Time, sightSet);
         localRotations.Evaluate(Time);
+        gameScriptMoves.Evaluate(Time);
+        sightSet.Evaluate(Time, orientTo);
     }
 }

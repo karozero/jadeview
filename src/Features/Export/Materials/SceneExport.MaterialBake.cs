@@ -9,18 +9,15 @@ public sealed partial class SceneExporter
     {
         var composition = MaterialLayerRules.Composition(layers);
         bool reflection = composition == MaterialLayerComposition.ReflectionDetail;
-        bool supportsInstanceColors = sceneObject.RliColors.Length == 0
-            || composition is MaterialLayerComposition.ReflectionDetail or MaterialLayerComposition.SourceAlphaOverlay;
-        bool canBake = options.Textures && composition != MaterialLayerComposition.Unsupported && supportsInstanceColors;
+        bool canBake = options.Textures && composition != MaterialLayerComposition.Unsupported;
         if (!canBake || !CanBakeLayerUvs(sceneObject, geometry, part, layers)) return null;
         var sources = ReadBakeSources(layers);
         if (sources == null) return null;
-        float alphaScale = composition == MaterialLayerComposition.DestinationAlphaMask
-            && (layers[1].Flags & JadeMaterialFlags.OverrideAlpha) != 0 ? layers[1].OverrideAlpha : 1;
+        // Per-layer tints include local-alpha overrides, so apply them only once.
+        const float alphaScale = 1;
         var reflectionNormals = reflection ? ReferenceReflectionNormals(sceneObject, geometry, positions) : null;
-        bool bakeLayerTints = reflection || composition == MaterialLayerComposition.SourceAlphaOverlay;
-        Func<int, Vector4[][]>? tints = bakeLayerTints
-            ? triangle => MaterialCornerTints(sceneObject, geometry, part, material, layers, triangle) : null;
+        Func<int, Vector4[][]> tints =
+            triangle => MaterialCornerTints(sceneObject, geometry, part, material, layers, triangle);
         var baked = MaterialAtlasBaker.Bake(part.VertexIndices.Length / 3, sources,
             triangle => LayerCornerUvs(sceneObject, geometry, part, positions, layers, triangle, reflectionNormals),
             alphaScale, composition, tints);
@@ -34,10 +31,16 @@ public sealed partial class SceneExporter
         return baked;
     }
 
-    private static Vector4[][] MaterialCornerTints(SceneObject sceneObject, Geometry geometry, Geometry.Part part,
-        ResolvedMaterial? material, IReadOnlyList<JadeMaterialLayer> layers, int triangle) =>
-        layers.Select(layer => Enumerable.Range(triangle * 3, 3).Select(corner =>
-            MaterialLayerTint.Evaluate(sceneObject, geometry, part.VertexIndices[corner], material, layer)).ToArray()).ToArray();
+    private Vector4[][] MaterialCornerTints(SceneObject sceneObject, Geometry geometry, Geometry.Part part,
+        ResolvedMaterial? material, IReadOnlyList<JadeMaterialLayer> layers, int triangle)
+    {
+        int subMaterialIndex = ResolvePartSubMaterialIndex(sceneObject, part);
+        Vector4 materialConstant = ExportMaterialConstant(sceneObject, material, subMaterialIndex);
+        return layers.Select(layer => Enumerable.Range(triangle * 3, 3).Select(corner =>
+            MaterialLayerTint.Evaluate(sceneObject, geometry, part.VertexIndices[corner], material, layer,
+                ComputedExportColor(sceneObject, geometry, part.VertexIndices[corner], layer,
+                    geometry.IsBillboardVertex(part.VertexIndices[0])), materialConstant)).ToArray()).ToArray();
+    }
 
     private bool CanBakeLayerUvs(SceneObject sceneObject, Geometry geometry, Geometry.Part part,
         IReadOnlyList<JadeMaterialLayer> layers)

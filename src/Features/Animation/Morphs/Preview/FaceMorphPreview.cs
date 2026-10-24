@@ -12,6 +12,8 @@ public sealed partial class FaceMorphPreview
     public FaceMorphTimeline Timeline { get; }
     internal bool HasUnmatchedProjectState { get; set; }
     private readonly float[] weights;
+    private int deformationRevision;
+    internal int DeformationRevision => deformationRevision;
 
     private FaceMorphPreview(Geometry geometry, SceneModifier modifier)
     {
@@ -59,13 +61,13 @@ public sealed partial class FaceMorphPreview
         StopBlink();
         Timeline.Playing = false;
         ChannelsActive = false;
-        weights[group] = weight;
+        SetWeightValue(group, weight);
     }
     public void Reset()
     {
         StopMouthCycle();
         StopBlink();
-        Array.Clear(weights);
+        ReplaceWeights(ReadOnlySpan<float>.Empty);
         Timeline.Playing = false;
         ResetChannelState();
     }
@@ -87,7 +89,36 @@ public sealed partial class FaceMorphPreview
     {
         if (sample == null) return;
         ChannelsActive = false;
-        sample.CopyTo(weights, 0);
+        ReplaceWeights(sample);
+    }
+
+    private void SetWeightValue(int group, float weight)
+    {
+        if (weights[group] == weight) return;
+        weights[group] = weight;
+        deformationRevision++;
+    }
+
+    private void ReplaceWeights(ReadOnlySpan<float> replacement)
+    {
+        bool changed = false;
+        if (replacement.IsEmpty)
+        {
+            changed = weights.Any(weight => weight != 0);
+            if (!changed) return;
+            Array.Clear(weights);
+        }
+        else
+        {
+            if (replacement.Length != weights.Length)
+                throw new ArgumentException("Morph weight count does not match the source modifier.", nameof(replacement));
+            for (int index = 0; index < weights.Length; index++)
+                changed |= weights[index] != replacement[index];
+            if (!changed) return;
+            replacement.CopyTo(weights);
+        }
+
+        deformationRevision++;
     }
 
 }

@@ -11,13 +11,24 @@ internal static class ObjectMaterialAudit
             byte[] bytes = archive.Read(entry);
             if (!Encoding.Latin1.GetString(bytes).Contains(objectName.Replace(".gao", ""), StringComparison.OrdinalIgnoreCase)) continue;
             var document = SceneLoader.Load(bytes, entry.Name, archive.PathName);
+            foreach (var sourceWorld in document.Worlds.Where(world => !world.Name.StartsWith('_')))
+                Console.WriteLine($"WORLD {sourceWorld.Name} {sourceWorld.Key:X8} ambient={sourceWorld.Lighting?.AmbientColor:X8}/{sourceWorld.Lighting?.EffectiveAmbientColor2:X8}");
             foreach (var world in document.Worlds)
-            foreach (var sceneObject in world.Objects.Where(item => item.Name.Contains(objectName.Replace(".gao", ""), StringComparison.OrdinalIgnoreCase)))
+            foreach (var sceneObject in world.Objects.Where(item => item.Name.Contains(objectName.Replace(".gao", ""), StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(item => item.Name.Equals(objectName, StringComparison.OrdinalIgnoreCase)))
             {
                 var resolver = new ResourceResolver();
                 resolver.LoadFixContainer(archive);
                 resolver.LoadSceneContainer(archive, entry);
-                Console.WriteLine($"OBJECT {sceneObject.Name} {entry.Id} {world.Name} {sceneObject.GaoKey:X8} geometry={sceneObject.RenderGeometryKey:X8} material={sceneObject.MaterialKey:X8} RLI={sceneObject.RliColors.Length}");
+                Console.WriteLine($"OBJECT {sceneObject.Name} {entry.Id} {world.Name} {sceneObject.GaoKey:X8} geometry={sceneObject.RenderGeometryKey:X8} material={sceneObject.MaterialKey:X8} RLI={sceneObject.RliColors.Length} draw={sceneObject.DrawFlags:X8} identity={sceneObject.Flags:X8}");
+                var geometry = resolver.Geometries.GetValueOrDefault(sceneObject.RenderGeometryKey);
+                if (geometry != null)
+                    Console.WriteLine($"GEOMETRY vertices={geometry.Positions.Length} colors={geometry.VertexColors.Length} "
+                        + $"geometryColors={string.Join(',', geometry.VertexColors.Take(8).Select(color => color.ToString("X8")))} "
+                        + $"instanceColors={string.Join(',', sceneObject.RliColors.Take(8).Select(color => color.ToString("X8")))}");
+                if (sceneObject.Actor != null)
+                    foreach (var member in sceneObject.Actor.Members.Take(12))
+                        Console.WriteLine($"ACTOR MEMBER {member.Name} {member.GaoKey:X8} geometry={member.RenderGeometryKey:X8} material={member.MaterialKey:X8} draw={member.DrawFlags:X8} RLI={member.RliColors.Length}");
                 var rootMaterial = resolver.Materials.GetValueOrDefault(sceneObject.MaterialKey);
                 var materials = rootMaterial?.Type == 4
                     ? rootMaterial.SubMaterialKeys.Select(key => resolver.Materials.GetValueOrDefault(key))

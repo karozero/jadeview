@@ -238,6 +238,7 @@ internal static class CinematicRealtimeAudioRenderAudit
         renderer.CinematicLightnings = playback.Lightnings;
         renderer.CinematicScreenFade = playback.ScreenFade;
         renderer.CinematicMaterials = playback.MaterialState;
+        renderer.CinematicLights = playback.LightState;
         renderer.CinematicOffsetEffect = playback.OffsetEffect;
         renderer.CinematicColorBalance = playback.ColorBalance;
         renderer.CinematicHorizontalFov = playback.Camera?.Lens?.Evaluate(playback.Time);

@@ -35,6 +35,24 @@ internal static class CinematicCameraLensChecks
         var binding = CinematicCameraBinding.Discover(source, world.Objects, []).Single();
         if (Math.Abs(binding.Lens!.Evaluate(4) - .4f) > .0001f)
             throw new InvalidDataException("Source camera binding lost its lens timeline.");
+
+        CinematicLiteralCall DecodeFocalCall(float time, uint target, uint viewIndex, float angle) =>
+            CinematicLiteralCall.Decode(CinematicTestEvents.Call(time, target, 0x30D9, viewIndex,
+                BitConverter.SingleToUInt32Bits(angle)).OpaquePayloads[0], target, 0)!;
+        var scriptedFocalCalls = new (float Time, CinematicLiteralCall Call)[]
+        {
+            (4.25f, DecodeFocalCall(4.25f, 99, 0, .75f)),
+            (4.5f, DecodeFocalCall(4.5f, 99, 1, 1.1f)),
+            (4.75f, DecodeFocalCall(4.75f, 123, 0, 1.0f))
+        };
+        var scriptedBinding = CinematicCameraBinding.Discover(source, world.Objects, [], scriptedFocalCalls).Single();
+        if (Math.Abs(scriptedBinding.Lens!.Evaluate(4.24f) - .4f) > .0001f
+            || Math.Abs(scriptedBinding.Lens.Evaluate(4.25f) - .75f) > .0001f
+            || Math.Abs(scriptedBinding.Lens.Evaluate(4.8f) - .75f) > .0001f
+            || !CinematicEngineFunctionCatalog.Describe(scriptedFocalCalls[0].Call)
+                .Contains("world view slot 0 focal angle to 0.75 radians", StringComparison.Ordinal))
+            throw new InvalidDataException("Scripted VIEWFocaleSet did not update only the matching camera view's lens.");
+
         string path = Path.Combine(output, "camera-lens.glb");
         var result = SceneExporter.Export(path, world, new(), new()
         { Animations = true, CinematicClipKey = source.Key, UnknownObjects = true, Textures = false });
@@ -55,7 +73,7 @@ internal static class CinematicCameraLensChecks
         if (sample < 0 || Math.Abs(angles[sample][0] - CinematicCameraLens.VerticalAngle(.9f,
             CinematicCameraLens.ExportAspect)) > .0001f)
             throw new InvalidDataException("Animated FOV pointer lost the source lens curve.");
-        Console.WriteLine("PASS: native camera float layout, lens ramps/interruption, zero/invalid values, reverse seek and GLB lens metadata");
+        Console.WriteLine("PASS: native camera float layout, message and scripted lens changes, view/receiver routing, ramps/interruption, reverse seek and GLB lens metadata");
 
         void Check(float time, float expectedAngle)
         {

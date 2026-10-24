@@ -23,6 +23,8 @@ public sealed partial class SceneActor
     internal bool IsCinematicWorldResident;
     public int PoseRevision { get; private set; }
     private readonly Dictionary<SceneObject, Matrix4x4> world = [];
+    private readonly Dictionary<SceneObject, Matrix4x4> evaluatedWorldPoseSnapshot = [];
+    private readonly Dictionary<SceneObject, int> evaluatedMorphRevisionSnapshot = [];
     private readonly Dictionary<SceneObject, Matrix4x4> evaluatedLocals = [];
     private readonly HashSet<SceneObject> visitingWorldPoses = [];
     private readonly Dictionary<AnimationTrack, SceneObject?> trackTargets = [];
@@ -91,6 +93,7 @@ public sealed partial class SceneActor
         RecordAllocations(3, ref allocationStart);
 
         EvaluateWorldPoses(localPoses, cinematicRootPose, rootRotation, rootOffset);
+        if (CommitEvaluatedPose()) PoseRevision++;
         RecordAllocations(4, ref allocationStart);
         if (CaptureAllocationDiagnostics) allocationFrameCount++;
     }
@@ -115,7 +118,6 @@ public sealed partial class SceneActor
             member.MorphPreview?.Advance(delta);
         }
 
-        PoseRevision++;
         if (Clip != null)
         {
             Clip.EnsureLoaded();
@@ -306,6 +308,41 @@ public sealed partial class SceneActor
             member.PreviewMatrix = EvaluateWorldPose(member, localPoses, cinematicRootPose,
                 rootRotation, rootOffset, visitingWorldPoses);
         }
+    }
+
+    private bool CommitEvaluatedPose()
+    {
+        bool changed = world.Count != evaluatedWorldPoseSnapshot.Count
+            || Members.Count != evaluatedMorphRevisionSnapshot.Count;
+
+        foreach (var member in Members)
+        {
+            if (!world.TryGetValue(member, out Matrix4x4 currentWorldPose)
+                || !evaluatedWorldPoseSnapshot.TryGetValue(member, out Matrix4x4 previousWorldPose)
+                || currentWorldPose != previousWorldPose)
+            {
+                changed = true;
+            }
+
+            int morphRevision = member.MorphPreview?.DeformationRevision ?? 0;
+            if (!evaluatedMorphRevisionSnapshot.TryGetValue(member, out int previousMorphRevision)
+                || morphRevision != previousMorphRevision)
+            {
+                changed = true;
+            }
+        }
+
+        if (!changed) return false;
+
+        evaluatedWorldPoseSnapshot.Clear();
+        foreach (var (member, pose) in world)
+            evaluatedWorldPoseSnapshot[member] = pose;
+
+        evaluatedMorphRevisionSnapshot.Clear();
+        foreach (var member in Members)
+            evaluatedMorphRevisionSnapshot[member] = member.MorphPreview?.DeformationRevision ?? 0;
+
+        return true;
     }
 
     private Matrix4x4 EvaluateWorldPose(SceneObject sceneObject,

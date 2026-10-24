@@ -3,11 +3,38 @@ namespace JadeView;
 public sealed partial class FaceMorphPreview
 {
     private FaceMorphBlinkPlayback? blink;
+    private int[]? cinematicBlinkGroups;
+    private float[]? cinematicBlinkBaseline;
     public bool BlinkPlaying => blink != null;
+
+    internal void ApplyCinematicBlinkOverlay(float phase)
+    {
+        ClearCinematicBlinkOverlay();
+        if (!SupportsSallyBlink || !float.IsFinite(phase) || phase <= 0
+            || phase >= FaceMorphBlinkCurve.PhaseLimit) return;
+
+        cinematicBlinkGroups = [BlinkGroups[0], BlinkGroups[1]];
+        cinematicBlinkBaseline = cinematicBlinkGroups.Select(group => weights[group]).ToArray();
+        for (int index = 0; index < cinematicBlinkGroups.Length; index++)
+        {
+            int group = cinematicBlinkGroups[index];
+            SetWeightValue(group, FaceMorphBlinkCurve.Weight(cinematicBlinkBaseline[index], phase));
+        }
+    }
+
+    internal void ClearCinematicBlinkOverlay()
+    {
+        if (cinematicBlinkGroups == null || cinematicBlinkBaseline == null) return;
+        for (int index = 0; index < cinematicBlinkGroups.Length; index++)
+            SetWeightValue(cinematicBlinkGroups[index], cinematicBlinkBaseline[index]);
+        cinematicBlinkGroups = null;
+        cinematicBlinkBaseline = null;
+    }
 
     public void StartBlink()
     {
         if (!SupportsPcBlink) throw new InvalidOperationException("PC blink targets are not qualified for this model.");
+        ClearCinematicBlinkOverlay();
         StopMouthCycle();
         StopBlink();
         blink = new(CopyWeights(), CopyChannelState());
@@ -17,10 +44,11 @@ public sealed partial class FaceMorphPreview
 
     public void StopBlink()
     {
+        ClearCinematicBlinkOverlay();
         if (blink == null) return;
         var captured = blink;
         blink = null;
-        captured.Baseline.CopyTo(weights, 0);
+        ReplaceWeights(captured.Baseline);
         ChannelsActive = captured.Channels != null;
         if (captured.Channels != null) channelStates = captured.Channels;
     }
@@ -41,6 +69,6 @@ public sealed partial class FaceMorphPreview
         if (blink == null) return;
         if (!blink.Advance(delta)) { StopBlink(); return; }
         foreach (int group in BlinkGroups)
-            weights[group] = FaceMorphBlinkCurve.Weight(blink.Baseline[group], blink.Phase);
+            SetWeightValue(group, FaceMorphBlinkCurve.Weight(blink.Baseline[group], blink.Phase));
     }
 }

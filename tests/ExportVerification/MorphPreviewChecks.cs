@@ -63,7 +63,10 @@ internal static class MorphPreviewChecks
             && Vector3.Distance(deformed[0], geometry.Positions[0] + new Vector3(.2f, -.1f, .3f)) < .00001f,
             "Reused face-morph buffer did not refresh when the weight changed.");
         preview.SetWeight(1, .5f);
+        int revisionBeforeMorphEdit = actor.PoseRevision;
         actor.Evaluate(0);
+        if (actor.PoseRevision == revisionBeforeMorphEdit)
+            throw new InvalidDataException("A changed face-morph deformation did not invalidate the actor skin cache.");
         string path = Path.Combine(output, "manual-morph-weights.glb");
         SceneExporter.Export(path, world, resolver, new() { Animations = true, Textures = false }, actor.Root);
         Check(ReferenceEquals(source.MorphPreview, preview) && preview.GetWeight(1) == .5f,

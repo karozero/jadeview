@@ -31,6 +31,7 @@ public sealed partial class SceneExporter
         foreach (var sceneObject in objects.Where(Included))
             ActorMesh(actor, sceneObject, group, nodeMap, bindPose);
         WriteAnimations(actor, animated);
+        WriteCinematicActorOrientAnimations(actor, animated);
         WriteMorphAnimations(actor);
     }
 
@@ -63,12 +64,13 @@ public sealed partial class SceneExporter
             if (options.UnknownObjects) empties++;
             return;
         }
-        if (KeepGeometryCarrier(nodeMap[sceneObject], geometry)) return;
+        if (KeepGeometryCarrier(nodeMap[sceneObject], sceneObject, geometry)) return;
         var bindings = SkinBindings(actor, sceneObject, geometry, nodeMap);
         if (bindings.Count == 0)
         {
             nodes[nodeMap[sceneObject]]["mesh"] = Mesh(sceneObject, geometry,
                 actor.Skin(sceneObject, geometry) ?? geometry.Positions, null);
+            CaptureMorphTimeline(actor, sceneObject, nodeMap[sceneObject]);
             return;
         }
         var meshBind = bindPose[sceneObject];

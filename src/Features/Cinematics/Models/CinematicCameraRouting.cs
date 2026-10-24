@@ -4,7 +4,7 @@ namespace JadeView;
 
 internal sealed class CinematicCameraRouting
 {
-    private sealed record Route(CinematicCameraEvent Command, SceneObject Position, SceneObject? Target, bool AppliesOffsets);
+    private sealed record Route(CinematicCameraEvent Command, SceneObject Position, SceneObject? Target);
     private readonly Route[] routes;
     internal IEnumerable<SceneObject> PositionSources => routes.Select(route => route.Position).Distinct();
     internal IEnumerable<float> Boundaries => routes.Select(route => route.Command.Time);
@@ -12,15 +12,15 @@ internal sealed class CinematicCameraRouting
         ? new[] { route.Position } : new[] { route.Position, route.Target }).Distinct();
     internal CinematicCameraLens Lens { get; }
 
-    internal CinematicCameraRouting(CinematicCameraEvent[] commands, SceneObject[] objects)
+    internal CinematicCameraRouting(CinematicCameraEvent[] commands, SceneObject[] objects,
+        IEnumerable<(float Time, float Angle)>? scriptViewSetters = null)
     {
         routes = ResolveRoutes(commands, objects).ToArray();
-        Lens = new(commands);
+        Lens = new(commands, scriptViewSetters);
     }
 
     private static IEnumerable<Route> ResolveRoutes(IEnumerable<CinematicCameraEvent> commands, SceneObject[] objects)
     {
-        CinematicCameraEvent? previous = null;
         foreach (var command in commands.OrderBy(command => command.Time))
         {
             bool valid = command.HasLiteralPosition && float.IsFinite(command.Time)
@@ -29,10 +29,7 @@ internal sealed class CinematicCameraRouting
             var position = objects.FirstOrDefault(item => item.GaoKey == command.PositionKey);
             var target = objects.FirstOrDefault(item => item.GaoKey == command.TargetKey);
             if (position == null || (command.TargetKey != 0 && target == null)) continue;
-            // Native message 60 resets the positional delay unless either reference changes.
-            bool sameReferences = previous?.PositionKey == command.PositionKey && previous.TargetKey == command.TargetKey;
-            yield return new(command, position, target, command.Transition == 0 || sameReferences);
-            previous = command;
+            yield return new(command, position, target);
         }
     }
 
@@ -41,14 +38,14 @@ internal sealed class CinematicCameraRouting
         var route = routes.LastOrDefault(route => route.Command.Time <= time);
         if (route == null) return readPose(fallback);
         var pose = readPose(route.Position);
-        // Native cuts transform offsets without the object's separate scale.
-        // Nonzero-transition target offsets go through the camera-target DYN rig;
-        // do not claim to reproduce those using a simple local-point transform.
-        if (route.AppliesOffsets) pose.Translation += Offset(pose, route.Command.PositionOffset);
+        // Iris always resolves the message's local camera position against its
+        // destination object. Float2 controls DYN movement speed; it does not
+        // disable the authored offset while references change.
+        pose.Translation += Offset(pose, route.Command.PositionOffset);
         if (route.Target == null) return pose;
         var target = readPose(route.Target);
         var point = target.Translation;
-        if (route.AppliesOffsets) point += Offset(target, route.Command.TargetOffset);
+        point += Offset(target, route.Command.TargetOffset);
         return CinematicCameraBinding.AimAt(pose, point);
     }
 

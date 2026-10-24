@@ -32,23 +32,31 @@ internal sealed record CinematicTimelineMessage(
     private static (float Time, CinematicTimelineMessage? Message) Decode(AnimationKey key, uint contextKey)
     {
         foreach (var payload in key.OpaquePayloads)
-        {
-            if (!CinematicFacialEvent.TryDecodeMessage(payload, out byte[] message, allowLiteralFlags: true))
-                continue;
-
-            return (key.Time, new(key.Time, contextKey,
-                ReadUInt32(message, CinematicMessageFields.Gao),
-                ReadUInt32(message, CinematicMessageFields.Gao2),
-                ReadVector3(message, CinematicMessageFields.Vector1),
-                ReadVector3(message, CinematicMessageFields.Vector2),
-                ReadSingle(message, CinematicMessageFields.Float1),
-                ReadSingle(message, CinematicMessageFields.Float2),
-                ReadInt32(message, CinematicMessageFields.Int1),
-                ReadInt32(message, CinematicMessageFields.Int2),
-                ReadInt32(message, CinematicMessageFields.Type)));
-        }
+            if (TryReadPayload(key, payload, contextKey) is { } message)
+                return (key.Time, message);
 
         return (key.Time, null);
+    }
+
+    internal static CinematicTimelineMessage? ReadMessage(AnimationKey key, uint contextKey) =>
+        Decode(key, contextKey).Message;
+
+    internal static CinematicTimelineMessage? TryReadPayload(AnimationKey key,
+        AnimationOpaquePayload payload, uint contextKey)
+    {
+        if (!CinematicFacialEvent.TryDecodeMessage(payload, out byte[] message, allowLiteralFlags: true))
+            return null;
+
+        return new(key.Time, contextKey,
+            ReadUInt32(message, CinematicMessageFields.Gao),
+            ReadUInt32(message, CinematicMessageFields.Gao2),
+            ReadVector3(message, CinematicMessageFields.Vector1),
+            ReadVector3(message, CinematicMessageFields.Vector2),
+            ReadSingle(message, CinematicMessageFields.Float1),
+            ReadSingle(message, CinematicMessageFields.Float2),
+            ReadInt32(message, CinematicMessageFields.Int1),
+            ReadInt32(message, CinematicMessageFields.Int2),
+            ReadInt32(message, CinematicMessageFields.Type));
     }
 
     private static uint ReadUInt32(byte[] source, int offset) =>

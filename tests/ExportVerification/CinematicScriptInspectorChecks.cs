@@ -1344,14 +1344,28 @@ internal static class CinematicScriptInspectorChecks
         ];
         var gateSnapshotBeforeSecondWrite = CinematicTimelineFlagAnalyzer.Analyze(gatedOwner, flagWrites, 3);
         var gateSnapshotAfterWrites = CinematicTimelineFlagAnalyzer.Analyze(gatedOwner, flagWrites, 5);
+        float? firstSatisfiedStartFlagTime = CinematicTimelineFlagAnalyzer.FindFirstSatisfiedStartFlagTime(
+            gatedOwner, flagWrites);
+        (float Time, CinematicLiteralCall Call)[] conflictingFlagWrites =
+        [
+            (2, new(0x100, 0x2916, [2166])),
+            (4, new(0x100, 0x2917, [2167])),
+            (4, new(0x100, 0x2916, [2166])),
+            (4, new(0x100, 0x2917, [2166])),
+            (5, new(0x100, 0x2916, [2166]))
+        ];
+        float? firstUnambiguousStartFlagTime = CinematicTimelineFlagAnalyzer.FindFirstSatisfiedStartFlagTime(
+            gatedOwner, conflictingFlagWrites);
         Check(gateSnapshotBeforeSecondWrite.Length == 2
             && gateSnapshotBeforeSecondWrite.Single(gate => gate.Flag == 2166).Satisfied == true
             && gateSnapshotBeforeSecondWrite.Single(gate => gate.Flag == 2167) is
                 { CurrentSet: null, NextWriteTime: 4, Satisfied: null }
             && gateSnapshotAfterWrites.Single(gate => gate.Flag == 2166).Satisfied == true
             && gateSnapshotAfterWrites.Single(gate => gate.Flag == 2167) is
-                { CurrentSet: false, Satisfied: true },
-            "Cinematic start-gate snapshots should reflect only prior literal flag writes and preserve unknown/future state");
+                { CurrentSet: false, Satisfied: true }
+            && firstSatisfiedStartFlagTime == 4
+            && firstUnambiguousStartFlagTime == 5,
+            "Cinematic start-gate snapshots should preserve unknown/conflicting state and find the first unambiguous matching time");
         var actionKitCall = CinematicLiteralCall.Decode(CreateCallPayload(0x3398,
             (0x3500A57E, 0x01000028), (200, 0x01000021), (50, 0x01000021)), 0x9E001C75, 0);
         Check(actionKitCall is { Target: 0x9E001C75, Selector: 0x3398 }
@@ -1537,6 +1551,25 @@ internal static class CinematicScriptInspectorChecks
             && PcScriptCallbackSlotReader.Read(callbackSlotsBytes.AsSpan(0, 16),
                 new Dictionary<uint, string>()) == null,
             "Model OVA callback parsing should preserve all five serialized positions, empty gaps and truncated-block failure");
+        byte[] engineCallbackBytes = new byte[callbackSlotsBytes.Length + sizeof(int) + 3 * sizeof(uint)];
+        callbackSlotsBytes.CopyTo(engineCallbackBytes, 0);
+        BinaryPrimitives.WriteInt32LittleEndian(engineCallbackBytes.AsSpan(callbackSlotsBytes.Length), 3);
+        BinaryPrimitives.WriteUInt32LittleEndian(engineCallbackBytes.AsSpan(callbackSlotsBytes.Length + sizeof(int)), 0x1003);
+        BinaryPrimitives.WriteUInt32LittleEndian(engineCallbackBytes.AsSpan(callbackSlotsBytes.Length + sizeof(int) * 2), 0);
+        BinaryPrimitives.WriteUInt32LittleEndian(engineCallbackBytes.AsSpan(callbackSlotsBytes.Length + sizeof(int) * 3), 0x1001);
+        var parsedEngineCallbacks = PcScriptEngineCallbackReader.Read(engineCallbackBytes,
+            new Dictionary<uint, string> { [0x1001] = "first_callback", [0x1003] = "third_callback" });
+        byte[] truncatedEngineCallbackBytes = engineCallbackBytes.AsSpan(0, engineCallbackBytes.Length - sizeof(uint)).ToArray();
+        Check(PcScriptEngineCallbackReader.Read(callbackSlotsBytes, new Dictionary<uint, string>()) is { Length: 0 }
+            && parsedEngineCallbacks is { Length: 3 }
+            && parsedEngineCallbacks[0] == new CinematicScriptEngineCallbackSlot(0, 0x1003, "third_callback")
+            && parsedEngineCallbacks[1] == new CinematicScriptEngineCallbackSlot(1, 0, null)
+            && parsedEngineCallbacks[2] == new CinematicScriptEngineCallbackSlot(2, 0x1001, "first_callback")
+            && PcScriptEngineCallbackReader.Read(truncatedEngineCallbackBytes, new Dictionary<uint, string>()) == null
+            && CinematicEngineCallbackCatalog.Describe(2) == "After record"
+            && CinematicEngineCallbackCatalog.IsConfirmedByIrisCallSite(2)
+            && !CinematicEngineCallbackCatalog.IsConfirmedByIrisCallSite(4),
+            "Optional OVA engine-event callbacks should preserve event IDs and null entries, reject truncated tails and label source confidence");
         var mdiskDroneOwner = new CinematicScriptOwner(0x72005128, 0x7200512B, 0x720050F1, 0xD90057CC,
             uint.MaxValue, uint.MaxValue, "reusable Mdisk drone", ["Drone_Mdisk_Drone_Mdisk_init"],
             [new("des_o_drone_vert", 0x72005129, "instance", "PNJ_Drone_Mdisk_V.gao"),
@@ -1762,6 +1795,12 @@ internal static class CinematicScriptInspectorChecks
         string? automaticLipSyncFinding = CinematicScriptMessageAnalyzer.Describe(
             companionFacialMessage with { ExecutionObjectKey = automaticLipSyncOwner.OwnerKey },
             [automaticLipSyncOwner], automaticLipSyncOwner.WorldKey);
+        string? automaticMouthCycleFinding = CinematicScriptMessageAnalyzer.Describe(
+            companionFacialMessage with
+            {
+                ExecutionObjectKey = automaticLipSyncOwner.OwnerKey,
+                Vector2 = new(0, -580, 0)
+            }, [automaticLipSyncOwner], automaticLipSyncOwner.WorldKey);
         var sallyExpressionOwner = new CinematicScriptOwner(0xA00, 0, 0xB00, 0x10,
             uint.MaxValue, uint.MaxValue, "expression owner", ["Sally_sa_exec_message_read"], [], [])
         {
@@ -1872,6 +1911,14 @@ internal static class CinematicScriptInspectorChecks
         };
         var callbackRegistrationPaths = CinematicScriptReader.NestedCallbackPaths(callbackRegistrationOwner);
         var callbackDispatchSites = CinematicScriptReader.DispatchSitesFor(callbackRegistrationPaths);
+        var worldFrameDispatchSites = CinematicScriptReader.EngineDispatchSitesFor(2);
+        var animationDispatchSites = CinematicScriptReader.EngineDispatchSitesFor(3);
+        Check(worldFrameDispatchSites.Any(site => site.Api == "AI_ExecCallbackAll"
+                && site.Source == "engine.c" && site.Call == "AI_ExecCallbackAll(world, 2)")
+            && animationDispatchSites.Any(site => site.Api == "AI_ExecCallback"
+                && site.Source == "animation.c" && site.CallbackId == 3)
+            && CinematicScriptReader.EngineDispatchSitesFor(4).Length == 0,
+            "Assigned engine-event callbacks should link to indexed Iris dispatch calls while unsupported event IDs remain unclaimed");
         var callbackLifecycleOwner = new CinematicScriptOwner(0xB01, 0, 0xC01, 0x10,
             uint.MaxValue, uint.MaxValue, "callback lifecycle fixture",
             ["Crochax_3_Cro3_mode_cine"], [], [])
@@ -1884,12 +1931,15 @@ internal static class CinematicScriptInspectorChecks
         {
             ModelFunctionNames = ["Sally_sa_init", "Sally_sa_reflex"]
         };
-        Check(companionFacialFinding?.Contains("updates expression/mouth morph-channel targets", StringComparison.Ordinal) == true
+        Check(companionFacialFinding?.Contains("Vector1.X/Y set morph channels 0/1", StringComparison.Ordinal) == true
             && automaticLipSyncFinding?.Contains("EVE track execution object resolves to 'automatic lip-sync owner'", StringComparison.Ordinal) == true
             && automaticLipSyncFinding?.Contains("Int1 supplies the mouth-channel speed (9)", StringComparison.Ordinal) == true
+            && automaticLipSyncFinding?.Contains("nonnegative fractional remainder, selects a fixed form and factor, and disables automatic cycling", StringComparison.Ordinal) == true
+            && automaticMouthCycleFinding?.Contains("negative fractional remainder and requests the controller's automatic 32-form mouth cycle", StringComparison.Ordinal) == true
             && automaticLipSyncFinding?.Contains("not a phoneme transcript", StringComparison.Ordinal) == true
             && automaticLipSyncFinding?.Contains("routes the lip-sync target to GAO 71003F5A", StringComparison.Ordinal) == true
             && sallyExpressionFinding?.Contains("clears the cinematic-expression mode", StringComparison.Ordinal) == true
+            && sallyExpressionFinding?.Contains("reset branch discards the vector fields", StringComparison.Ordinal) == true
             && nestedSallyFinding?.Contains("Sally_sa_init -[track-change:1", StringComparison.Ordinal) == true
             && nestedSallyFinding?.Contains("-> Sally_sa_reflex -[execute", StringComparison.Ordinal) == true
             && nestedSallyFinding?.Contains("Sally_sa_exec_message_read", StringComparison.Ordinal) == true
@@ -1982,11 +2032,23 @@ internal static class CinematicScriptInspectorChecks
             && finding.Contains("not proven", StringComparison.Ordinal));
         bool reportsClearEventTableFlag = missingEventTableFlagFindings.Any(finding =>
             finding.Contains("flag 0x02000000 is clear", StringComparison.Ordinal));
+        bool reportsConditionalInitialActivation = eventDispatchFindings.Any(finding =>
+            finding.Contains("Fresh-load activation projection", StringComparison.Ordinal)
+            && finding.Contains("EOT categories if activated: EVE tracks", StringComparison.Ordinal)
+            && finding.Contains("not observed runtime state", StringComparison.Ordinal));
+        string[] identitySkippedEventFindings = CinematicEventSchedulerAnalyzer.Analyze(eventDispatchOwner with
+        {
+            SerializedGaoFlags = 0x02000001
+        });
+        bool reportsWorldRebuildIdentitySkip = identitySkippedEventFindings.Any(finding =>
+            finding.Contains("identity flag bit 0x1", StringComparison.Ordinal)
+            && finding.Contains("WOR_World_ActivateObjects", StringComparison.Ordinal));
         bool ignoresOwnersWithoutSceneEvents = CinematicEventSchedulerAnalyzer.Analyze(
             eventDispatchOwner with { EventsKey = 0xD9005D68, SceneEventsKey = uint.MaxValue }).Length == 0;
         Check(reportsEventTableMembership && reportsIndependentRuntimeGates
-                && reportsClearEventTableFlag && ignoresOwnersWithoutSceneEvents,
-            "EVE dispatch analysis should distinguish event-table eligibility from decoded event links and live execution");
+                && reportsClearEventTableFlag && reportsConditionalInitialActivation
+                && reportsWorldRebuildIdentitySkip && ignoresOwnersWithoutSceneEvents,
+            "EVE dispatch analysis should distinguish serialized identity, conditional initial activation, EOT membership and live execution");
         var configuredLipSyncOwner = new CinematicScriptOwner(0x801, 0, 0x902, 0x10,
             uint.MaxValue, 0x903, "lip-sync owner",
             ["Cine_lipsynch_auto_Lips_init", "Cine_lipsynch_auto_Lips_lecture_messages", "Cine_lipsynch_auto_Lips_morphing"],
@@ -2277,6 +2339,35 @@ internal static class CinematicScriptInspectorChecks
             && messageGateCandidates[0].QueueObject.Key == gateQueueOwner.OwnerKey
             && messageGateCandidates[0].Sources.Length == 2,
             "Message-gate candidates should join MSGSendAll EVE context to the configured queue, filter ID and Int1 overlap, and merge duplicate serialized source links");
+        Check(CinematicTimelineMessageGateAnalyzer.FindFirstMatchingMessageTime(filteredMessageGate,
+                matchingMessageOwner.WorldKey, 0xA01, 2, messageGateTracks, messageGateReferences) == 1
+            && CinematicTimelineMessageGateAnalyzer.FindFirstMatchingMessageTime(filteredMessageGate,
+                matchingMessageOwner.WorldKey, 0xA01, .5f, messageGateTracks, messageGateReferences) == null
+            && CinematicTimelineMessageGateAnalyzer.FindFirstMatchingMessageTime(filteredMessageGate,
+                matchingMessageOwner.WorldKey, 0xA02, 2, messageGateTracks, messageGateReferences) == null,
+            "Message-gate preview timing should require the selected clip, a decoded queue match, and an in-range timestamp");
+        var nestedGateMessage = CreateGateMessage(gateQueueOwner.OwnerKey, 46, 12);
+        var nestedGateTrack = new CinematicScriptMessageTrack(matchingMessageOwner.WorldKey,
+            matchingMessageOwner.OwnerKey, "SceneEvents", 0xA10, "nested message event", [(1, nestedGateMessage)], 4);
+        var nestedScheduledMessage = new CinematicScheduledMessage(matchingMessageOwner.WorldKey,
+            matchingMessageOwner.OwnerKey, 0xA10, 4, CinematicOwnerExecutionRoute.NestedEventCall,
+            1, 4.5f, nestedGateMessage with { Time = 4.5f }, null, gateQueueOwner.OwnerKey,
+            CinematicMessageQueueOwnerEvidence.IrisEveTrackContext,
+            "synthetic nested EVE payload", "runtime delivery not evaluated");
+        Check(CinematicTimelineMessageGateAnalyzer.FindFirstMatchingMessageTime(filteredMessageGate,
+                matchingMessageOwner.WorldKey, 0xA11, 6, [nestedGateTrack], messageGateReferences,
+                [nestedScheduledMessage]) == 4.5f
+            && CinematicTimelineMessageGateAnalyzer.FindFirstMatchingMessageTime(filteredMessageGate,
+                matchingMessageOwner.WorldKey, 0xA11, 4, [nestedGateTrack], messageGateReferences,
+                [nestedScheduledMessage]) == null,
+            "Message-gate preview timing should map a matching nested SceneEvents message onto its scheduled cinematic time");
+        Check(CinematicTimelineMessageGateAnalyzer.FindFirstMatchingMessageTime(filteredMessageGate,
+                matchingMessageOwner.WorldKey, 0xA11, 6, [nestedGateTrack], messageGateReferences,
+                [nestedScheduledMessage with { IrisQueueOwnerCandidateKey = 0x501 }]) == null
+            && CinematicTimelineMessageGateAnalyzer.FindFirstMatchingMessageTime(filteredMessageGate,
+                matchingMessageOwner.WorldKey, 0xA11, 6, [nestedGateTrack], messageGateReferences,
+                [nestedScheduledMessage with { QueueOwnerEvidence = CinematicMessageQueueOwnerEvidence.Unresolved }]) == null,
+            "Nested message-gate timing must reject schedules with a mismatched or unresolved Iris queue-owner candidate");
         var contextMismatches = CinematicScriptBehaviorAnalyzer.FindMessageGateContextMismatches(
             filteredMessageGate, messageGateTracks, messageGateReferences);
         Check(contextMismatches is [{ Track.EventKey: 0xA04 }]
@@ -2358,11 +2449,17 @@ internal static class CinematicScriptInspectorChecks
             CreateMessageAllTrack(0xA08, gateQueueOwner.OwnerKey, 2),
             CreateMessageAllTrack(0xA09, 0x501, 4)
         };
+        var cinematicMessageAllTrack = messageAllTracks[0] with { LinkName = "Cinematic" };
         var messageAllCandidates = CinematicScriptBehaviorAnalyzer.FindExtendedMessageGateCandidates(
             filteredMessageGate, messageAllTracks, messageGateReferences);
         Check(messageAllCandidates is [{ Track.EventKey: 0xA07 }]
             && messageAllCandidates[0].QueueObject.Key == gateQueueOwner.OwnerKey,
             "MSGSendAll should match the queue context and message ID only when its serialized Int1 overlaps the gate mask");
+        Check(CinematicTimelineMessageGateAnalyzer.FindFirstMatchingMessageTime(filteredMessageGate,
+                matchingMessageOwner.WorldKey, 0xA07, 3, [cinematicMessageAllTrack], messageGateReferences) == 2.75f
+            && CinematicTimelineMessageGateAnalyzer.FindFirstMatchingMessageTime(filteredMessageGate,
+                matchingMessageOwner.WorldKey, 0xA07, 3, [messageAllTracks[0]], messageGateReferences) == null,
+            "Message-gate preview timing should also recognize a matching literal MSGSendAll command");
         var messageAllContextMismatches = CinematicScriptBehaviorAnalyzer.FindExtendedMessageGateTargetMismatches(
             filteredMessageGate, messageAllTracks, messageGateReferences);
         Check(messageAllContextMismatches is [{ Track.EventKey: 0xA09 }]
@@ -2372,6 +2469,54 @@ internal static class CinematicScriptInspectorChecks
             filteredMessageGate, messageAllTracks, messageGateReferences);
         Check(messageAllInt1Mismatches is [{ Track.EventKey: 0xA08 }],
             "MSGSendAll with matching ID and queue context but non-overlapping Int1 must be exposed as a rejected candidate");
+        CinematicScriptMessageTrack CreateMessageAllOwnerTrack(uint eventKey, uint senderKey,
+            int messageId, int messageInt1) =>
+            new(matchingMessageOwner.WorldKey, matchingMessageOwner.OwnerKey, "SceneEvents", eventKey,
+                $"MSGSendAllOwner event {eventKey:X8}", [], 4)
+            {
+                EngineCalls = [(3.25f, new CinematicLiteralCall(senderKey, 0x1F7D,
+                    [unchecked((uint)messageId), 0x701, 0, 0, 0, 0, 0, 0, 0, 0,
+                        unchecked((uint)messageInt1), 17]))]
+            };
+        var messageAllOwnerTracks = new[]
+        {
+            CreateMessageAllOwnerTrack(0xA0A, 0x501, 46, 4),
+            CreateMessageAllOwnerTrack(0xA0B, gateQueueOwner.OwnerKey, 47, 4),
+            CreateMessageAllOwnerTrack(0xA0C, gateQueueOwner.OwnerKey, 46, 2)
+        };
+        var ownerQueueRegistration = new CinematicScriptMessageTrack(
+            matchingMessageOwner.WorldKey, matchingMessageOwner.OwnerKey, "SceneEvents", 0xA0A,
+            "Owner queue registration", [], 4)
+        {
+            EngineCalls = [(2.0f, new CinematicLiteralCall(gateQueueOwner.OwnerKey, 0x1F7E, []))]
+        };
+        var ownerQueueRegistrationOtherChannel = ownerQueueRegistration with
+        {
+            ChannelIndex = 5,
+            EngineCalls = [(1.0f, new CinematicLiteralCall(0x501, 0x1F7E, []))]
+        };
+        var ownerQueueRegistrationAfterSend = ownerQueueRegistration with
+        {
+            EngineCalls = [(3.5f, new CinematicLiteralCall(0x501, 0x1F7E, []))]
+        };
+        var ownerQueueTracksWithRegistrations = messageAllOwnerTracks
+            .Append(ownerQueueRegistration)
+            .Append(ownerQueueRegistrationOtherChannel)
+            .Append(ownerQueueRegistrationAfterSend)
+            .ToArray();
+        var ownerQueueCandidates = CinematicScriptBehaviorAnalyzer.FindOwnerQueueMessageCandidates(
+            filteredMessageGate, ownerQueueTracksWithRegistrations, messageGateReferences);
+        Check(ownerQueueCandidates is [{ Track.EventKey: 0xA0A }]
+            && ownerQueueCandidates[0].GateQueueObject.Key == gateQueueOwner.OwnerKey
+            && ownerQueueCandidates[0].Call.Target == 0x501
+            && ownerQueueCandidates[0].Call.Arguments[1] == 0x701
+            && ownerQueueCandidates[0].PriorSameChannelRegistrations is
+                [{ Time: 2.0f, Call.Target: var registeredOwnerKey }]
+            && registeredOwnerKey == gateQueueOwner.OwnerKey,
+            "MSGSendAllOwner should expose the latest earlier same-channel MSGRegOwner as a candidate without resolving the live queue");
+        Check(CinematicScriptBehaviorAnalyzer.FindExtendedMessageGateCandidates(filteredMessageGate,
+                ownerQueueTracksWithRegistrations, messageGateReferences)?.Length == 0,
+            "MSGSendAllOwner must never be promoted to a resolved per-object queue match");
         var implicitZoneOwner = zoneGateOwner with
         {
             Variables = [.. zoneGateOwner.Variables.Where(variable => variable.Name != "des_o_actor_zone1"),
@@ -2896,7 +3041,7 @@ internal static class CinematicScriptInspectorChecks
                 && link.Flag == 2054)
             && superFlagGate is { RequiredSet: true, CurrentSet: true, Satisfied: true },
             "Super-special predicates should join trigger writers and expose selected-track saved-flag state at the playhead");
-        Console.WriteLine("PASS: cinematic script owner references and source-mapped engine function catalogs");
+        Console.WriteLine("PASS: script-owner resources, track callbacks, engine-hook callbacks and source-mapped function catalogs");
     }
 
     private static byte[] CreateObjectReferenceVariables(string name, uint key)

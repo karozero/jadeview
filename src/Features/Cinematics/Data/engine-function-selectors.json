@@ -179,7 +179,7 @@
   "1FA4": "AI_EvalFunc_OBJMove",
   "1FA5": "AI_EvalFunc_OBJGetPos",
   "1FA6": "AI_EvalFunc_OBJSetPos",
-  "1FFB": "AI_EvalFunc_OBJSetPos",
+  "1FFB": "AI_EvalFunc_OBJSetPos_Teleport",
   "1FA7": "AI_EvalFunc_OBJDuplicate",
   "1FA8": "AI_EvalFunc_OBJRotateLocal",
   "1FA9": "AI_EvalFunc_OBJRotateLocalX",

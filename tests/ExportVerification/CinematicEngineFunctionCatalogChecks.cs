@@ -19,6 +19,8 @@ internal static class CinematicEngineFunctionCatalogChecks
         Check(0x1F41, [3], "make loaded universe world slot 3 active");
         Check(0x1F42, [3], "clear the active flag on loaded universe world slot 3");
         Check(0x1F43, [3, 12], "object-table slot 12 in loaded universe world slot 3");
+        Check(0x1F4A, [3, 0x10], "activated-object table in universe world slot 0x00000003");
+        Check(0x1F4B, [3, 0x10], "restores active bit 0x1 on every valid object");
         Check(0x1F45, [3, 0xA5], "delete loaded universe world slot 3");
         Check(0x1F46, [0xFF005833], "replace the current world universe with world-list key 0xFF005833");
         Check(0x1F48, [3], "rebuild visibility tables for loaded universe world slot 3");
@@ -47,8 +49,35 @@ internal static class CinematicEngineFunctionCatalogChecks
             BitConverter.SingleToUInt32Bits(4), BitConverter.SingleToUInt32Bits(5),
             BitConverter.SingleToUInt32Bits(6), BitConverter.SingleToUInt32Bits(7),
             BitConverter.SingleToUInt32Bits(8), 4, 9];
+        var sendAllCall = new CinematicLiteralCall(0x12345678, 0x1F78, messageSendAllArguments);
+        var sendAllOwnerCall = new CinematicLiteralCall(0x12345678, 0x1F7D, messageSendAllOwnerArguments);
+        var sendExCall = new CinematicLiteralCall(0x12345678, 0x1F76, [48, 0x3F800000]);
+        if (!CinematicEngineFunctionCatalog.TryReadMessageGateFields(sendAllCall,
+                out int sendAllMessageId, out int sendAllInt1, out var sendAllDestination)
+            || sendAllMessageId != 46 || sendAllInt1 != 4
+            || sendAllDestination != CinematicMessageQueueDestination.CurrentExecutionObject
+            || !CinematicEngineFunctionCatalog.TryReadMessageGateFields(sendAllOwnerCall,
+                out int sendAllOwnerMessageId, out int sendAllOwnerInt1, out var ownerDestination)
+            || sendAllOwnerMessageId != 47 || sendAllOwnerInt1 != 4
+            || ownerDestination != CinematicMessageQueueDestination.RegisteredOwner
+            || !CinematicEngineFunctionCatalog.TryReadMessageGateFields(sendExCall,
+                out int sendExMessageId, out int sendExInt1, out var sendExDestination)
+            || sendExMessageId != 48 || sendExInt1 != 0
+            || sendExDestination != CinematicMessageQueueDestination.CurrentExecutionObject
+            || CinematicEngineFunctionCatalog.TryReadMessageGateFields(
+                new(1, 0x1F7D, [47, 0x202]), out _, out _, out _))
+            throw new InvalidOperationException("Message-gate decoding must centralize supported ID/Int1 layouts and distinguish the registered-owner queue.");
+        var startupQueueRegistration = CinematicScriptGlobalQueueCatalog.StartupRegistration;
+        if (startupQueueRegistration is not
+                { QueueSymbol: "MSG_gpo_Owner", RegistrationApi: "MSGRegOwner",
+                    StartupOwnerName: "GST_Sound_Manager", StartupOwnerKey: 0x7100F33F,
+                    StartupSource: "ai/ai_bge/ai_compiledscripts_global.c", StartupLine: 356,
+                    WorldTeardownSource: "world.c", WorldTeardownLine: 2755 })
+            throw new InvalidOperationException("The source-evidence queue catalog must retain Iris startup registration and teardown provenance.");
         Check(0x1F7D, messageSendAllOwnerArguments,
             "enqueue message 47 on the registered MSG owner queue");
+        Check(0x1F7E, [],
+            "register target as the global MSG_gpo_Owner message queue, replacing the previous owner");
         string messageSendAllDescription = CinematicEngineFunctionCatalog.Describe(
             new(0x12345678, 0x1F78, messageSendAllArguments));
         if (!messageSendAllDescription.Contains("vectors (1, 2, 3)/(4, 5, 6)", StringComparison.Ordinal)
@@ -125,6 +154,14 @@ internal static class CinematicEngineFunctionCatalogChecks
             "enable depth-blur near plane, value 0.9");
         Check(0x3CF0, [15, 0, 0, BitConverter.SingleToUInt32Bits(.3f)],
             "disable global screen-opacity fade, rate 0.3");
+        Check(0x3C3D, [1, BitConverter.SingleToUInt32Bits(2.5f), BitConverter.SingleToUInt32Bits(18)],
+            "request enable depth blur (Z range 2.5 to 18); Jaded routes this command only to PS2/GameCube backends, with no PC implementation");
+        Check(0x2716, [BitConverter.SingleToUInt32Bits(0), BitConverter.SingleToUInt32Bits(-9.81f),
+            BitConverter.SingleToUInt32Bits(0)],
+            "set the current execution object's dynamics gravity vector to (0, -9.81, 0); the object needs an allocated dynamics force block");
+        Check(0x1FB6, [BitConverter.SingleToUInt32Bits(.2f), BitConverter.SingleToUInt32Bits(-.8f),
+            BitConverter.SingleToUInt32Bits(0)],
+            "orient the current execution object toward sight vector (0.2, -0.8, 0), deriving roll from its current matrix");
 
         string incomplete = CinematicEngineFunctionCatalog.Describe(new(1, 0x2C26, [1]));
         if (incomplete.Length != 0)
@@ -133,6 +170,7 @@ internal static class CinematicEngineFunctionCatalogChecks
         {
             (0x1F40, Array.Empty<uint>()), (0x1F41, Array.Empty<uint>()),
             (0x1F42, Array.Empty<uint>()), (0x1F43, new uint[] { 3 }),
+            (0x1F4A, new uint[] { 3 }), (0x1F4B, new uint[] { 3 }),
             (0x1F45, new uint[] { 3 }), (0x1F46, Array.Empty<uint>()),
             (0x1F48, Array.Empty<uint>())
         })
@@ -149,8 +187,14 @@ internal static class CinematicEngineFunctionCatalogChecks
             throw new InvalidOperationException("Non-finite serialized angles must stay visible as raw data.");
         if (CinematicEngineFunctionCatalog.Describe(new(1, 0x3CF0, [7, 1, 0])).Length != 0
             || CinematicEngineFunctionCatalog.Describe(new(1, 0x3CF0,
-                [7, 1, 0, 0x7FC00000])).Length != 0)
-            throw new InvalidOperationException("Malformed or non-finite After Effects master calls must remain undescribed.");
+                [7, 1, 0, 0x7FC00000])).Length != 0
+            || CinematicEngineFunctionCatalog.Describe(new(1, 0x3C3D,
+                [1, BitConverter.SingleToUInt32Bits(2.5f)])).Length != 0
+            || CinematicEngineFunctionCatalog.Describe(new(1, 0x2716,
+                [BitConverter.SingleToUInt32Bits(0), BitConverter.SingleToUInt32Bits(-9.81f)])).Length != 0
+            || CinematicEngineFunctionCatalog.Describe(new(1, 0x1FB6,
+                [BitConverter.SingleToUInt32Bits(.2f), BitConverter.SingleToUInt32Bits(-.8f)])).Length != 0)
+            throw new InvalidOperationException("Malformed After Effects and depth-blur calls must remain undescribed.");
 
         Console.WriteLine("PASS: source-confirmed cinematic engine command descriptions and argument guards");
     }

@@ -6,31 +6,38 @@ namespace JadeView;
 public sealed partial class EditorShell
 {
     private CinematicAudioPreview? _cinematicAudio;
-    private uint? _cinematicAudioKey;
+    private (uint WorldKey, uint ClipKey)? _cinematicAudioIdentity;
+    private float _cinematicAudioVolume = .8f;
     private readonly HashSet<int> _selectedCinematicAudioCueIndices = [];
 
     private void ResetCinematicAudio()
     {
+        if (_cinematicAudio != null)
+            _cinematicAudioVolume = _cinematicAudio.Volume;
         _cinematicAudio?.Dispose();
         _cinematicAudio = null;
-        _cinematicAudioKey = null;
+        _cinematicAudioIdentity = null;
     }
 
     private void EnsureCinematicAudio()
     {
         if (_cinematicPlayback == null || Archive == null) return;
-        if (_cinematicAudioKey != _cinematicPlayback.Key)
+        var requestedIdentity = (_cinematicPlayback.WorldKey, _cinematicPlayback.Key);
+        if (_cinematicAudioIdentity != requestedIdentity)
         {
             ResetCinematicAudio();
-            _cinematicAudioKey = _cinematicPlayback.Key;
+            _cinematicAudioIdentity = requestedIdentity;
             _selectedCinematicAudioCueIndices.Clear();
             _selectedCinematicAudioCueIndices.UnionWith(
                 CinematicAudioCueSelection.CreateDefaultIndices(_cinematicPlayback.AudioCues));
         }
         if (_cinematicAudio == null && _selectedCinematicAudioCueIndices.Count > 0)
+        {
             _cinematicAudio = new(Archive,
                 CinematicAudioCueSelection.Select(_cinematicPlayback.AudioCues, _selectedCinematicAudioCueIndices),
                 _cinematicPlayback.Duration);
+            _cinematicAudio.Volume = _cinematicAudioVolume;
+        }
     }
 
     private void DrawCinematicAudioControls()
@@ -52,7 +59,8 @@ public sealed partial class EditorShell
         }
         ImGui.Checkbox("Enable source audio", ref _cinematicAudio.Enabled);
         ImGui.SetNextItemWidth(-1);
-        ImGui.SliderFloat("##CinematicVolume", ref _cinematicAudio.Volume, 0, 1, "Volume %.2f");
+        if (ImGui.SliderFloat("##CinematicVolume", ref _cinematicAudio.Volume, 0, 1, "Volume %.2f"))
+            _cinematicAudioVolume = _cinematicAudio.Volume;
         ImGui.TextWrapped(_cinematicAudio.Status);
         DrawCinematicAudioDiagnostics("Playback diagnostics", _cinematicAudio.Diagnostics);
         DrawCinematicAudioDiagnostics("Source diagnostics", _cinematicPlayback.AudioDiagnostics);

@@ -85,6 +85,29 @@ internal static class CinematicNestedEventTrackChecks
         if (!vectorCommandMatches)
             throw new InvalidDataException("Vector-valued EVE arguments must decode the three float words preceding CastVector.");
 
+        const uint eventOwnerKey = 0xD9005D6E;
+        const uint eventTrackReceiverKey = 0x71003F56;
+        const uint serializedContextKey = 0xC1009393;
+        AnimationOpaquePayload differingContextPayload = CinematicTestEvents.VectorCall(0,
+            serializedContextKey, 0x1FB6, new(0, 1, 0)).OpaquePayloads.Single();
+        CinematicLiteralCall? contextBoundCommand = CinematicLiteralCall.Decode(
+            differingContextPayload, eventTrackReceiverKey, eventOwnerKey,
+            useTrackExecutionObject: true);
+        if (contextBoundCommand is not { Target: eventTrackReceiverKey,
+                SerializedContextKey: serializedContextKey, Selector: 0x1FB6 })
+            throw new InvalidDataException("An EVE AI call must bind its receiver to the track object while retaining the serialized context word for audits.");
+
+        CinematicLiteralCall? ownerBoundCommand = CinematicLiteralCall.Decode(
+            differingContextPayload, 0, eventOwnerKey, useTrackExecutionObject: true);
+        if (ownerBoundCommand is not { Target: eventOwnerKey, SerializedContextKey: serializedContextKey })
+            throw new InvalidDataException("An EVE AI call on an unbound channel must use the EVE-list owner as receiver.");
+
+        CinematicLiteralCall? directCommand = CinematicLiteralCall.Decode(
+            differingContextPayload, 0, eventOwnerKey);
+        if (directCommand is not { Target: serializedContextKey,
+                SerializedContextKey: serializedContextKey })
+            throw new InvalidDataException("Non-EVE cinematic calls must retain an explicit serialized receiver when no track target is bound.");
+
         AnimationOpaquePayload invalidVectorPayload = WordPairPayload(
             (0xA9001DBB, 0x01000028), (0, 0x02000806),
             (0x3FA00000, 0x01000022), (0xC0000000, 0x01000022), (0, 0x01000022),

@@ -57,6 +57,12 @@ internal static class CinematicNestedEventTransformAudit
                     Arguments = item.Call.Arguments
                 }).ToArray();
             var timeline = CinematicNestedEventTransformTracks.ReadTimeline(clip, world, document);
+            var absolutePositionTargets = clip.Tracks.Concat(timeline.TransformTracks)
+                .Where(track => track.Bone < 0 && track.Keys.Any(key => key.Position.HasValue))
+                .Select(track => track.Target).ToHashSet();
+            var moves = new CinematicGameScriptMoveTimeline(world, timeline.MoveSegments,
+                CinematicLiteralCall.ReadTimeline(clip).Concat(timeline.Commands),
+                absolutePositionTargets, timeline.MoveDiagnostics);
             var previewableOwners = timeline.PreviewableSceneEventOwners.Select(ownerId =>
             {
                 var owner = document.CinematicScriptOwners[ownerId];
@@ -143,7 +149,34 @@ internal static class CinematicNestedEventTransformAudit
                 PreviewableSceneEventOwners = previewableOwners,
                 PreviewedOwnerEffects = previewedOwnerEffects,
                 GeneratedTracks = tracks,
+                TransformInputs = world.Objects.Where(target => timeline.TransformTracks.Any(track => track.Target == target.GaoKey))
+                    .Select(target => new
+                    {
+                        Key = target.GaoKey.ToString("X8"), target.Name, target.ParentId,
+                        Baseline = new[] { target.Transform.Translation.X, target.Transform.Translation.Y, target.Transform.Translation.Z },
+                        HierarchyLocal = target.SerializedHierarchyLocalMatrix is { } local
+                            ? new[] { local.M11, local.M12, local.M13, local.M14, local.M21, local.M22, local.M23, local.M24,
+                                local.M31, local.M32, local.M33, local.M34, local.M41, local.M42, local.M43, local.M44 } : null,
+                        Tracks = timeline.TransformTracks.Where(track => track.Target == target.GaoKey)
+                            .Select(track => track.Keys.Select(key => new
+                            {
+                                key.Time, key.Duration, key.Flags,
+                                Position = key.Position is { } position ? new[] { position.X, position.Y, position.Z } : null
+                            }).ToArray()).ToArray()
+                    }).ToArray(),
                 GeneratedStateCommands = stateCommands,
+                MoveTargets = moves.Targets.Select(target => new
+                {
+                    Key = target.GaoKey.ToString("X8"), target.Name, target.ParentId
+                }).ToArray(),
+                MoveDiagnostics = moves.Diagnostics,
+                MoveSegments = timeline.MoveSegments.Select(segment => new
+                {
+                    Target = segment.Command.TargetKey.ToString("X8"),
+                    segment.TimelineStartSeconds, segment.TimelineEndSeconds,
+                    segment.EventElapsedSeconds, segment.Command.EventDurationSeconds,
+                    segment.Command.Origin
+                }).ToArray(),
                 GeneratedLocalRotations = timeline.RotationCommands.Select(command => new
                 {
                     Target = command.TargetKey.ToString("X8"),

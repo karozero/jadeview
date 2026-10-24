@@ -10,7 +10,8 @@ internal static class CinematicAudioTimeline
 
     internal static CinematicAudioCue[] Build(AnimationClip clip, WorldData world, SceneDocument document,
         IReadOnlyList<Entry>? archiveEntries, out string[] diagnostics,
-        IEnumerable<(float Time, CinematicLiteralCall Call)>? nestedEventCommands = null)
+        IEnumerable<(float Time, CinematicLiteralCall Call)>? nestedEventCommands = null,
+        IEnumerable<(float Time, CinematicTimelineMessage Message)>? timelineMessages = null)
     {
         var timelineCalls = CinematicLiteralCall.ReadTimeline(clip)
             .Concat(nestedEventCommands ?? [])
@@ -99,7 +100,8 @@ internal static class CinematicAudioTimeline
             }
         }
 
-        var dialogue = BuildDialogueCues(clip.Duration, CinematicTimelineMessage.ReadTimeline(clip), world, document);
+        var dialogue = BuildDialogueCues(clip.Duration,
+            timelineMessages ?? CinematicTimelineMessage.ReadTimeline(clip), world, document);
         cues.AddRange(dialogue.Cues);
         audioDiagnostics.AddRange(dialogue.Diagnostics);
         var sourceCues = cues.Where(cue => cue.End > cue.Start).OrderBy(cue => cue.Start).ToArray();

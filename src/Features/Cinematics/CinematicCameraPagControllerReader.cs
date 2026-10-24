@@ -5,7 +5,6 @@ namespace JadeView;
 internal static class CinematicCameraPagControllerReader
 {
     private const string CallbackName = "SFX_colpag_cam_scp_loop";
-    private const uint CameraObjectKey = 0x71003F56;
 
     internal static CinematicCameraPagController[] Read(IEnumerable<CinematicScriptOwner> owners,
         WorldData world)
@@ -13,8 +12,6 @@ internal static class CinematicCameraPagControllerReader
         var objectsByKey = world.Objects.GroupBy(sceneObject => sceneObject.GaoKey)
             .Where(group => group.Count() == 1)
             .ToDictionary(group => group.Key, group => group.Single());
-        if (!objectsByKey.TryGetValue(CameraObjectKey, out var camera)) return [];
-
         var controllers = new List<CinematicCameraPagController>();
         foreach (var owner in owners.Where(owner => owner.WorldKey == world.Key
             && owner.CallbackNames.Contains(CallbackName, StringComparer.Ordinal)))
@@ -29,7 +26,7 @@ internal static class CinematicCameraPagControllerReader
                 || initialDelay <= 0)
                 continue;
 
-            controllers.Add(new(ownerObject, firstEffect, secondEffect, camera,
+            controllers.Add(new(ownerObject, firstEffect, secondEffect,
                 initialTimer, initialDelay, initialMode));
         }
 
@@ -66,5 +63,4 @@ internal static class CinematicCameraPagControllerReader
 }
 
 internal sealed record CinematicCameraPagController(SceneObject Owner, SceneObject? FirstEffect,
-    SceneObject? SecondEffect, SceneObject Camera, float InitialTimer, float InitialDelay,
-    int InitialMode);
+    SceneObject? SecondEffect, float InitialTimer, float InitialDelay, int InitialMode);

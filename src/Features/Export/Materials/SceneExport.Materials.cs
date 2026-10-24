@@ -1,3 +1,4 @@
+using System.Numerics;
 using Obj = System.Collections.Generic.Dictionary<string, object>;
 
 namespace JadeView;
@@ -23,11 +24,12 @@ public sealed partial class SceneExporter
         return material;
     }
 
-    private int Material(SceneObject sceneObject, ResolvedMaterial? source, JadeMaterialLayer? layer)
+    private int Material(SceneObject sceneObject, ResolvedMaterial? source, JadeMaterialLayer? layer,
+        int subMaterialIndex)
     {
         bool inverseMask = options.Textures && CanBakeInverseMask(layer) &&
             resolver.TryResolveTexture(layer!.Texture, out _);
-        var color = ExportBaseColor(source, layer);
+        var color = ExportBaseColor(sceneObject, source, layer, subMaterialIndex);
         if (inverseMask) color[3] = 1;
         var pbr = D("baseColorFactor", color, "metallicFactor", 0f, "roughnessFactor", 1f);
         var material = D("name", $"{sceneObject.Name} {source?.Id.ToString() ?? "default"}",
@@ -55,18 +57,28 @@ public sealed partial class SceneExporter
             warnings.Add($"'{sceneObject.Name}' uses blend/alpha flags {layer.Flags:X8} that cannot be represented exactly by one glTF material; transparency is approximate.");
     }
 
-    private static float[] ExportBaseColor(ResolvedMaterial? source, JadeMaterialLayer? layer)
+    private float[] ExportBaseColor(SceneObject sceneObject, ResolvedMaterial? source,
+        JadeMaterialLayer? layer, int subMaterialIndex)
     {
         var color = new[] { 1f, 1f, 1f, 1f };
-        if (layer?.ColorMode == 2 && source?.SourceBytes is { Length: >= 16 } bytes)
+        if (layer?.ColorMode == 2)
         {
-            uint packed = Preview.U32(bytes, 12);
-            color[0] = (packed & 255) / 255f;
-            color[1] = (packed >> 8 & 255) / 255f;
-            color[2] = (packed >> 16 & 255) / 255f;
+            Vector4 constant = ExportMaterialConstant(sceneObject, source, subMaterialIndex);
+            color[0] = constant.X;
+            color[1] = constant.Y;
+            color[2] = constant.Z;
+            color[3] = constant.W;
         }
         if (layer != null && (layer.Flags & JadeMaterialFlags.OverrideAlpha) != 0)
             color[3] = layer.OverrideAlpha;
         return color;
+    }
+
+    private Vector4 ExportMaterialConstant(SceneObject sceneObject, ResolvedMaterial? source,
+        int subMaterialIndex)
+    {
+        Vector4 original = MaterialLayerTint.ReadConstant(source);
+        return options.CinematicMaterialLayers?.ApplyConstant(sceneObject.GaoKey,
+            subMaterialIndex, original) ?? original;
     }
 }

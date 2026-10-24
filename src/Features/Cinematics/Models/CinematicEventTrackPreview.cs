@@ -24,11 +24,14 @@ internal sealed class CinematicEventTrackPreview
         return true;
     }
 
-    internal void Evaluate(float cinematicTime)
+    internal void Evaluate(float cinematicTime, IReadOnlyCollection<SceneObject> worldObjects,
+        IReadOnlyDictionary<uint, AnimationTrack[]> tracksByTarget)
     {
         if (target == null || track == null || cinematicTime < startTime) return;
         float localTime = cinematicTime - startTime;
-        target.PreviewMatrix = CinematicTransformSampler.Evaluate(target.Transform, [track], localTime);
+        target.PreviewMatrix = AnimationMath.FromRender(
+            CinematicHierarchyTransformSampler.EvaluateWorldRender(target, tracksByTarget,
+                localTime, worldObjects, [track], ancestorTime: cinematicTime));
     }
 
     internal bool IsPreviewing(SceneObject targetObject, AnimationTrack sourceTrack) =>

@@ -9,6 +9,10 @@ public sealed partial class CinematicBodyTimeline
     private readonly List<string> diagnostics = [];
     public int ActionCount => segments.Count;
     public float? FirstActionTime => segments.FirstOrDefault()?.Start;
+    internal IEnumerable<(float Start, float End, string Label)> TimelineSegments(float maximumTime) =>
+        segments.Where(segment => segment.Start <= maximumTime)
+            .Select(segment => (segment.Start, Math.Min(segment.End, maximumTime),
+                $"Action {segment.ActionId}"));
     internal IEnumerable<uint> ShapeKeys => segments
         .SelectMany(segment => segment.Action.Items)
         .Select(item => item.ShapeKey)
@@ -48,6 +52,7 @@ public sealed partial class CinematicBodyTimeline
             }
             if (action.Release)
             {
+                timeline.RecordGameplayHandoff(action.Time);
                 timeline.segments.RemoveAll(segment => segment.Start > action.Time);
                 var running = timeline.segments.LastOrDefault();
                 if (running != null) running.End = Math.Min(running.End, action.Time);
@@ -77,7 +82,7 @@ public sealed partial class CinematicBodyTimeline
             timeline.QueueAction(action, definition, kit);
         }
         timeline.DiagnoseUnresolvedBodyActions(source, actor, events);
-        timeline.InitializeMotion(source, actor);
+        timeline.InitializeMotion(source, actor, additionalCalls);
         return timeline;
     }
 

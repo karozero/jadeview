@@ -13,13 +13,16 @@ public sealed partial class SceneExporter
         if (layer.UvMode is 2 or 3)
             warnings.Add("View-dependent environment/diffuse UV uses the stored UV map in the export.");
         if ((layer.Flags & JadeMaterialFlags.Scrolling) != 0)
-            warnings.Add("Animated texture UV transforms are frozen at time zero.");
-        var matrix = layer.UvMatrix(0, out var shift);
+            warnings.Add($"Animated texture UV transforms are sampled at {ExportMaterialTime:G6}s; UV motion is not exported.");
+        var matrix = layer.UvMatrix(ExportMaterialTime, out var shift);
         var transformed = new Vector2(matrix.X * uv.X + matrix.Y * uv.Y + shift.X,
             matrix.Z * uv.X + matrix.W * uv.Y + shift.Y);
         // DecodeTga writes top-down PNGs; Jade source V has the opposite origin.
         return new(transformed.X, 1 - transformed.Y);
     }
+
+    private float ExportMaterialTime => options.CinematicMaterialLayers is { Time: var time }
+        && float.IsFinite(time) ? Math.Max(0, time) : 0;
 
     private Vector2 PlanarUv(SceneObject sceneObject, Vector3 point, JadeMaterialLayer layer)
     {

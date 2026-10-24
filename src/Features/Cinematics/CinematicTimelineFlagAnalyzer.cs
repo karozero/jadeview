@@ -2,6 +2,42 @@ namespace JadeView;
 
 internal static class CinematicTimelineFlagAnalyzer
 {
+    internal static float? FindFirstSatisfiedStartFlagTime(CinematicScriptOwner owner,
+        IEnumerable<(float Time, CinematicLiteralCall Call)> timelineCalls)
+    {
+        var startFlagGates = CinematicScriptFlagFlowAnalyzer.GetAccesses(owner)
+            .Where(access => access.Access == "reads"
+                && access.RequiredSet != null
+                && access.VariableName is "des_i_specialFlag_test1" or "des_i_specialFlag_test2")
+            .DistinctBy(access => (access.Flag, access.RequiredSet))
+            .ToArray();
+        if (startFlagGates.Length == 0) return null;
+
+        var writes = timelineCalls
+            .Select(item => DecodeWrite(item.Time, item.Call))
+            .OfType<FlagWrite>()
+            .Where(write => write.Flag > 0 && float.IsFinite(write.Time))
+            .OrderBy(write => write.Time)
+            .ToArray();
+
+        var flagStates = new Dictionary<int, bool?>();
+        foreach (var simultaneousWrites in writes.GroupBy(write => write.Time).OrderBy(group => group.Key))
+        {
+            foreach (var writesForFlag in simultaneousWrites.GroupBy(write => write.Flag))
+            {
+                bool[] states = writesForFlag.Select(write => write.Set).Distinct().ToArray();
+                flagStates[writesForFlag.Key] = states.Length == 1 ? states[0] : null;
+            }
+
+            bool allStartFlagsSatisfied = startFlagGates.All(gate =>
+                flagStates.TryGetValue(gate.Flag, out bool? currentState)
+                && currentState is { } state && state == gate.RequiredSet);
+            if (allStartFlagsSatisfied) return simultaneousWrites.Key;
+        }
+
+        return null;
+    }
+
     internal static CinematicTimelineFlagGate[] Analyze(CinematicScriptOwner owner,
         IEnumerable<(float Time, CinematicLiteralCall Call)> timelineCalls, float playhead)
     {

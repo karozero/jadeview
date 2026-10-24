@@ -6,10 +6,39 @@ internal static class CinematicScriptArgumentBindingResolver
         CinematicScriptReachableEngineCall call,
         IEnumerable<CinematicScriptReachableSourceReference> sourceReferences)
     {
-        string[] argumentFlow = call.Arguments
-            .Concat(call.ArgumentAssignments.Select(assignment => assignment.Expression))
-            .Concat(call.ArgumentAssignmentAlternatives?.Select(assignment => assignment.Expression) ?? [])
-            .ToArray();
+        string[] argumentFlow = call.Arguments.Concat(call.ArgumentAssignments.Select(assignment => assignment.Expression))
+            .Concat(call.ArgumentAssignmentAlternatives?.Select(assignment => assignment.Expression) ?? []).ToArray();
+        return ResolveSourceObjectReferences(call, sourceReferences, argumentFlow);
+    }
+
+    internal static CinematicScriptReachableSourceReference[] ResolveFirstArgumentObjectReferences(
+        CinematicScriptReachableEngineCall call,
+        IEnumerable<CinematicScriptReachableSourceReference> sourceReferences)
+    {
+        if (call.Arguments.Length == 0) return [];
+        string receiverArgument = call.Arguments[0];
+        string[] argumentFlow = [receiverArgument,
+            .. call.ArgumentAssignments.Where(assignment => assignment.IsUnique
+                    && ContainsIdentifier(receiverArgument, assignment.Variable))
+                .Select(assignment => assignment.Expression)];
+        return ResolveSourceObjectReferences(call, sourceReferences, argumentFlow);
+    }
+
+    internal static bool FirstArgumentUsesCurrentGameObject(CinematicScriptReachableEngineCall call)
+    {
+        if (call.Arguments.Length == 0) return false;
+        string receiverArgument = call.Arguments[0];
+        return ContainsIdentifier(receiverArgument, "AI_gpst_CurrentGameObject")
+            || call.ArgumentAssignments.Any(assignment => assignment.IsUnique
+                && ContainsIdentifier(receiverArgument, assignment.Variable)
+                && ContainsIdentifier(assignment.Expression, "AI_gpst_CurrentGameObject"));
+    }
+
+    private static CinematicScriptReachableSourceReference[] ResolveSourceObjectReferences(
+        CinematicScriptReachableEngineCall call,
+        IEnumerable<CinematicScriptReachableSourceReference> sourceReferences,
+        IEnumerable<string> argumentFlow)
+    {
         return sourceReferences.Where(reference => reference.Kind == "Object"
                 && CinematicObjectKey.IsArchiveObject(reference.Key)
                 && reference.FunctionName == call.FunctionName

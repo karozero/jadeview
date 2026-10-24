@@ -4,7 +4,8 @@ internal static class CinematicEnvironmentReader
 {
     private const uint CycleFunction = 0x5e000004, InitializeFunction = 0x5e000040;
     private static readonly string[] ObjectFields = ["des_o_env", "des_o_sky", "des_o_fog", "des_o_sun",
-        "des_o_moon", "des_o_moon_light", "des_o_moon_rayon"];
+        "des_o_moon", "des_o_moon_light", "des_o_moon_rayon", "des_o_desactivation",
+        "des_standard_world_cycle"];
     private static readonly string[] NormalPaletteNames = ["des_ac_nuit", "des_ac_aurore", "des_ac_coucher", "des_ac_jour"];
     private static readonly string[] AttackPaletteNames = ["des_ac_nuit_attaque", "des_ac_aurore_attaque",
         "des_ac_coucher_attaque", "des_ac_jour_attaque"];
@@ -47,12 +48,17 @@ internal static class CinematicEnvironmentReader
                     PcScalarVariableReader.ReadOverlay(
                         origins[defaults].AsSpan(defaults.Offset, defaults.Size),
                         origins[instance].AsSpan(instance.Offset, instance.Size), name, PcVariableFormat.FloatType));
-                document.CinematicEnvironmentControllers[root.Key] = new(root.Key, root.LoadWorldKey, keys.ToArray())
+                var controller = new CinematicEnvironmentController(root.Key, root.LoadWorldKey, keys.ToArray())
                 {
                     EnvironmentKey = objectKeys.GetValueOrDefault("des_o_env"),
                     SkyKey = objectKeys.GetValueOrDefault("des_o_sky"),
                     FogKey = objectKeys.GetValueOrDefault("des_o_fog"),
                     SunKey = objectKeys.GetValueOrDefault("des_o_sun"),
+                    MoonKey = objectKeys.GetValueOrDefault("des_o_moon"),
+                    MoonLightKey = objectKeys.GetValueOrDefault("des_o_moon_light"),
+                    MoonRayKey = objectKeys.GetValueOrDefault("des_o_moon_rayon"),
+                    DeactivationObjectKey = objectKeys.GetValueOrDefault("des_o_desactivation"),
+                    StandardControllerKey = objectKeys.GetValueOrDefault("des_standard_world_cycle"),
                     NightHeight = ReadHeight("des_f_Z_nuit"),
                     DawnHeight = ReadHeight("des_f_Z_aurore"),
                     SunriseHeight = ReadHeight("des_f_Z_lever"),
@@ -70,6 +76,8 @@ internal static class CinematicEnvironmentReader
                     NormalPalettes = normalPalettes,
                     AttackPalettes = attackPalettes
                 };
+                document.CinematicEnvironmentControllers[new(root.LoadWorldKey, root.Key)] = controller;
+
             }
             catch (InvalidDataException error) { document.Diagnostics.Add($"Environment controller {root.Key:X8}: {error.Message}"); }
         }

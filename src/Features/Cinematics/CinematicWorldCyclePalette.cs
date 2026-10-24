@@ -19,6 +19,9 @@ internal static class CinematicWorldCyclePalette
         Vector4 fogColor = Vector4.Zero;
         float fogNear = 0;
         float fogFar = 0;
+        Vector4 ambientColor = world.Lighting is { } lighting ? ToVector4(lighting.AmbientColor) : Vector4.Zero;
+        Vector4 ambientColor2 = world.Lighting is { } secondLighting ? ToVector4(secondLighting.EffectiveAmbientColor2) : Vector4.Zero;
+        bool hasAmbient = world.Lighting != null;
         Span<uint> colors = stackalloc uint[PaletteColorCount];
 
         for (int controllerIndex = 0; controllerIndex < controllers.Count; controllerIndex++)
@@ -29,13 +32,23 @@ internal static class CinematicWorldCyclePalette
             if (sun == null) continue;
 
             float sunHeight = sun.PreviewMatrix?.M43 ?? sun.Transform.Translation.Z;
-            Sample(controller, sunHeight, attackFactor, colors);
+            if (!float.IsFinite(sunHeight)) continue;
+            SamplePalette(controller, sunHeight, attackFactor, colors);
             rliColor = ToVector4(colors[7]);
             rliFactor = SampleRliFactor(controller, sunHeight);
             fogColor = ToVector4(colors[1]);
             float attack = Math.Clamp(attackFactor, 0, 1);
             fogNear = Lerp(controller.FogNear, controller.AttackFogNear, attack);
             fogFar = Lerp(controller.FogFar, controller.AttackFogFar, attack);
+            var owner = FindObject(world.Objects, controller.OwnerKey);
+            uint? capabilities = owner?.PreviewCapabilities ?? owner?.InitialCapabilities;
+            // world_cycle leaves both world ambient channels untouched under capability 256.
+            if (capabilities is uint ownerCapabilities && (ownerCapabilities & 256) == 0)
+            {
+                ambientColor = ToVector4(colors[0]);
+                ambientColor2 = ToVector4(colors[5]);
+                hasAmbient = true;
+            }
 
             if (IsObjectKey(controller.EnvironmentKey))
             {
@@ -45,9 +58,14 @@ internal static class CinematicWorldCyclePalette
             }
             if (IsObjectKey(controller.SkyKey))
                 constants[(controller.SkyKey, 0)] = ToVector4(colors[4]);
+            // Iris world_cycle writes palette entry 6 to the moon's material,
+            // independently of the stateful moon-light position/fade logic.
+            if (IsObjectKey(controller.MoonKey) && FindObject(world.Objects, controller.MoonKey) != null)
+                constants[(controller.MoonKey, 0)] = ToVector4(colors[6]);
         }
 
-        return new(rliColor, rliFactor, fogColor, fogNear, fogFar);
+        return new(rliColor, rliFactor, fogColor, fogNear, fogFar,
+            ambientColor, ambientColor2, hasAmbient);
     }
 
     private static bool HasCompletePalettes(uint[][] palettes)
@@ -60,12 +78,17 @@ internal static class CinematicWorldCyclePalette
 
     private static SceneObject? FindObject(IReadOnlyList<SceneObject> objects, uint key)
     {
+        SceneObject? match = null;
         for (int index = 0; index < objects.Count; index++)
-            if (objects[index].GaoKey == key) return objects[index];
-        return null;
+        {
+            if (objects[index].GaoKey != key) continue;
+            if (match != null) return null;
+            match = objects[index];
+        }
+        return match;
     }
 
-    private static void Sample(CinematicEnvironmentController controller, float sunHeight,
+    internal static void SamplePalette(CinematicEnvironmentController controller, float sunHeight,
         float attackFactor, Span<uint> result)
     {
         int firstIndex;
@@ -181,4 +204,7 @@ internal readonly record struct CinematicWorldCycleState(
     float RliFactor,
     Vector4 FogColor,
     float FogNear,
-    float FogFar);
+    float FogFar,
+    Vector4 AmbientColor,
+    Vector4 AmbientColor2,
+    bool HasAmbient);

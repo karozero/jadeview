@@ -7,7 +7,31 @@ internal static class AnimationBezierChecks
     {
         VerifyCurve([Vector3.Zero, new(2, 4, 0)], new(10, 0, 0), new(3.5f, 2, 0));
         VerifyCurve([Vector3.Zero, new(1, 3, 0), new(5, -2, 0)], new(8, 0, 0), new(3.25f, .375f, 0));
+        VerifyPoseRevisionTracksVisiblePoseChanges();
         Console.WriteLine("PASS: native quadratic/cubic Bezier byte order, source endpoints, independent midpoints and actor/object sampling");
+    }
+
+    private static void VerifyPoseRevisionTracksVisiblePoseChanges()
+    {
+        var root = new SceneObject { GaoKey = 10 };
+        var bone = new SceneObject { GaoKey = 11, ActorNode = new() { Parent = 10 } };
+        var actor = new SceneActor { Root = root, Members = [root, bone], Bones = [bone] };
+
+        actor.Evaluate(0);
+        int settledRevision = actor.PoseRevision;
+        actor.Evaluate(.016f);
+        if (actor.PoseRevision != settledRevision)
+            throw new InvalidDataException("An unchanged actor pose invalidated its deformation cache.");
+
+        bone.ActorNode!.Local = Matrix4x4.CreateTranslation(1, 0, 0);
+        actor.Evaluate(0);
+        if (actor.PoseRevision == settledRevision)
+            throw new InvalidDataException("A changed actor world pose did not invalidate its deformation cache.");
+
+        settledRevision = actor.PoseRevision;
+        actor.Evaluate(0);
+        if (actor.PoseRevision != settledRevision)
+            throw new InvalidDataException("A repeated unchanged actor pose invalidated its deformation cache.");
     }
 
     private static void VerifyCurve(Vector3[] storedVectors, Vector3 end, Vector3 midpoint)

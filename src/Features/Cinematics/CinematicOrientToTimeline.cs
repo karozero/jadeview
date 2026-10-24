@@ -5,6 +5,8 @@ namespace JadeView;
 internal sealed class CinematicOrientToTimeline
 {
     private const int OrientToSelector = 8151;
+    private readonly SceneObject[] worldObjects;
+    private readonly HashSet<SceneObject> animatedObjects;
     private readonly SceneObject[] participants;
     private readonly OrientCommand[] commands;
     private readonly Dictionary<SceneObject, OrientCommand[]> commandsBySource;
@@ -14,6 +16,7 @@ internal sealed class CinematicOrientToTimeline
     internal IReadOnlyCollection<SceneObject> Participants => participants;
     internal IReadOnlyCollection<SceneObject> OrientedObjects => commands.Select(command => command.Source)
         .Distinct().ToArray();
+    internal bool HasCommands => commands.Length > 0;
     internal IReadOnlyList<string> Diagnostics => diagnostics;
     internal IEnumerable<float> ChangeTimes => commands.Select(command => command.Time).Distinct();
 
@@ -21,7 +24,11 @@ internal sealed class CinematicOrientToTimeline
         IEnumerable<(float Time, CinematicLiteralCall Call)>? nestedCommands,
         IEnumerable<AnimationTrack> tracks)
     {
+        worldObjects = world.Objects.ToArray();
         AnimationTrack[] sourceTracks = tracks.ToArray();
+        animatedObjects = sourceTracks.Where(track => track.Bone < 0)
+            .SelectMany(track => worldObjects.Where(sceneObject => sceneObject.GaoKey == track.Target))
+            .ToHashSet();
         authoredRotationTimesByTarget = sourceTracks
             .Where(track => track.Bone < 0)
             .SelectMany(track => track.Keys
@@ -50,11 +57,6 @@ internal sealed class CinematicOrientToTimeline
                 unresolved.Add($"OBJ_OrientTo at {time:F3}s on {call.Target:X8}: source or reference GAO is missing/ambiguous.");
                 continue;
             }
-            if (source.Actor != null || reference.Actor != null)
-            {
-                unresolved.Add($"OBJ_OrientTo at {time:F3}s on {source.Name}: actor-root orientation is not yet evaluated by this preview.");
-                continue;
-            }
             resolved.Add(new(time, source, reference));
         }
 
@@ -67,18 +69,34 @@ internal sealed class CinematicOrientToTimeline
         diagnostics = unresolved.Distinct(StringComparer.Ordinal).ToArray();
     }
 
-    internal void Evaluate(float time)
+    internal bool HasCommandAfter(SceneObject source, float afterTime, float throughTime) =>
+        commandsBySource.TryGetValue(source, out OrientCommand[]? sourceCommands)
+            && sourceCommands.Any(command => command.Time > afterTime && command.Time <= throughTime);
+
+    internal void Evaluate(float time, CinematicSightSetTimeline? sightSet = null)
     {
         foreach (var (source, sourceCommands) in commandsBySource)
         {
             int commandIndex = FindLastAtOrBefore(sourceCommands, time);
-            if (commandIndex < 0) continue;
-            OrientCommand command = sourceCommands[commandIndex];
-            if (HasLaterAuthoredRotation(command, time)) continue;
+            if (!TryResolveWorldPose(source, out Matrix4x4 sourceWorldRender)) continue;
 
-            Matrix4x4 sourcePose = Pose(source);
-            Matrix4x4 referencePose = Pose(command.Reference);
-            source.PreviewMatrix = Orient(sourcePose, referencePose.Translation);
+            Matrix4x4 resultWorldRender = sourceWorldRender;
+            if (commandIndex >= 0)
+            {
+                OrientCommand command = sourceCommands[commandIndex];
+                if (sightSet?.HasCommandAfter(source, command.Time, time) != true
+                    && !HasLaterAuthoredRotation(command, time)
+                    && TryResolveWorldPose(command.Reference, out Matrix4x4 referenceWorldRender))
+                {
+                    Matrix4x4 sourceWorldJade = AnimationMath.FromRender(sourceWorldRender);
+                    Vector3 referencePositionJade = TransformData.FromRender(referenceWorldRender.Translation);
+                    Matrix4x4 orientedWorldJade = Orient(sourceWorldJade, referencePositionJade);
+                    resultWorldRender = PreserveSerializedLocalPosition(source, sourceWorldRender,
+                        AnimationMath.ToRender(orientedWorldJade));
+                }
+            }
+
+            source.PreviewMatrix = AnimationMath.FromRender(resultWorldRender);
         }
     }
 
@@ -111,8 +129,48 @@ internal sealed class CinematicOrientToTimeline
         return low < keyTimes.Length && keyTimes[low] <= time;
     }
 
-    private static Matrix4x4 Pose(SceneObject sceneObject) =>
-        sceneObject.PreviewMatrix ?? AnimationMath.Trs(sceneObject.Transform);
+    private bool TryResolveWorldPose(SceneObject sceneObject, out Matrix4x4 renderPose)
+    {
+        Matrix4x4 ReadWorldPose(SceneObject item) => item.PreviewMatrix is Matrix4x4 preview
+            && (item.Actor != null || animatedObjects.Contains(item))
+                ? AnimationMath.ToRender(preview)
+                : item.Transform.ToRenderMatrix();
+        bool HasAuthoritativePreview(SceneObject item) => item.Actor != null || animatedObjects.Contains(item);
+
+        return CinematicHierarchyPose.TryResolveRenderMatrix(sceneObject, worldObjects,
+            ReadWorldPose, out renderPose, out _, HasAuthoritativePreview);
+    }
+
+    private Matrix4x4 PreserveSerializedLocalPosition(SceneObject source, Matrix4x4 currentWorldRender,
+        Matrix4x4 orientedWorldRender)
+    {
+        if (!HasParent(source)
+            || !TryResolveParentPose(source, out Matrix4x4 parentRender)
+            || !Matrix4x4.Invert(parentRender, out Matrix4x4 inverseParent))
+            return orientedWorldRender;
+
+        Matrix4x4 currentLocalRender = currentWorldRender * inverseParent;
+        Matrix4x4 localRender = orientedWorldRender * inverseParent;
+        if (!Matrix4x4.Decompose(currentLocalRender, out _, out _, out Vector3 localPosition)
+            || !Matrix4x4.Decompose(localRender, out Vector3 scale, out Quaternion rotation, out _))
+            return orientedWorldRender;
+
+        Matrix4x4 preservedLocal = Matrix4x4.CreateScale(scale)
+            * Matrix4x4.CreateFromQuaternion(rotation)
+            * Matrix4x4.CreateTranslation(localPosition);
+        return preservedLocal * parentRender;
+    }
+
+    private bool TryResolveParentPose(SceneObject source, out Matrix4x4 parentRender)
+    {
+        parentRender = default;
+        if (!uint.TryParse(source.ParentId, System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out uint parentKey)) return false;
+        SceneObject[] parents = worldObjects.Where(item => item.GaoKey == parentKey).Take(2).ToArray();
+        return parents.Length == 1 && TryResolveWorldPose(parents[0], out parentRender);
+    }
+
+    private static bool HasParent(SceneObject sceneObject) => !string.IsNullOrWhiteSpace(sceneObject.ParentId);
 
     private static Matrix4x4 Orient(Matrix4x4 sourcePose, Vector3 referencePosition)
     {

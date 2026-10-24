@@ -8,25 +8,57 @@ public sealed partial class EditorShell
 {
     private void DrawCinematicBrowser()
     {
-        DrawPanelTitle("CUTSCENES", "Select a cinematic FF container. Playback uses keyed animation clips shared across actors; export writes the assembled actors to one GLB.");
-        DrawCategoryTitle("Available cinematics");
+        DrawPanelTitle("CUTSCENES", "Browse cinematic containers by location, search by name or archive key, then select one to load it.");
+        DrawCategoryTitle("Find a cutscene");
         if (Archive == null)
         {
             ImGui.TextDisabled("Open a BF archive to browse cinematic scenes.");
             return;
         }
 
-        var scenes = _archiveScenes.Where(IsCinematicScene).ToArray();
-        ImGui.TextDisabled($"{scenes.Length} cinematic containers found");
-        ImGui.BeginChild("CinematicSceneList", Vector2.Zero, ImGuiChildFlags.Borders);
-        foreach (var scene in scenes)
+        ImGui.SetNextItemWidth(-1);
+        ImGui.InputTextWithHint("##SearchCinematicScenes", "Search location, scene name, or archive key...",
+            ref _searchCinematicScenes, 128);
+        var scenes = _archiveScenes.Where(IsCinematicScene).Where(MatchesCinematicSearch).ToArray();
+        DrawCategoryTitle($"Locations and scenes ({scenes.Length})");
+        if (scenes.Length == 0)
         {
-            bool selected = _loadedCinematicEntry == scene.Entry.Id;
-            if (ImGui.Selectable($"{scene.Label} · {scene.Entry.Id}", selected)) LoadCinematicScene(scene);
-            if (scene.Diagnostic != null && ImGui.IsItemHovered()) ImGui.SetTooltip(scene.Diagnostic);
-            DrawCopyNameContextMenu($"CinematicSceneName##{scene.Entry.Id}", scene.Label, "Copy scene name");
+            ImGui.TextDisabled("No cinematic containers match this search.");
+            return;
+        }
+
+        ImGui.BeginChild("CinematicSceneList", Vector2.Zero, ImGuiChildFlags.Borders);
+        foreach (var locationGroup in scenes.GroupBy(GetCinematicLocation).OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            if (!ImGui.CollapsingHeader($"{locationGroup.Key} ({locationGroup.Count()})", ImGuiTreeNodeFlags.DefaultOpen))
+                continue;
+            foreach (var scene in locationGroup.OrderBy(item => item.Label, StringComparer.OrdinalIgnoreCase))
+            {
+                bool selected = _loadedCinematicEntry == scene.Entry.Id;
+                if (ImGui.Selectable($"{scene.Label} · {scene.Entry.Id}", selected)) LoadCinematicScene(scene);
+                if (scene.Diagnostic != null && ImGui.IsItemHovered()) ImGui.SetTooltip(scene.Diagnostic);
+                DrawCopyNameContextMenu($"CinematicSceneName##{scene.Entry.Id}", scene.Label, "Copy scene name");
+            }
         }
         ImGui.EndChild();
+    }
+
+    private bool MatchesCinematicSearch(ArchiveSceneItem scene)
+    {
+        if (string.IsNullOrWhiteSpace(_searchCinematicScenes)) return true;
+        return scene.Label.Contains(_searchCinematicScenes, StringComparison.OrdinalIgnoreCase)
+            || scene.Entry.Name.Contains(_searchCinematicScenes, StringComparison.OrdinalIgnoreCase)
+            || scene.Entry.Id.Contains(_searchCinematicScenes, StringComparison.OrdinalIgnoreCase)
+            || scene.WorldNames.Any(name => name.Contains(_searchCinematicScenes, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string GetCinematicLocation(ArchiveSceneItem scene)
+    {
+        string? namedWorld = scene.WorldNames.FirstOrDefault(name => name.Length > 0 && char.IsDigit(name[0]));
+        if (namedWorld == null) return "Other";
+        string[] nameParts = namedWorld.Split('_', StringSplitOptions.RemoveEmptyEntries);
+        if (nameParts.Length < 2) return namedWorld;
+        return string.Join('_', nameParts.Take(2));
     }
 
     private static bool IsCinematicScene(ArchiveSceneItem scene) =>
@@ -38,6 +70,7 @@ public sealed partial class EditorShell
         _cinematicPlayback?.Deactivate();
         ResetCinematicAudio();
         _previewedCinematicSceneEventOwners.Clear();
+        _previewedCinematicSceneEventStartTimes.Clear();
         _assetWorldBeforeCinematic = ActiveWorld;
         _loadedCinematicEntry = scene.Entry.Id;
         OpenSceneContainer(scene.Entry, () =>
@@ -65,7 +98,8 @@ public sealed partial class EditorShell
         Renderer.Document = Document;
         SelectedObject = _cinematicWorld.Objects.FirstOrDefault();
         _cinematicPlayers = CinematicPlayback.Discover(Document, _cinematicWorld, Resolver, Archive?.Entries,
-            _disabledCinematicCallbackOwners, _previewedCinematicSceneEventOwners);
+            _disabledCinematicCallbackOwners, _previewedCinematicSceneEventOwners,
+            _previewedCinematicSceneEventStartTimes);
         _cinematicPlayback = _cinematicPlayers.FirstOrDefault();
         _cinematicPlayback?.Activate();
         Renderer.ShowGameHidden = false;

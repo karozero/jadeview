@@ -27,7 +27,7 @@ internal sealed class CinematicCameraPagTimeline
                 .ToArray())).ToArray();
     }
 
-    internal void Evaluate(float time)
+    internal void Evaluate(float time, Matrix4x4? previewCameraPose)
     {
         float requestedTime = float.IsFinite(time) ? Math.Max(0, time) : 0;
         foreach (var track in tracks)
@@ -40,8 +40,9 @@ internal sealed class CinematicCameraPagTimeline
 
             SetVisible(controller.FirstEffect);
             SetVisible(controller.SecondEffect);
-            ApplyCameraPose(controller.FirstEffect, controller.Camera, state.Mode);
-            ApplyCameraPose(controller.SecondEffect, controller.Camera, state.Mode);
+            if (previewCameraPose is not { } cameraPose) continue;
+            ApplyCameraPose(controller.FirstEffect, cameraPose, state.Mode);
+            ApplyCameraPose(controller.SecondEffect, cameraPose, state.Mode);
         }
     }
 
@@ -114,10 +115,9 @@ internal sealed class CinematicCameraPagTimeline
         effect.CinematicExcluded = false;
     }
 
-    private static void ApplyCameraPose(SceneObject? effect, SceneObject camera, int mode)
+    private static void ApplyCameraPose(SceneObject? effect, Matrix4x4 cameraPose, int mode)
     {
         if (effect == null) return;
-        Matrix4x4 cameraPose = camera.PreviewMatrix ?? AnimationMath.Trs(camera.Transform);
         Vector3 position = new(cameraPose.M41, cameraPose.M42, cameraPose.M43);
         Vector3 horizon = AxisX(cameraPose);
         Vector3 sight = -AxisY(cameraPose);

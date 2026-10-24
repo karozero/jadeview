@@ -44,7 +44,7 @@ public sealed partial class FaceMorphPreview
             StopBlink();
         }
         channelStates = (FaceMorphChannelState[])states.Clone();
-        evaluated.CopyTo(weights, 0);
+        ReplaceWeights(evaluated);
         ChannelsActive = true;
         Timeline.Playing = false;
     }

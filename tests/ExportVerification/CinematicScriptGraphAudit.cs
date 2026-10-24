@@ -63,6 +63,22 @@ internal static class CinematicScriptGraphAudit
                 SerializedObjectReferences = owner.ObjectReferences,
                 SerializedOvaValues = owner.Variables,
                 CallbackDrivenSceneEvents = GetCallbackDrivenSceneEventCalls(owner, document),
+                CallbackStateEffectCandidates = CinematicScriptCallbackStateEffectAnalyzer.Analyze(owner)
+                    .Select(effect => new
+                    {
+                        effect.Api,
+                        effect.Variant,
+                        effect.StateEffect,
+                        effect.Arguments,
+                        effect.BranchConditions,
+                        effect.FunctionName,
+                        effect.Source,
+                        effect.Line,
+                        effect.CallbackPath,
+                        effect.ExecutionStatus,
+                        ReceiverKey = effect.ReceiverKey?.ToString("X8"),
+                        effect.ReceiverEvidence
+                    }).ToArray(),
                 UnresolvedSceneEventCalls = GetUnresolvedSceneEventCalls(owner, document),
                 CallbackActionRequests = GetCallbackActionRequests(owner, document),
                 CallbackActionKitMerges = GetCallbackActionKitMerges(owner, document),
@@ -396,6 +412,41 @@ internal static class CinematicScriptGraphAudit
                         PayloadFloat = unchecked((float)(int)candidate.Call.Arguments[1]),
                         QueueObject = candidate.QueueObject.Key.ToString("X8"),
                         QueueName = candidate.QueueObject.Name
+                    }).ToArray(),
+                OwnerQueueMessageCandidates = CinematicScriptBehaviorAnalyzer
+                    .FindOwnerQueueMessageCandidates(owner, messageTracks, namedReferences)?.Select(candidate =>
+                    {
+                        _ = CinematicEngineFunctionCatalog.TryReadMessageGateFields(candidate.Call,
+                            out int messageId, out int messageInt1, out _);
+                        return new
+                        {
+                            Source = candidate.Track.Name,
+                            candidate.Track.LinkName,
+                            Event = candidate.Track.EventKey.ToString("X8"),
+                            candidate.Track.ChannelIndex,
+                            candidate.Time,
+                            Sender = candidate.Call.Target.ToString("X8"),
+                            MessageId = messageId,
+                            Int1 = messageInt1,
+                            GateQueue = candidate.GateQueueObject.Key.ToString("X8"),
+                            GateQueueName = candidate.GateQueueObject.Name,
+                            PriorSameChannelRegistrations = candidate.PriorSameChannelRegistrations.Select(registration => new
+                            {
+                                Source = registration.Track.Name,
+                                registration.Track.LinkName,
+                                Event = registration.Track.EventKey.ToString("X8"),
+                                registration.Track.ChannelIndex,
+                                registration.Time,
+                                Target = registration.Call.Target.ToString("X8"),
+                                TargetName = registration.RegisteredOwnerCandidate?.Name
+                            }).ToArray(),
+                            SourceLinks = candidate.Sources.Select(source => new
+                            {
+                                source.Name,
+                                source.LinkName,
+                                Channel = source.ChannelIndex
+                            })
+                        };
                     }).ToArray(),
                 Variables = owner.Variables.Select(variable => new
                 {

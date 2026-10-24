@@ -59,6 +59,100 @@ internal static partial class CinematicScriptBehaviorAnalyzer
         => FindExtendedMessageGateCandidates(gateOwner, eventTracks, namedReferences,
             requireQueueTarget: true, requireInt1MaskCompatibility: false);
 
+    internal static CinematicScriptOwnerQueueMessageCandidate[]? FindOwnerQueueMessageCandidates(
+        CinematicScriptOwner gateOwner, IEnumerable<CinematicScriptMessageTrack> eventTracks,
+        IEnumerable<CinematicScriptNamedReference> namedReferences)
+    {
+        if (!HasMessageStartGate(gateOwner)) return null;
+
+        uint? queueKey = EffectiveUnsigned(gateOwner, "des_o_acteur_msg");
+        int? expectedMessageId = EffectiveInteger(gateOwner, "des_i_msg_ID");
+        int? expectedInt1Mask = EffectiveInteger(gateOwner, "des_i_msg_INT1");
+        if (queueKey is null or 0 or 1 or 2 or uint.MaxValue || expectedMessageId == null
+            || expectedInt1Mask == null)
+            return [];
+
+        var referenceArray = namedReferences.ToArray();
+        var queueObject = CinematicScriptReferenceNameResolver.Resolve(queueKey.Value,
+            gateOwner.WorldKey, referenceArray);
+        if (queueObject == null) return [];
+
+        var trackArray = eventTracks.ToArray();
+        var resolvedCandidates = trackArray
+            .SelectMany(track => track.EngineCalls
+                .Where(entry => IsMatchingOwnerQueueSend(entry.Call, expectedMessageId.Value,
+                    expectedInt1Mask.Value))
+                .Select(entry => (Track: track, entry.Time, entry.Call)))
+            .Select(candidate => new CinematicScriptOwnerQueueMessageCandidate(candidate.Track,
+                candidate.Time, candidate.Call, queueObject,
+                FindPriorSameChannelOwnerRegistrations(candidate.Track, candidate.Time, trackArray,
+                    referenceArray), [candidate.Track]))
+            .GroupBy(candidate => (candidate.Track.WorldKey, candidate.Track.EventKey,
+                candidate.Time, candidate.Call.Target, Selector: candidate.Call.Selector,
+                Arguments: string.Join(",", candidate.Call.Arguments)))
+            .Select(group =>
+            {
+                var sources = group.SelectMany(candidate => candidate.Sources).Distinct().ToArray();
+                var primary = group.OrderBy(candidate => SourcePriority(candidate.Track))
+                    .ThenBy(candidate => candidate.Track.Name, StringComparer.OrdinalIgnoreCase)
+                    .First();
+                return primary with { Sources = sources };
+            })
+            .OrderBy(candidate => candidate.Track.WorldKey)
+            .ThenBy(candidate => candidate.Track.OwnerKey)
+            .ThenBy(candidate => candidate.Time)
+            .ToArray();
+        return resolvedCandidates;
+    }
+
+    private static CinematicScriptOwnerQueueRegistrationCandidate[] FindPriorSameChannelOwnerRegistrations(
+        CinematicScriptMessageTrack sendTrack, float sendTime,
+        IEnumerable<CinematicScriptMessageTrack> eventTracks,
+        IEnumerable<CinematicScriptNamedReference> namedReferences)
+    {
+        if (!float.IsFinite(sendTime)) return [];
+
+        var priorRegistrations = eventTracks
+            .Where(track => HasSameEveChannel(track, sendTrack))
+            .SelectMany(track => track.EngineCalls
+                .Where(entry => float.IsFinite(entry.Time) && entry.Time < sendTime
+                    && CinematicEngineFunctionCatalog.NameFor(entry.Call.Selector) == "MSGRegOwner"
+                    && entry.Call.Arguments.Length == 0
+                    && CinematicObjectKey.IsArchiveObject(entry.Call.Target))
+                .Select(entry => new CinematicScriptOwnerQueueRegistrationCandidate(track,
+                    entry.Time, entry.Call,
+                    CinematicScriptReferenceNameResolver.Resolve(entry.Call.Target,
+                        track.WorldKey, namedReferences))))
+            .ToArray();
+        if (priorRegistrations.Length == 0) return [];
+
+        float latestRegistrationTime = priorRegistrations.Max(candidate => candidate.Time);
+        return priorRegistrations.Where(candidate => candidate.Time == latestRegistrationTime)
+            .DistinctBy(candidate => (candidate.Track.WorldKey, candidate.Track.OwnerKey,
+                candidate.Track.LinkName, candidate.Track.EventKey, candidate.Track.ChannelIndex,
+                candidate.Time, candidate.Call.Target))
+            .ToArray();
+    }
+
+    private static bool HasSameEveChannel(CinematicScriptMessageTrack left,
+        CinematicScriptMessageTrack right) => left.WorldKey == right.WorldKey
+        && left.OwnerKey == right.OwnerKey
+        && left.EventKey == right.EventKey
+        && left.ChannelIndex == right.ChannelIndex
+        && left.LinkName.Equals(right.LinkName, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsMatchingOwnerQueueSend(CinematicLiteralCall call, int expectedMessageId,
+        int expectedInt1Mask)
+    {
+        if (!CinematicEngineFunctionCatalog.TryReadMessageGateFields(call, out int messageId,
+                out int messageInt1, out var queueDestination)
+            || queueDestination != CinematicMessageQueueDestination.RegisteredOwner
+            || messageId != expectedMessageId)
+            return false;
+
+        return expectedInt1Mask == 0 || (expectedInt1Mask & messageInt1) != 0;
+    }
+
     private static CinematicScriptMessageGateCandidate[]? FindMessageGateCandidates(
         CinematicScriptOwner gateOwner, IEnumerable<CinematicScriptMessageTrack> eventTracks,
         IEnumerable<CinematicScriptNamedReference> namedReferences, bool requireQueueContext)
@@ -188,22 +282,9 @@ internal static partial class CinematicScriptBehaviorAnalyzer
 
     private static bool TryReadGateMessage(CinematicLiteralCall call, out int messageId, out int int1)
     {
-        uint[] arguments = call.Arguments;
-        switch (CinematicEngineFunctionCatalog.NameFor(call.Selector))
-        {
-            case "MSGSendEx" when arguments.Length >= 2:
-                messageId = unchecked((int)arguments[0]);
-                int1 = 0; // Iris zero-initializes MSGSendEx's message structure.
-                return true;
-            case "MSGSendAll" when arguments.Length == 13:
-                messageId = unchecked((int)arguments[0]);
-                int1 = unchecked((int)arguments[11]);
-                return true;
-            default:
-                messageId = 0;
-                int1 = 0;
-                return false;
-        }
+        bool decoded = CinematicEngineFunctionCatalog.TryReadMessageGateFields(call,
+            out messageId, out int1, out var destination);
+        return decoded && destination == CinematicMessageQueueDestination.CurrentExecutionObject;
     }
 
     private static bool HasMessageStartGate(CinematicScriptOwner owner)
@@ -229,9 +310,18 @@ internal sealed record CinematicScriptEngineMessageGateCandidate(CinematicScript
     float Time, CinematicLiteralCall Call, CinematicScriptNamedReference QueueObject,
     CinematicScriptNamedReference TargetObject, CinematicScriptMessageTrack[] Sources);
 
+internal sealed record CinematicScriptOwnerQueueMessageCandidate(CinematicScriptMessageTrack Track,
+    float Time, CinematicLiteralCall Call, CinematicScriptNamedReference GateQueueObject,
+    CinematicScriptOwnerQueueRegistrationCandidate[] PriorSameChannelRegistrations,
+    CinematicScriptMessageTrack[] Sources);
+
+internal sealed record CinematicScriptOwnerQueueRegistrationCandidate(CinematicScriptMessageTrack Track,
+    float Time, CinematicLiteralCall Call, CinematicScriptNamedReference? RegisteredOwnerCandidate);
+
 internal sealed record CinematicScriptMessageGateAnalysis(
     CinematicScriptMessageGateCandidate[] Matches,
     CinematicScriptMessageGateCandidate[] DifferentContexts,
     CinematicScriptEngineMessageGateCandidate[] EngineMatches,
     CinematicScriptEngineMessageGateCandidate[] EngineDifferentTargets,
-    CinematicScriptEngineMessageGateCandidate[] EngineInt1MaskMismatches);
+    CinematicScriptEngineMessageGateCandidate[] EngineInt1MaskMismatches,
+    CinematicScriptOwnerQueueMessageCandidate[] OwnerQueueCandidates);

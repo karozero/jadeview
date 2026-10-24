@@ -17,10 +17,15 @@ public sealed partial class SceneExporter
     private readonly Dictionary<(WorldData World, uint ClipKey), AnimationTrack[]> cinematicTrackCache = [];
     private readonly Dictionary<(WorldData World, uint ClipKey), CinematicNestedEventTimeline> cinematicEventCache = [];
     private readonly Dictionary<(WorldData World, uint ClipKey), CinematicOrientToTimeline> cinematicOrientCache = [];
+    private readonly Dictionary<(WorldData World, uint ClipKey), CinematicSightSetTimeline> cinematicSightSetCache = [];
     private readonly Dictionary<(WorldData World, uint ClipKey), CinematicLocalRotationTimeline> cinematicRotationCache = [];
+    private readonly Dictionary<(WorldData World, uint ClipKey), CinematicGameScriptMoveTimeline> cinematicMoveCache = [];
+    private readonly HashSet<(SceneActor Actor, uint ClipKey)> cinematicActorOrientationsWritten = [];
     private HashSet<SceneObject> animatedCinematicObjects = [];
     private int empties;
     private Matrix4x4 originOffset = Matrix4x4.Identity;
+    private WorldLighting? worldLighting;
+    private WorldData? exportWorld;
     private SceneExporter(ResourceResolver resolver, SceneExportOptions options)
     {
         ValidateMouthCycleOptions(options);
@@ -40,7 +45,12 @@ public sealed partial class SceneExporter
     {
         using var lifetime = new ExportLifetime(new SceneExporter(resolver, options));
         var exporter = lifetime.Value;
+        exporter.exportWorld = world;
+        exporter.worldLighting = world.Lighting;
+        if (options.CinematicMaterialLayers is { } materialSample)
+            exporter.warnings.Add($"Cinematic material layers and RLI/ambient colors are sampled at {materialSample.Time:G6}s; material activation, alpha and lighting changes are not animated in glTF.");
         var objects = SelectObjects(world, options, selected);
+        exporter.CaptureDiffuseLighting(world, objects);
         exporter.ResolveCinematicCameras(world);
         exporter.animatedCinematicObjects = exporter.FindCinematicObjects(world, objects);
         exporter.SetOrigin(objects, selected);
@@ -69,18 +79,34 @@ public sealed partial class SceneExporter
         var visibilityTargets = clips.SelectMany(clip =>
             new CinematicObjectState(clip, world, world.Actors).VisibilityTargets).ToHashSet();
         var orientTargets = clips.SelectMany(clip => CinematicOrientTo(clip, world).OrientedObjects).ToHashSet();
+        var sightSetTargets = clips.SelectMany(clip => CinematicSightSets(clip, world).Participants).ToHashSet();
         var rotationTargets = clips.SelectMany(clip => CinematicLocalRotations(clip, world).Targets).ToHashSet();
+        var moveTargets = clips.SelectMany(clip => CinematicGameScriptMoves(clip, world).Targets).ToHashSet();
+        var scriptHierarchyTargets = clips.SelectMany(clip => ScriptHierarchyCommands(clip, world))
+            .Select(command => command.ChildKey).ToHashSet();
+        if (options.CinematicPlayback is { } playback
+            && clips.Any(clip => clip.Key == playback.Key))
+            scriptHierarchyTargets.UnionWith(playback.ScriptHierarchyAffectedKeys);
         return objects.Where(sceneObject => sceneObject.Actor == null
             && (targetKeys.Contains(sceneObject.GaoKey) || visibilityTargets.Contains(sceneObject)
-                || orientTargets.Contains(sceneObject) || rotationTargets.Contains(sceneObject))).ToHashSet();
+                || orientTargets.Contains(sceneObject) || sightSetTargets.Contains(sceneObject)
+                || rotationTargets.Contains(sceneObject)
+                || moveTargets.Contains(sceneObject)
+                || scriptHierarchyTargets.Contains(sceneObject.GaoKey))).ToHashSet();
     }
+
+    private IEnumerable<CinematicScriptHierarchyCommand> ScriptHierarchyCommands(
+        AnimationClip clip, WorldData world) => CinematicLiteralCall.ReadTimeline(clip)
+        .Concat(NestedCinematicEvents(clip, world).Commands)
+        .Select(item => CinematicScriptHierarchyCommand.Decode(item.Time, item.Call))
+        .OfType<CinematicScriptHierarchyCommand>();
 
     private AnimationTrack[] CinematicTracks(AnimationClip clip, WorldData world)
     {
         if (cinematicTrackCache.TryGetValue((world, clip.Key), out var cached)) return cached;
-        AnimationTrack[] nestedTracks = NestedCinematicEvents(clip, world).TransformTracks;
-        var tracks = clip.Tracks.Concat(CinematicScriptTransformTracks.Read(clip))
-            .Concat(nestedTracks).ToArray();
+        var nestedTimeline = NestedCinematicEvents(clip, world);
+        var tracks = clip.Tracks.Concat(CinematicScriptTransformTracks.Read(clip, nestedTimeline.Commands))
+            .Concat(nestedTimeline.TransformTracks).ToArray();
         cinematicTrackCache[(world, clip.Key)] = tracks;
         return tracks;
     }
@@ -91,7 +117,8 @@ public sealed partial class SceneExporter
         var timeline = options.CinematicDocument == null
             ? new CinematicNestedEventTimeline([], [], [], [], [])
             : CinematicNestedEventTransformTracks.ReadTimeline(clip, world, options.CinematicDocument,
-                options.DisabledCinematicCallbackOwners, options.PreviewedCinematicSceneEventOwners);
+                options.DisabledCinematicCallbackOwners, options.PreviewedCinematicSceneEventOwners,
+                options.PreviewedCinematicSceneEventStartTimes);
         cinematicEventCache[(world, clip.Key)] = timeline;
         return timeline;
     }
@@ -111,6 +138,30 @@ public sealed partial class SceneExporter
         var timeline = new CinematicLocalRotationTimeline(world,
             NestedCinematicEvents(clip, world).RotationCommands);
         cinematicRotationCache[(world, clip.Key)] = timeline;
+        return timeline;
+    }
+
+    private CinematicSightSetTimeline CinematicSightSets(AnimationClip clip, WorldData world)
+    {
+        if (cinematicSightSetCache.TryGetValue((world, clip.Key), out var cached)) return cached;
+        var nestedTimeline = NestedCinematicEvents(clip, world);
+        var calls = CinematicLiteralCall.ReadTimeline(clip).Concat(nestedTimeline.Commands);
+        var timeline = new CinematicSightSetTimeline(world, calls, CinematicTracks(clip, world));
+        cinematicSightSetCache[(world, clip.Key)] = timeline;
+        return timeline;
+    }
+
+    private CinematicGameScriptMoveTimeline CinematicGameScriptMoves(AnimationClip clip, WorldData world)
+    {
+        if (cinematicMoveCache.TryGetValue((world, clip.Key), out var cached)) return cached;
+        var nestedTimeline = NestedCinematicEvents(clip, world);
+        var calls = CinematicLiteralCall.ReadTimeline(clip).Concat(nestedTimeline.Commands);
+        var absolutePositionTrackTargets = CinematicTracks(clip, world)
+            .Where(track => track.Bone < 0 && track.Keys.Any(key => key.Position.HasValue))
+            .Select(track => track.Target).ToHashSet();
+        var timeline = new CinematicGameScriptMoveTimeline(world, nestedTimeline.MoveSegments,
+            calls, absolutePositionTrackTargets, nestedTimeline.MoveDiagnostics);
+        cinematicMoveCache[(world, clip.Key)] = timeline;
         return timeline;
     }
 

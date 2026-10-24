@@ -38,6 +38,8 @@ public sealed partial class EditorShell
         if (_exportOptions.UnknownObjects)
             ImGui.TextWrapped("GAOs without decoded geometry become named empty objects with their source keys.");
         ImGui.Checkbox("Include game-hidden objects", ref _exportOptions.GameHidden);
+        ImGui.Checkbox("Bake dynamic diffuse lighting", ref _exportOptions.DynamicLighting);
+        DrawHelpMarker("Freeze supported Omni, Direct and Spot diffuse lighting at the current pose. Light motion and specular are not exported as glTF lighting.");
         DrawCategoryTitle("Animation");
         bool hasAnimations = _exportTarget?.Actor != null || _exportTarget == null && ActiveWorld?.Actors.Count > 0;
         ImGui.BeginDisabled(!hasAnimations);
@@ -71,13 +73,18 @@ public sealed partial class EditorShell
                 {
                     Forms.Cursor.Current = Forms.Cursors.WaitCursor;
                     _exportOptions.ExperimentalMouthCycle = false;
+                    _exportOptions.CinematicMaterialLayers = Renderer.CinematicMaterials?.CaptureLayers();
+                    _exportOptions.CinematicLights = Renderer.CinematicLights;
                     _exportOptions.CinematicDocument = Document;
+                    _exportOptions.CinematicPlayback = _cutsceneMode ? _cinematicPlayback : null;
                     _exportOptions.CinematicClipKey = _cutsceneMode && !_exportOptions.AllClips
                         ? _cinematicPlayback?.Key : null;
                     _exportOptions.DisabledCinematicCallbackOwners = _cutsceneMode
                         ? _disabledCinematicCallbackOwners : null;
                     _exportOptions.PreviewedCinematicSceneEventOwners = _cutsceneMode
                         ? _previewedCinematicSceneEventOwners : null;
+                    _exportOptions.PreviewedCinematicSceneEventStartTimes = _cutsceneMode
+                        ? _previewedCinematicSceneEventStartTimes : null;
                     _exportOptions.CinematicMorphTimelines = _cutsceneMode
                         ? _cinematicPlayback?.SampleFacialMorphTimelines() : null;
                     var result = SceneExporter.Export(dialog.FileName, ActiveWorld, Resolver, _exportOptions, _exportTarget);

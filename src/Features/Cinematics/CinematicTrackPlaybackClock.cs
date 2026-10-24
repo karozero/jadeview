@@ -1,14 +1,20 @@
 namespace JadeView;
 
 internal readonly record struct CinematicTrackPlaybackCommand(float Time, string Operation, float? Value = null);
+internal readonly record struct CinematicTrackPlaybackSnapshot(float LocalTime, bool Running,
+    bool Paused, int RunIndex);
+internal readonly record struct CinematicTrackPlaybackTransition(float Time, string Operation,
+    CinematicTrackPlaybackSnapshot Before, CinematicTrackPlaybackSnapshot After);
 
 internal sealed class CinematicTrackPlaybackClock
 {
     internal const float MaximumUnwrappedSetTimeSeconds = ushort.MaxValue / 60f;
     private readonly Segment[] segments;
     private readonly float[] changeTimes;
+    private readonly CinematicTrackPlaybackTransition[] transitions;
 
     internal IReadOnlyList<float> ChangeTimes => changeTimes;
+    internal IReadOnlyList<CinematicTrackPlaybackTransition> Transitions => transitions;
 
     internal CinematicTrackPlaybackClock(float startTime, float trackDuration, float timelineDuration,
         int trackFlags, IEnumerable<(float Time, string Operation)> commands)
@@ -51,10 +57,16 @@ internal sealed class CinematicTrackPlaybackClock
         bool running = true;
         bool paused = false;
         int runIndex = 0;
+        var recordedTransitions = new List<CinematicTrackPlaybackTransition>
+        {
+            new(startTime, "Start", new(localTime, false, false, runIndex),
+                new(localTime, running, paused, runIndex))
+        };
 
         foreach (var command in orderedCommands)
         {
             AppendInterval(command.Time);
+            var beforeCommand = new CinematicTrackPlaybackSnapshot(localTime, running, paused, runIndex);
             switch (command.Operation)
             {
                 case "TRAPlay":
@@ -97,12 +109,17 @@ internal sealed class CinematicTrackPlaybackClock
                     runIndex++;
                     break;
             }
+
+            if (IsStateCommand(command.Operation))
+                recordedTransitions.Add(new(command.Time, command.Operation,
+                    beforeCommand, new(localTime, running, paused, runIndex)));
         }
 
         AppendInterval(timelineDuration);
         if (mappedSegments.Count == 0)
-            mappedSegments.Add(new(startTime, startTime, 0, false, runIndex));
+            mappedSegments.Add(new(startTime, startTime, 0, false, runIndex, running, paused));
         segments = mappedSegments.ToArray();
+        transitions = recordedTransitions.OrderBy(transition => transition.Time).ToArray();
 
         void AppendInterval(float endTime)
         {
@@ -114,7 +131,7 @@ internal sealed class CinematicTrackPlaybackClock
                 bool advances = running && !paused && hasTimeToAdvance;
                 if (!advances)
                 {
-                    mappedSegments.Add(new(cursor, endTime, localTime, false, runIndex));
+                    mappedSegments.Add(new(cursor, endTime, localTime, false, runIndex, running, paused));
                     cursor = endTime;
                     continue;
                 }
@@ -130,7 +147,7 @@ internal sealed class CinematicTrackPlaybackClock
                         // The authored period is below the timeline's representable
                         // resolution. Hold the current pose instead of spinning on
                         // zero-length loop segments.
-                        mappedSegments.Add(new(cursor, endTime, localTime, false, runIndex));
+                        mappedSegments.Add(new(cursor, endTime, localTime, false, runIndex, running, paused));
                         cursor = endTime;
                         continue;
                     }
@@ -138,38 +155,82 @@ internal sealed class CinematicTrackPlaybackClock
                     // At later cinematic times float precision can make the last
                     // fraction of a loop too small to advance the timeline cursor.
                     // Consume that boundary without emitting a zero-length segment.
+                    var stateAtBoundary = new CinematicTrackPlaybackSnapshot(
+                        localTime, running, paused, runIndex);
                     localTime = autoLoop ? 0 : trackDuration;
                     if (autoLoop)
                     {
                         runIndex++;
+                        recordedTransitions.Add(new(cursor, "AutoLoop",
+                            stateAtBoundary, new(localTime, running, paused, runIndex)));
                     }
                     else if (autoStop)
                     {
                         running = false;
                         paused = false;
+                        recordedTransitions.Add(new(cursor, "AutoStop",
+                            stateAtBoundary, new(localTime, running, paused, runIndex)));
                     }
                     continue;
                 }
-                mappedSegments.Add(new(cursor, activeEndTime, localTime, true, runIndex));
+                mappedSegments.Add(new(cursor, activeEndTime, localTime, true, runIndex, running, paused));
                 localTime += activeEndTime - cursor;
                 cursor = activeEndTime;
                 if (localTime < trackDuration) continue;
 
                 if (autoLoop)
                 {
+                    var beforeLoop = new CinematicTrackPlaybackSnapshot(
+                        localTime, running, paused, runIndex);
                     localTime = 0;
                     runIndex++;
+                    recordedTransitions.Add(new(cursor, "AutoLoop",
+                        beforeLoop, new(localTime, running, paused, runIndex)));
                 }
                 else
                 {
                     localTime = trackDuration;
                     if (!autoStop) continue;
+                    var beforeStop = new CinematicTrackPlaybackSnapshot(
+                        localTime, running, paused, runIndex);
                     running = false;
                     paused = false;
+                    recordedTransitions.Add(new(cursor, "AutoStop",
+                        beforeStop, new(localTime, running, paused, runIndex)));
                 }
             }
         }
     }
+
+    internal bool TryGetSnapshot(float timelineTime, out CinematicTrackPlaybackSnapshot snapshot)
+    {
+        snapshot = default;
+        if (!float.IsFinite(timelineTime) || segments.Length == 0 || timelineTime < segments[0].Start)
+            return false;
+
+        int low = 0;
+        int high = segments.Length - 1;
+        while (low < high)
+        {
+            int middle = (low + high + 1) / 2;
+            if (segments[middle].Start <= timelineTime) low = middle;
+            else high = middle - 1;
+        }
+
+        Segment segment = segments[low];
+        float clampedTime = Math.Min(timelineTime, segment.End);
+        float localTime = segment.LocalStart + (segment.Advances ? clampedTime - segment.Start : 0);
+        snapshot = new(localTime, segment.Running, segment.Paused, segment.RunIndex);
+        var transitionAtTime = transitions.LastOrDefault(transition => transition.Time == timelineTime);
+        if (transitionAtTime.Time == timelineTime)
+            snapshot = transitionAtTime.After;
+        return true;
+    }
+
+    private static bool IsStateCommand(string operation) => operation is
+        "TRAPlay" or "TRAPlayAll" or "TRAStop" or "TRAStopAll"
+        or "TRAPause" or "TRAPauseAll" or "TRAUnPause" or "TRAUnPauseAll"
+        or "TRASetEnd" or "TRASetTime" or "TRAReinit" or "TRAReinitAll";
 
     internal bool TryMap(float timelineTime, out float localTime)
     {
@@ -232,5 +293,5 @@ internal sealed class CinematicTrackPlaybackClock
     }
 
     private readonly record struct Segment(float Start, float End, float LocalStart, bool Advances,
-        int RunIndex);
+        int RunIndex, bool Running, bool Paused);
 }

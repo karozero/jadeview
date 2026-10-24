@@ -191,6 +191,12 @@ internal static class CinematicScriptReader
             .ThenBy(site => site.Line).ToArray();
     }
 
+    internal static CinematicScriptCallbackDispatchSite[] EngineDispatchSitesFor(int eventId) =>
+        CallbackDispatchSites.Value.Where(site => site.CallbackId == eventId
+                && (site.Api is "AI_ExecCallback" or "AI_ExecCallbackAll"))
+            .OrderBy(site => site.Source, StringComparer.Ordinal)
+            .ThenBy(site => site.Line).ToArray();
+
     internal static CinematicScriptWorldSchedulerOperation[] ReachableWorldSchedulerOperations(CinematicScriptOwner owner)
     {
         var reachablePaths = ReachableCallbackPaths(owner);
@@ -359,6 +365,7 @@ internal static class CinematicScriptReader
                         Key = eventRecord.Key,
                         Name = eventRecord.Name,
                         CinematicOwnerKey = owner.Key,
+                        UsesEventTrackExecutionContext = true,
                         Loaded = true,
                         Tracks = [track]
                     };
@@ -430,7 +437,14 @@ internal static class CinematicScriptReader
 
             uint brainKey = Preview.U32(origins[owner], owner.BrainFieldOffset);
             var modelFunctionNames = CallbacksFor(model.Key);
-            var callbackSlots = ReadCallbackSlots(model, resources, origins);
+            ReadOnlyMemory<byte>? modelVariablePayload =
+                PcScriptModelVariableResourceResolver.ResolveModel(model, resources, origins);
+            var callbackSlots = modelVariablePayload is { } callbackPayload
+                ? PcScriptCallbackSlotReader.Read(callbackPayload.Span, FunctionNames.Value)
+                : null;
+            var engineCallbackSlots = modelVariablePayload is { } engineCallbackPayload
+                ? PcScriptEngineCallbackReader.Read(engineCallbackPayload.Span, FunctionNames.Value)
+                : null;
             var functionResources = PcScriptFunctionResourceReader.Read(model, resources, origins);
             var callbackNames = EffectiveCallbackNames(callbackSlots);
             var objectReferences = ReadObjectReferences(model, instanceKey, owner.LoadWorldKey, resources, origins);
@@ -453,6 +467,7 @@ internal static class CinematicScriptReader
                 SerializedGaoFlags = owner.Flags,
                 SerializedStateFlags = owner.SerializedStateFlags,
                 CallbackSlots = callbackSlots,
+                EngineCallbackSlots = engineCallbackSlots,
                 ModelFunctionNames = modelFunctionNames,
                 FunctionResources = functionResources
             };

@@ -10,10 +10,12 @@ public sealed partial class EditorShell
     private CinematicPlayback? _cinematicPlayback;
     private readonly HashSet<CinematicScriptOwnerId> _disabledCinematicCallbackOwners = [];
     private readonly HashSet<CinematicScriptOwnerId> _previewedCinematicSceneEventOwners = [];
+    private readonly Dictionary<CinematicScriptOwnerId, float> _previewedCinematicSceneEventStartTimes = [];
     private bool _cinematicVideoPostRollActive;
     private bool _cinematicVideoPostRollCompleted;
     private float _cinematicVideoPostRollSeconds;
     private CinematicScriptOwnerId? _selectedCinematicScriptOwnerId;
+    private CinematicScriptOwnerCategory _cinematicScriptOwnerCategory = CinematicScriptOwnerCategory.ClipLinked;
     private string _cinematicEveSearch = string.Empty;
     private SceneDocument? _cinematicFlagFlowDocument;
     private int _cinematicFlagFlowOwnerCount = -1;
@@ -39,6 +41,7 @@ public sealed partial class EditorShell
         Renderer.CinematicScreenFade = null;
         Renderer.CinematicHorizontalFov = null;
         Renderer.CinematicMaterials = null;
+        Renderer.CinematicLights = null;
         Renderer.CinematicVideoTime = null;
         Renderer.CinematicVideoPlayback = null;
         _cinematicPlayback?.Deactivate();

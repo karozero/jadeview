@@ -11,7 +11,8 @@ public sealed partial class SceneExporter
     private void ResolveCinematicCameras(WorldData world)
     {
         foreach (var clip in SelectedCinematicClips(world, options))
-            foreach (var binding in CinematicCameraBinding.Discover(clip, world.Objects, []))
+            foreach (var binding in CinematicCameraBinding.Discover(clip, world.Objects, [],
+                NestedCinematicEvents(clip, world).Commands))
             {
                 if (!binding.FromSourceEvent) continue;
                 cinematicCameraBindings.TryAdd((clip.Key, binding.ReceiverKey), binding);

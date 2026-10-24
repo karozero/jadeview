@@ -19,7 +19,8 @@ internal sealed class CinematicParticleState
     private bool hasEvaluation;
     internal float Time { get; private set; }
 
-    internal CinematicParticleState(AnimationClip clip, WorldData world, ResourceResolver resolver)
+    internal CinematicParticleState(AnimationClip clip, WorldData world, ResourceResolver resolver,
+        IEnumerable<(float Time, CinematicLiteralCall Call)>? nestedCommands = null)
     {
         objectsByKey = world.Objects.GroupBy(sceneObject => sceneObject.GaoKey)
             .Where(group => group.Count() == 1)
@@ -34,7 +35,11 @@ internal sealed class CinematicParticleState
         var targetsByKey = systems.GroupBy(item => item.Object.GaoKey)
             .ToDictionary(group => group.Key, group => group.Select(item => item.Object).ToArray());
         changes = CinematicLiteralCall.ReadTimeline(clip)
-            .Where(item => IsSupportedCommand(item.Call) && targetsByKey.ContainsKey(item.Call.Target))
+            .Concat(nestedCommands ?? [])
+            .Where(item => float.IsFinite(item.Time) && IsSupportedCommand(item.Call)
+                && targetsByKey.ContainsKey(item.Call.Target))
+            .DistinctBy(item => (item.Time, item.Call.Target, item.Call.Selector,
+                Arguments: string.Join(",", item.Call.Arguments)))
             .Select(item => (item.Time, targetsByKey[item.Call.Target], item.Call))
             .OrderBy(item => item.Time)
             .ToArray();

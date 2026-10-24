@@ -16,6 +16,7 @@ public sealed record CinematicScriptOwner(
     public uint SerializedGaoFlags { get; init; }
     public uint SerializedStateFlags { get; init; }
     public CinematicScriptCallbackSlot[]? CallbackSlots { get; init; }
+    internal CinematicScriptEngineCallbackSlot[]? EngineCallbackSlots { get; init; }
     public string[] ModelFunctionNames { get; init; } = [];
     internal CinematicScriptFunctionResource[] FunctionResources { get; init; } = [];
 
@@ -68,6 +69,8 @@ public sealed record CinematicScriptOwner(
 }
 
 public sealed record CinematicScriptCallbackSlot(int Index, uint FunctionKey, string? FunctionName);
+
+internal sealed record CinematicScriptEngineCallbackSlot(int EventId, uint FunctionKey, string? FunctionName);
 
 public readonly record struct CinematicScriptOwnerId(uint WorldKey, uint OwnerKey);
 

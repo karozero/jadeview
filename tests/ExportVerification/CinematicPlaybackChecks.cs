@@ -49,6 +49,12 @@ internal static class CinematicPlaybackChecks
         VerifyAssembly(document, world, root);
         var resolver = new ResourceResolver();
         var playback = CinematicPlayback.Discover(document, world, resolver).Single();
+        CinematicNleTimelineLane[] nleLanes = CinematicNleTimelineBuilder.Build(playback, world, document);
+        if (!nleLanes.Any(lane => lane.Kind == CinematicNleLaneKind.Animation
+                && lane.Name == root.Name && lane.Items.Any(item => item.Start == 0 && item.End == 2))
+            || !nleLanes.Any(lane => lane.Name == camera.Name))
+            throw new InvalidDataException("The NLE timeline should show source animation lanes and their key ranges.");
+        VerifyNleEventTrackAttribution();
         playback.Activate();
         Near(root.PreviewMatrix!.Value.Translation, new(100, 20, 5), "Initial cinematic world position");
         playback.Play();
@@ -89,7 +95,110 @@ internal static class CinematicPlaybackChecks
         clip.Cinematic = false;
         actor.SelectClip(clip);
         Near(root.PreviewMatrix!.Value.Translation, root.Transform.Translation, "Gameplay root motion remains relative");
-        Console.WriteLine("PASS: absolute cinematic placement, frame timing, seek and unified actor/camera export");
+        Console.WriteLine("PASS: NLE animation lane discovery, absolute placement, frame timing, seek and unified actor/camera export");
+    }
+
+    private static void VerifyNleEventTrackAttribution()
+    {
+        const uint worldKey = 0x10;
+        const uint actorKey = 0x100;
+        const uint scriptOwnerKey = 0x200;
+        const uint propKey = 0x300;
+        var actorRoot = new SceneObject { Name = "Actor", GaoKey = actorKey };
+        var actor = new SceneActor { Root = actorRoot, Members = [actorRoot] };
+        actorRoot.Actor = actor;
+        var scriptOwner = new SceneObject { Name = "CINE_SCRIPT.gao", GaoKey = scriptOwnerKey };
+        var prop = new SceneObject { Name = "Prop.gao", GaoKey = propKey };
+        var clip = new AnimationClip
+        {
+            Key = 0x400,
+            CinematicWorldKey = worldKey,
+            Name = "EVE attribution fixture",
+            Cinematic = true,
+            SceneMotion = true,
+            Loaded = true,
+            Duration = 2,
+            Tracks =
+            [
+                new() { Bone = 0, Target = actorKey, Keys = [new AnimationKey { Time = 0 }] },
+                new() { Bone = -1, Target = scriptOwnerKey,
+                    Keys = [CinematicTestEvents.Call(.5f, scriptOwnerKey, 0x3B64, 0)] }
+            ]
+        };
+        var world = new WorldData { Key = worldKey, Name = "EVE attribution" };
+        world.Objects.AddRange([actorRoot, scriptOwner, prop]);
+        world.Actors.Add(actor);
+        world.CinematicClips.Add(clip.Key, clip);
+        var document = new SceneDocument();
+        document.Worlds.Add(world);
+        document.CinematicClips.Add(clip.Key, clip);
+        var dialogueReceiver = new CinematicScriptOwner(propKey, 0, 0x900, worldKey,
+            uint.MaxValue, uint.MaxValue, "TXT receiver", ["Cine_Textes_CiTxt_reception_messages"], [], [])
+        {
+            ModelFunctionNames = ["Cine_Textes_CiTxt_reception_messages"]
+        };
+        document.CinematicScriptOwners[dialogueReceiver.Id] = dialogueReceiver;
+        var eventCall = new CinematicLiteralCall(propKey, 0x1FAA,
+            [BitConverter.SingleToUInt32Bits(MathF.PI / 2)]);
+        var messageSourceClip = new AnimationClip
+        {
+            CinematicOwnerKey = scriptOwnerKey,
+            Tracks = [new AnimationTrack
+            {
+                Bone = -1,
+                Target = propKey,
+                Keys = [CinematicTestEvents.Message(.25f, 0xAAAA, 30,
+                    Vector3.Zero, Vector3.Zero, 0, 0, object1: 0xAAAA, object2: 0xBBBB)]
+            }]
+        };
+        CinematicTimelineMessage decodedMessage = CinematicTimelineMessage.ReadTimeline(messageSourceClip).Single().Message;
+        if (decodedMessage.ExecutionObjectKey != propKey || decodedMessage.Gao != 0xAAAA
+            || decodedMessage.Gao2 != 0xBBBB)
+            throw new InvalidDataException("Decoded event messages must keep the EVE track context separate from payload GAO references.");
+        var eventTrack = new CinematicEmbeddedEventTrack(0, propKey, -1, 0, 1, 1)
+        {
+            ChannelFlags = CinematicEventTrackFlags.AutoStop,
+            Calls = [(.25f, eventCall)],
+            Messages = [(.25f, decodedMessage)]
+        };
+        document.CinematicEmbeddedEventTracks[(worldKey, scriptOwnerKey)] =
+        [
+            new(scriptOwnerKey, scriptOwner.Name, worldKey, "SceneEvents", 0x500, [eventTrack])
+        ];
+
+        CinematicPlayback playback = CinematicPlayback.Discover(document, world,
+            new ResourceResolver()).Single();
+        CinematicNleTimelineLane[] lanes = CinematicNleTimelineBuilder.Build(playback, world, document);
+        CinematicNleTimelineLane? transitionLane = lanes.FirstOrDefault(lane =>
+            lane.Name == "EVE state transitions");
+        CinematicNleTimelineLane? eventLane = lanes.FirstOrDefault(lane =>
+            lane.Name == "CINE_SCRIPT.gao · EVE 0");
+        if (transitionLane == null
+            || !transitionLane.Items.Any(item => MathF.Abs(item.Start - .5f) < .001f
+                && item.Label.StartsWith("Start · EVE 0", StringComparison.Ordinal)
+                && item.Details.Contains("live callback dispatch is unverified", StringComparison.Ordinal))
+            || !transitionLane.Items.Any(item => MathF.Abs(item.Start - 1.5f) < .001f
+                && item.Label.StartsWith("AutoStop · EVE 0", StringComparison.Ordinal)
+                && item.Details.Contains("serialized AutoStop", StringComparison.Ordinal))
+            || eventLane == null || !eventLane.Items.Any(item => item.Start == .75f
+                && item.Label == "OBJRotateLocalY"
+                && item.Details.Contains("event 00000500", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidDataException("NLE script lanes must show source-attributed EVE start/AutoStop transitions while preserving their unverified runtime boundary.");
+        var messageLane = lanes.FirstOrDefault(lane => lane.Kind == CinematicNleLaneKind.Message);
+        if (messageLane == null || !messageLane.Items.Any(item => item.Start == .75f
+                && item.Label == "Message 30"
+                && item.Details.Contains("CinematicEventCall", StringComparison.Ordinal)
+                && item.Details.Contains("owner 00000200", StringComparison.OrdinalIgnoreCase)
+                && item.Details.Contains("event 00000500", StringComparison.OrdinalIgnoreCase)
+                && item.Details.Contains("channel 0", StringComparison.OrdinalIgnoreCase)
+                && item.Details.Contains("EVE running", StringComparison.OrdinalIgnoreCase)
+                && item.Details.Contains("Iris queue candidate 00000300", StringComparison.OrdinalIgnoreCase)
+                && item.Details.Contains("possible queue reader on TXT receiver", StringComparison.OrdinalIgnoreCase)
+                && item.Details.Contains("Cine_Textes_CiTxt_reception_messages", StringComparison.Ordinal)
+                && item.Details.Contains("callback dispatch and delivery are unverified", StringComparison.Ordinal)
+                && item.Details.Contains("delivery/runtime not evaluated", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidDataException("NLE message rows must expose EVE routing, a world-scoped potential receiver and callback reader while leaving delivery unresolved.");
+        playback.Deactivate();
     }
 
     private static void Near(Vector3 actual, Vector3 expected, string message)

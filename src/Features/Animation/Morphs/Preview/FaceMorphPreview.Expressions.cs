@@ -7,7 +7,7 @@ public sealed partial class FaceMorphPreview
         if (!Expressions.Any(expression => expression.Group == group))
             throw new ArgumentOutOfRangeException(nameof(group), "No nonzero source morph for this pose.");
         Reset();
-        weights[group] = 1;
+        SetWeightValue(group, 1);
     }
 
     public void PreviewSallyExpression(int kit)
@@ -21,6 +21,6 @@ public sealed partial class FaceMorphPreview
         var presets = ExpressionPresets ?? throw new InvalidOperationException("No qualified expression presets for this model.");
         var settled = presets.SettledWeights(kit, weights.Length);
         Reset();
-        settled.CopyTo(weights, 0);
+        ReplaceWeights(settled);
     }
 }

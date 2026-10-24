@@ -1,0 +1,10 @@
+{
+  "QueueSymbol": "MSG_gpo_Owner",
+  "RegistrationApi": "MSGRegOwner",
+  "StartupOwnerName": "GST_Sound_Manager",
+  "StartupOwnerKeyHex": "7100F33F",
+  "StartupSource": "ai/ai_bge/ai_compiledscripts_global.c",
+  "StartupLine": 356,
+  "WorldTeardownSource": "world.c",
+  "WorldTeardownLine": 2755
+}

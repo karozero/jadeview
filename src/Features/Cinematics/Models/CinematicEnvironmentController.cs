@@ -6,6 +6,11 @@ public sealed record CinematicEnvironmentController(uint OwnerKey, uint WorldKey
     internal uint SkyKey { get; init; }
     internal uint FogKey { get; init; }
     internal uint SunKey { get; init; }
+    internal uint MoonKey { get; init; }
+    internal uint MoonLightKey { get; init; }
+    internal uint MoonRayKey { get; init; }
+    internal uint DeactivationObjectKey { get; init; }
+    internal uint StandardControllerKey { get; init; }
     internal float NightHeight { get; init; }
     internal float DawnHeight { get; init; }
     internal float SunriseHeight { get; init; }

@@ -28,6 +28,11 @@ public static class AnimationMath
         var b = new Matrix4x4(1,0,0,0,0,0,1,0,0,-1,0,0,0,0,0,1);
         return b * jade * Matrix4x4.Transpose(b);
     }
+    public static Matrix4x4 FromRender(Matrix4x4 render)
+    {
+        var b = new Matrix4x4(1,0,0,0,0,0,1,0,0,-1,0,0,0,0,0,1);
+        return Matrix4x4.Transpose(b) * render * b;
+    }
     public static Vector3[] Normals(Vector3[] positions, List<Geometry.Part> parts)
         => Normals(positions, parts, positions.Length, parts.Count);
 

@@ -243,15 +243,26 @@ time reference and resets phase. The random helper's distribution and complete
 trigger scheduling have not been reconstructed. The envelope lasts about
 `pi / 15` seconds, with frame-step-dependent endpoint handling.
 
+For cinematic type-53 messages routed to `Sally_sa_exec_message_read`, Iris
+copies `Int2` into `i_blink_now`; the blink callback treats any nonzero value as
+a forced-start flag. JadeView now previews that explicit message as the same
+bounded channel-0/1 envelope on the cinematic clock. `Int2 == -1` remains the
+callback's expression-reset sentinel and is not treated as a blink. The overlay
+preserves the current morph baseline, survives seeking, and is cleared when the
+cinematic preview is deactivated. This does not synthesize Sally's random
+background blinks: delay/RNG scheduling and the message producer's retail PC
+execution remain unverified.
+
 ## Still required
 
 The PC expression-to-modifier bridge and blink envelope are now established
 statically. Explicit channel preview, project restoration and export are
-implemented. Settled expression preset preview is also available. Remaining work includes preset transitions and group-reference editing,
-automatic blink trigger scheduling and tracing the speech-message producer and timing.
-Skeletal event selector 12103 is still not linked to that speech path. No
-original facial timeline is synthesized from those events, and morph 37 remains
-unchanged per the user's decision.
+implemented. Settled expression preset preview is also available. Remaining
+work includes preset transitions and group-reference editing, random background
+blink scheduling and tracing the speech-message producer and timing. Skeletal
+event selector 12103 is still not linked to that speech path. No original facial
+timeline is synthesized from those events, and morph 37 remains unchanged per
+the user's decision.
 
 ## Channel preview/export checkpoint
 

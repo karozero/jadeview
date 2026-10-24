@@ -13,6 +13,33 @@ internal static class CinematicEngineFunctionCatalog
         ? name.Replace("AI_EvalFunc_", "", StringComparison.Ordinal)
         : $"EngineFunction_{selector:X4}";
 
+    internal static bool TryReadMessageGateFields(CinematicLiteralCall call, out int messageId,
+        out int messageInt1, out CinematicMessageQueueDestination destination)
+    {
+        uint[] arguments = call.Arguments;
+        messageId = 0;
+        messageInt1 = 0;
+        destination = CinematicMessageQueueDestination.CurrentExecutionObject;
+
+        switch (NameFor(call.Selector))
+        {
+            case "MSGSendEx" when arguments.Length >= 2:
+                messageId = unchecked((int)arguments[0]);
+                return true;
+            case "MSGSendAll" when arguments.Length == 13:
+                messageId = unchecked((int)arguments[0]);
+                messageInt1 = unchecked((int)arguments[11]);
+                return true;
+            case "MSGSendAllOwner" when arguments.Length == 12:
+                messageId = unchecked((int)arguments[0]);
+                messageInt1 = unchecked((int)arguments[10]);
+                destination = CinematicMessageQueueDestination.RegisteredOwner;
+                return true;
+            default:
+                return false;
+        }
+    }
+
     internal static int[] GameObjectArgumentIndices(CinematicLiteralCall call) => NameFor(call.Selector) switch
     {
         "OBJ_OrientTo" or "OBJ_HierarchySet" or "OBJ_Rejoin" or "OBJ_RejoinAndOrient"
@@ -45,9 +72,21 @@ internal static class CinematicEngineFunctionCatalog
                 DescribeAfterEffectsMaster(call),
             "Gsp_AE_MASTEREVT" when call.Arguments.Length >= 3 =>
                 DescribeAfterEffectsMasterEvent(call),
+            "GFXDepthBlur" when call.Arguments.Length == 3 =>
+                DescribeDepthBlur(call),
+            "DYNGravitySet" when call.Arguments.Length == 3 =>
+                $"set the current execution object's dynamics gravity vector to ({DescribeVector(call.Arguments, 0)}); the object needs an allocated dynamics force block",
+            "OBJ_SightSet" when call.Arguments.Length == 3 =>
+                $"orient the current execution object toward sight vector ({DescribeVector(call.Arguments, 0)}), deriving roll from its current matrix",
             "OBJDestroy" => "destroy target; Iris removes/detaches it when supported, otherwise hides/deactivates it and stops its sound",
             "OBJ_OrientTo" when call.Arguments.Length >= 1 =>
                 $"rotate target to face object {call.Arguments[0]:X8} while preserving target position",
+            "OBJSetPos" when call.Arguments.Length == 3 =>
+                DescribePositionSet(call.Arguments, teleport: false),
+            "OBJSetPos_Teleport" when call.Arguments.Length == 3 =>
+                DescribePositionSet(call.Arguments, teleport: true),
+            "OBJSetLocalPos" when call.Arguments.Length == 3 =>
+                $"set target local position to ({DescribeVector(call.Arguments, 0)})",
             "OBJRotateLocalX" or "OBJRotateLocalY" or "OBJRotateLocalZ"
                 or "OBJRotateGlobalX" or "OBJRotateGlobalY" or "OBJRotateGlobalZ"
                 when call.Arguments.Length >= 1 => DescribeAxisRotation(function, call.Arguments[0]),
@@ -61,6 +100,8 @@ internal static class CinematicEngineFunctionCatalog
                 DescribeExtendedMessage(call.Arguments[0], call.Arguments[1]),
             "MSGSendAll" when call.Arguments.Length == 13 => DescribeMessageSendAll(call),
             "MSGSendAllOwner" when call.Arguments.Length == 12 => DescribeMessageSendAllOwner(call),
+            "MSGRegOwner" when call.Arguments.Length == 0 =>
+                "register target as the global MSG_gpo_Owner message queue, replacing the previous owner",
             "OBJ_FlagInvisibleSet" when call.Arguments.Length >= 1 => call.Arguments[0] != 0
                 ? "hide target" : "show target",
             "OBJ_FlagInactiveSet" when call.Arguments.Length >= 1 => call.Arguments[0] != 0
@@ -170,6 +211,8 @@ internal static class CinematicEngineFunctionCatalog
                 DescribeSoundModifierPrefetch(call.Arguments[0]),
             "VIEWAssignObject" when call.Arguments.Length >= 1 =>
                 $"assign target object to world view slot {call.Arguments[0]} (returns the previous assigned object)",
+            "VIEWFocaleSet" when call.Arguments.Length == 2 =>
+                DescribeViewFocalSet(call.Arguments[0], call.Arguments[1]),
             "CIN_OnOff" when call.Arguments.Length >= 1 =>
                 $"Iris stub consumes value {call.Arguments[0]} and emits a debug trace; no cinematic state change is implemented here",
             "DYNOn" => "enable target dynamics and register it for the world's dynamics update",
@@ -319,6 +362,14 @@ internal static class CinematicEngineFunctionCatalog
             + "during EVE playback, the angle is distributed across the event's frame intervals";
     }
 
+    private static string DescribeViewFocalSet(uint viewIndex, uint serializedAngle)
+    {
+        float angle = BitConverter.UInt32BitsToSingle(serializedAngle);
+        return float.IsFinite(angle)
+            ? $"set world view slot {viewIndex} focal angle to {angle.ToString("0.###", CultureInfo.InvariantCulture)} radians"
+            : $"set world view slot {viewIndex} focal angle from non-finite value 0x{serializedAngle:X8}";
+    }
+
     private static string DescribeXmecCommand(uint serializedUserId, uint serializedOnOff)
     {
         string action = serializedOnOff != 0 ? "enable" : "disable";
@@ -458,6 +509,12 @@ internal static class CinematicEngineFunctionCatalog
             : $"non-finite bits 0x{serializedValue:X8}";
     }
 
+    private static string DescribePositionSet(uint[] arguments, bool teleport)
+    {
+        string operation = teleport ? "teleport target to" : "set target absolute position to";
+        return $"{operation} ({DescribeVector(arguments, 0)})";
+    }
+
     private static string DescribeParticleGeneratorParameter(uint serializedIndex, uint serializedValue)
     {
         float value = BitConverter.UInt32BitsToSingle(serializedValue);
@@ -567,6 +624,19 @@ internal static class CinematicEngineFunctionCatalog
         };
     }
 
+    private static string DescribeDepthBlur(CinematicLiteralCall call)
+    {
+        int enabled = unchecked((int)call.Arguments[0]);
+        float start = BitConverter.UInt32BitsToSingle(call.Arguments[1]);
+        float end = BitConverter.UInt32BitsToSingle(call.Arguments[2]);
+        string request = enabled != 0 ? "enable" : "disable";
+        string range = float.IsFinite(start) && float.IsFinite(end)
+            ? $"Z range {start.ToString("0.###", CultureInfo.InvariantCulture)} to {end.ToString("0.###", CultureInfo.InvariantCulture)}"
+            : $"Z range raw 0x{call.Arguments[1]:X8} to 0x{call.Arguments[2]:X8}";
+
+        return $"request {request} depth blur ({range}); Jaded routes this command only to PS2/GameCube backends, with no PC implementation";
+    }
+
     private static IReadOnlyDictionary<int, string> ReadNames()
     {
         using Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(ResourceName)
@@ -575,4 +645,10 @@ internal static class CinematicEngineFunctionCatalog
             ?? throw new InvalidDataException("Embedded function selector map is empty.");
         return serialized.ToDictionary(pair => Convert.ToInt32(pair.Key, 16), pair => pair.Value);
     }
+}
+
+internal enum CinematicMessageQueueDestination
+{
+    CurrentExecutionObject,
+    RegisteredOwner
 }

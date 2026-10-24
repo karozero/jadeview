@@ -76,7 +76,7 @@ public sealed partial class SceneExporter
                 extras["particleSnapshotTimeSeconds"] = snapshotTime;
             warnings.Add("PAG particles are exported as a static snapshot of the current viewport frame; emitter behavior and particle motion are not animated in GLB.");
         }
-        if (KeepGeometryCarrier(node, exportGeometry)) return;
+        if (KeepGeometryCarrier(node, sceneObject, exportGeometry)) return;
         if (exportGeometry.Billboards.Count > 0) warnings.Add("SPG vegetation exports as fixed-facing quads; camera billboarding and wind are viewport effects.");
         var posed = sceneObject.Actor?.Skin(sceneObject, exportGeometry) ?? exportGeometry.Positions;
         nodes[node]["mesh"] = Mesh(sceneObject, exportGeometry, posed, null);

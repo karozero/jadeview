@@ -1,15 +1,20 @@
+using System.Numerics;
+
 namespace JadeView;
 
 public sealed partial class CinematicPlayback
 {
     private readonly Dictionary<SceneActor, AnimationClip> actorClips;
     private readonly ObjectTrack[] objectTracks;
+    private readonly Dictionary<uint, AnimationTrack[]> sceneObjectTracksByTarget;
     private readonly uint[] scriptTrackTargets;
     private readonly FacialPlayback[] facialPlaybacks;
     private readonly ResourceResolver resolver;
     private readonly CinematicObjectState objectState;
     private readonly CinematicOrientToTimeline orientTo;
+    private readonly CinematicSightSetTimeline sightSet;
     private readonly CinematicLocalRotationTimeline localRotations;
+    private readonly CinematicGameScriptMoveTimeline gameScriptMoves;
     private readonly CinematicShutterTimeline shutter;
     private readonly CinematicScreenFadeTimeline screenFade;
     private readonly CinematicAfterEffectTimeline afterEffects;
@@ -20,7 +25,20 @@ public sealed partial class CinematicPlayback
     private readonly CinematicLightningTimeline lightnings;
     private readonly CinematicCameraPagTimeline cameraPags;
     private readonly CinematicParticleState particles;
+    private readonly CinematicLightStateTimeline lightState;
+    private readonly CinematicWorldCycleLightState worldCycleLightState;
+    private readonly WorldData world;
+    private CinematicLightStateEvaluation? evaluatedLightState;
+    private CinematicScriptHierarchyPoseFrame[] scriptHierarchyPoseFrames = [];
+    private CinematicScriptHierarchyCommand[] scriptHierarchyPoseCommands = [];
+    private IReadOnlyDictionary<uint, CinematicScriptHierarchyPoseStatus> scriptHierarchyPoseStatuses =
+        new Dictionary<uint, CinematicScriptHierarchyPoseStatus>();
+    private Dictionary<uint, CinematicScriptHierarchyParent> scriptHierarchySerializedParents = [];
+    private Dictionary<uint, int> scriptHierarchyEndpointCounts = [];
+    private Dictionary<uint, SceneObject> scriptHierarchyUniqueObjects = [];
+    private uint[] scriptHierarchyAffectedKeys = [];
     private readonly CinematicEventTrackPreview eventTrackPreview = new();
+    private readonly Dictionary<SceneObject, Matrix4x4?> actorOrientPreviewSnapshots = [];
     private long allocatedByObjectState;
     private long allocatedByParticles;
     private long allocatedByActors;
@@ -73,10 +91,17 @@ public sealed partial class CinematicPlayback
         AnimationTrack[] sourceTracks, int eventTrackTransformCount,
         CinematicScriptOwnerId[] callbackSceneEventOwners,
         CinematicScriptOwnerId[] previewableSceneEventOwners,
+        CinematicOwnerExecutionLedgerEntry[] ownerExecutionLedger,
+        CinematicOwnerChannelExecution[] ownerChannelExecutions,
+        CinematicScheduledMessage[] scheduledMessages,
+        CinematicEventRouteDiagnostic[] eventRouteDiagnostics,
         (float Time, CinematicLiteralCall Call)[] nestedEventCommands,
+        (float Time, CinematicTimelineMessage Message)[] nestedEventMessages,
         Dictionary<SceneActor, AnimationClip> actorClips, ObjectTrack[] objectTracks,
         FacialPlayback[] facialPlaybacks, CinematicOrientToTimeline orientTo,
+        CinematicSightSetTimeline sightSet,
         CinematicLocalRotationTimeline localRotations,
+        CinematicGameScriptMoveTimeline gameScriptMoves,
         ResourceResolver resolver, WorldData world, SceneDocument document,
         IReadOnlyList<Entry>? archiveEntries)
     {
@@ -87,7 +112,11 @@ public sealed partial class CinematicPlayback
                 Arguments: string.Join(",", item.Call.Arguments)))
             .OrderBy(item => item.Time)
             .ToArray();
-        ScriptMessages = CinematicTimelineMessage.ReadTimeline(sourceClip);
+        ScriptMessages = CinematicTimelineMessage.ReadTimeline(sourceClip)
+            .Concat(nestedEventMessages)
+            .DistinctBy(item => item)
+            .OrderBy(item => item.Time)
+            .ToArray();
         scriptTrackTargets = sourceTracks
             .Select(track => track.Target)
             .Where(key => key is > 0 and < uint.MaxValue)
@@ -95,34 +124,51 @@ public sealed partial class CinematicPlayback
             .ToArray();
         this.actorClips = actorClips;
         this.objectTracks = objectTracks;
+        sceneObjectTracksByTarget = CinematicHierarchyTransformSampler.Index(
+            objectTracks.SelectMany(track => track.Tracks));
         this.orientTo = orientTo;
+        this.sightSet = sightSet;
         this.localRotations = localRotations;
+        this.gameScriptMoves = gameScriptMoves;
         EventTrackTransformCount = eventTrackTransformCount;
         CallbackSceneEventOwners = callbackSceneEventOwners;
         PreviewableSceneEventOwners = previewableSceneEventOwners;
+        OwnerExecutionLedger = ownerExecutionLedger;
+        OwnerChannelExecutions = ownerChannelExecutions;
+        ScheduledMessages = scheduledMessages;
+        EventRouteDiagnostics = eventRouteDiagnostics;
         this.facialPlaybacks = facialPlaybacks;
         this.resolver = resolver;
+        this.world = world;
         videoPlayback = new(sourceClip, world, document, resolver, nestedEventCommands);
         objectState = new(sourceClip, world, actorClips.Keys, nestedEventCommands);
-        attack = new(sourceClip, world, document.CinematicEnvironmentControllers.Values);
+        CinematicEnvironmentController[] environmentControllers = world.CinematicEnvironmentControllers.Length > 0
+            ? world.CinematicEnvironmentControllers
+            : document.CinematicEnvironmentControllers.Values
+                .Where(controller => controller.WorldKey == world.Key).ToArray();
+        attack = new(sourceClip, world, environmentControllers);
         shockwave = new(sourceClip, world, document.CinematicShockwaveControllers);
         flashes = new(sourceClip, world, document.CinematicFlashControllers);
         lightnings = new(sourceClip, world, document.CinematicLightningControllers);
-        particles = new(sourceClip, world, resolver);
-        cameraPags = new(document.CinematicScriptOwners.Values, world, ScriptStateCalls);
+        particles = new(sourceClip, world, resolver, nestedEventCommands);
+        lightState = new(world.Objects, ScriptStateCalls);
+        worldCycleLightState = new(environmentControllers, world);
         shutter = new(sourceClip, world, document);
         screenFade = new(sourceClip, world, document);
         afterEffects = new(sourceClip);
-        MaterialState = new(sourceClip, world, resolver.Materials, document.CinematicEnvironmentControllers.Values);
+        MaterialState = new(sourceClip, world, resolver.Materials,
+            environmentControllers, nestedEventCommands);
         AudioCues = CinematicAudioTimeline.Build(sourceClip, world, document, archiveEntries,
-            out var audioDiagnostics, nestedEventCommands);
+            out var audioDiagnostics, nestedEventCommands, ScriptMessages);
         AudioDiagnostics = audioDiagnostics;
         Duration = sourceClip.Duration;
         var fallbackCameras = objectTracks.Select(track => track.Object)
             .Concat(actorClips.Keys.Select(actor => actor.Root))
             .Where(sceneObject => sceneObject.Name.Contains("camera", StringComparison.OrdinalIgnoreCase))
             .ToArray();
-        Cameras = CinematicCameraBinding.Discover(sourceClip, world.Objects, fallbackCameras);
+        Cameras = CinematicCameraBinding.Discover(sourceClip, world.Objects, fallbackCameras,
+            nestedEventCommands);
+        cameraPags = new(document.CinematicScriptOwners.Values, world, ScriptStateCalls);
     }
 
     internal AnimationClip SourceClip { get; }
@@ -134,12 +180,19 @@ public sealed partial class CinematicPlayback
     internal int EventTrackTransformCount { get; }
     internal CinematicScriptOwnerId[] CallbackSceneEventOwners { get; }
     internal CinematicScriptOwnerId[] PreviewableSceneEventOwners { get; }
+    internal CinematicOwnerExecutionLedgerEntry[] OwnerExecutionLedger { get; }
+    internal CinematicOwnerChannelExecution[] OwnerChannelExecutions { get; }
+    internal CinematicScheduledMessage[] ScheduledMessages { get; }
+    internal CinematicEventRouteDiagnostic[] EventRouteDiagnostics { get; }
     public uint Key => SourceClip.Key;
     internal uint WorldKey => SourceClip.CinematicWorldKey;
     internal float Time { get; private set; }
     internal float Duration { get; }
     internal bool Playing { get; private set; }
     internal IReadOnlyCollection<SceneActor> Actors => actorClips.Keys;
+    internal IEnumerable<(SceneActor Actor, CinematicBodyTimeline Body)> BodyTimelines =>
+        actorClips.Where(pair => pair.Value.CinematicBody != null)
+            .Select(pair => (pair.Key, pair.Value.CinematicBody!));
     internal string Name => SourceClip.Name;
     internal int ParticipantCount => actorClips.Count + objectTracks.Length;
     internal IEnumerable<string> ParticipantNames => actorClips.Keys.Select(actor => actor.Root.Name)
@@ -149,9 +202,12 @@ public sealed partial class CinematicPlayback
         .SelectMany(pair => new[] { $"{pair.Key.Root.Name}: {pair.Value.CinematicBody?.ActionCount ?? 0} body actions" }
             .Concat(pair.Value.CinematicBody?.Diagnostics ?? []));
     internal IReadOnlyList<string> TransformDiagnostics => orientTo.Diagnostics
-        .Concat(localRotations.Diagnostics).Distinct(StringComparer.Ordinal).ToArray();
+        .Concat(sightSet.Diagnostics)
+        .Concat(localRotations.Diagnostics)
+        .Concat(gameScriptMoves.Diagnostics).Distinct(StringComparer.Ordinal).ToArray();
     internal CinematicCameraBinding[] Cameras { get; }
     internal CinematicMaterialState MaterialState { get; }
+    internal CinematicLightStateEvaluation LightState => evaluatedLightState ?? lightState.Evaluate(Time);
     internal CinematicVideoPlaybackTimeline VideoPlayback => videoPlayback;
     internal float OffsetEffect => afterEffects.OffsetEffect;
     internal float ColorBalance => afterEffects.ColorBalance;
@@ -172,30 +228,52 @@ public sealed partial class CinematicPlayback
 
     internal static CinematicPlayback[] Discover(SceneDocument document, WorldData world, ResourceResolver resolver,
         IReadOnlyList<Entry>? archiveEntries, IReadOnlySet<CinematicScriptOwnerId>? disabledCallbackOwners,
-        IReadOnlySet<CinematicScriptOwnerId>? previewedSceneEventOwners = null) =>
+        IReadOnlySet<CinematicScriptOwnerId>? previewedSceneEventOwners = null,
+        IReadOnlyDictionary<CinematicScriptOwnerId, float>? previewedSceneEventStartTimes = null) =>
         CinematicSceneClips.ForWorld(document, world)
             .Select(sourceClip => CreatePlayer(sourceClip, document, world, resolver, archiveEntries,
-                disabledCallbackOwners, previewedSceneEventOwners))
+                disabledCallbackOwners, previewedSceneEventOwners, previewedSceneEventStartTimes))
             .Where(player => player != null)
             .Cast<CinematicPlayback>()
             .OrderBy(player => player.Key)
             .ToArray();
 
+    internal static CinematicPlayback? DiscoverClip(AnimationClip sourceClip, SceneDocument document,
+        WorldData world, ResourceResolver resolver,
+        IReadOnlySet<CinematicScriptOwnerId>? disabledCallbackOwners,
+        IReadOnlySet<CinematicScriptOwnerId>? previewedSceneEventOwners,
+        IReadOnlyDictionary<CinematicScriptOwnerId, float>? previewedSceneEventStartTimes) =>
+        CreatePlayer(sourceClip, document, world, resolver, null, disabledCallbackOwners,
+            previewedSceneEventOwners, previewedSceneEventStartTimes);
+
     private static CinematicPlayback? CreatePlayer(AnimationClip sourceClip, SceneDocument document,
         WorldData world, ResourceResolver resolver, IReadOnlyList<Entry>? archiveEntries,
         IReadOnlySet<CinematicScriptOwnerId>? disabledCallbackOwners,
-        IReadOnlySet<CinematicScriptOwnerId>? previewedSceneEventOwners)
+        IReadOnlySet<CinematicScriptOwnerId>? previewedSceneEventOwners,
+        IReadOnlyDictionary<CinematicScriptOwnerId, float>? previewedSceneEventStartTimes)
     {
         var actorClips = new Dictionary<SceneActor, AnimationClip>();
         var nestedEventTimeline = CinematicNestedEventTransformTracks.ReadTimeline(sourceClip, world, document,
-            disabledCallbackOwners, previewedSceneEventOwners);
+            disabledCallbackOwners, previewedSceneEventOwners, previewedSceneEventStartTimes);
+        bool hasScriptHierarchyCommands = CinematicLiteralCall.ReadTimeline(sourceClip)
+            .Concat(nestedEventTimeline.Commands)
+            .Any(item => CinematicScriptHierarchyCommand.Decode(item.Time, item.Call) != null);
         var eventTrackTransforms = nestedEventTimeline.TransformTracks;
         var sourceTracks = sourceClip.Tracks
-            .Concat(CinematicScriptTransformTracks.Read(sourceClip))
+            .Concat(CinematicScriptTransformTracks.Read(sourceClip, nestedEventTimeline.Commands))
             .Concat(eventTrackTransforms)
             .ToArray();
+        var moveCalls = CinematicLiteralCall.ReadTimeline(sourceClip)
+            .Concat(nestedEventTimeline.Commands);
+        var absolutePositionTrackTargets = sourceTracks
+            .Where(track => track.Bone < 0 && track.Keys.Any(key => key.Position.HasValue))
+            .Select(track => track.Target).ToHashSet();
+        var gameScriptMoves = new CinematicGameScriptMoveTimeline(world,
+            nestedEventTimeline.MoveSegments, moveCalls, absolutePositionTrackTargets,
+            nestedEventTimeline.MoveDiagnostics);
         var orientTo = new CinematicOrientToTimeline(sourceClip, world,
             nestedEventTimeline.Commands, sourceTracks);
+        var sightSet = new CinematicSightSetTimeline(world, moveCalls, sourceTracks);
         var localRotations = new CinematicLocalRotationTimeline(world,
             nestedEventTimeline.RotationCommands);
         foreach (var actor in world.Actors)
@@ -222,25 +300,35 @@ public sealed partial class CinematicPlayback
         }
 
         var orientParticipants = orientTo.Participants.ToHashSet();
+        var sightSetParticipants = sightSet.Participants.ToHashSet();
         var objectTracks = world.Objects.Where(sceneObject => sceneObject.Actor == null)
             .Select(sceneObject => new ObjectTrack(sceneObject, sourceTracks
                 .Where(track => track.Bone < 0 && track.Target == sceneObject.GaoKey).ToArray()))
             .Where(track => track.Tracks.Length > 0 || orientParticipants.Contains(track.Object)
-                || localRotations.Targets.Contains(track.Object))
+                || sightSetParticipants.Contains(track.Object)
+                || localRotations.Targets.Contains(track.Object)
+                || gameScriptMoves.Targets.Contains(track.Object))
             .ToArray();
         bool hasInspectableCallbackOwners = nestedEventTimeline.CallbackSceneEventOwners.Length > 0;
-        if (actorClips.Count + objectTracks.Length < 2 && !hasInspectableCallbackOwners) return null;
+        if (actorClips.Count + objectTracks.Length < 2 && !orientTo.HasCommands && !sightSet.HasCommands
+            && !hasInspectableCallbackOwners && !hasScriptHierarchyCommands
+            && gameScriptMoves.Targets.Count == 0) return null;
 
         var facialPlaybacks = actorClips.Keys.Select(actor =>
-                CreateFacialPlayback(actor, sourceClip, world.Objects))
+                CreateFacialPlayback(actor, sourceClip, world.Objects, nestedEventTimeline.Messages,
+                    document.CinematicScriptOwners.Values, world.Key))
             .Where(playback => playback != null)
             .Cast<FacialPlayback>()
             .ToArray();
         return new(sourceClip, sourceTracks, eventTrackTransforms.Length,
             nestedEventTimeline.CallbackSceneEventOwners, nestedEventTimeline.PreviewableSceneEventOwners,
-            nestedEventTimeline.Commands,
+            nestedEventTimeline.OwnerExecutionLedger,
+            nestedEventTimeline.OwnerChannelExecutions,
+            nestedEventTimeline.ScheduledMessages,
+            nestedEventTimeline.RouteDiagnostics,
+            nestedEventTimeline.Commands, nestedEventTimeline.Messages,
             actorClips, objectTracks, facialPlaybacks, orientTo,
-            localRotations, resolver, world, document, archiveEntries);
+            sightSet, localRotations, gameScriptMoves, resolver, world, document, archiveEntries);
     }
 
     private static bool IsActorTrack(AnimationTrack track, SceneActor actor)
@@ -252,6 +340,10 @@ public sealed partial class CinematicPlayback
     public void Activate()
     {
         eventTrackPreview.Clear();
+        actorOrientPreviewSnapshots.Clear();
+        foreach (SceneObject source in orientTo.OrientedObjects
+                     .Where(item => item.Actor != null && !actorClips.ContainsKey(item.Actor)))
+            actorOrientPreviewSnapshots[source] = source.PreviewMatrix;
         foreach (var (actor, clip) in actorClips)
         {
             actor.CinematicClockOwned = true;
@@ -263,6 +355,7 @@ public sealed partial class CinematicPlayback
             playback.Previews = CreatePreviewSnapshots(playback.Actor, resolver);
         foreach (var track in objectTracks) track.Object.PreviewMatrix = null;
         localRotations.ResetTargets();
+        BuildScriptHierarchyPoseFrames();
         Seek(0);
     }
 
@@ -278,19 +371,35 @@ public sealed partial class CinematicPlayback
     public void Deactivate()
     {
         Pause();
+        ClearFacialOverlays();
         eventTrackPreview.Clear();
         foreach (var actor in actorClips.Keys) actor.CinematicClockOwned = false;
         foreach (var track in objectTracks) track.Object.PreviewMatrix = null;
+        foreach (var (source, previewMatrix) in actorOrientPreviewSnapshots)
+            source.PreviewMatrix = previewMatrix;
+        actorOrientPreviewSnapshots.Clear();
+        ClearScriptHierarchyWorldMatrices();
+        scriptHierarchyPoseFrames = [];
+        scriptHierarchyPoseCommands = [];
+        scriptHierarchyPoseStatuses = new Dictionary<uint, CinematicScriptHierarchyPoseStatus>();
+        scriptHierarchyPreviewObjects = [];
+        scriptHierarchySampleKeys = [];
+        scriptHierarchySerializedParents.Clear();
+        scriptHierarchyEndpointCounts.Clear();
+        scriptHierarchyUniqueObjects.Clear();
+        scriptHierarchyAffectedKeys = [];
         cameraPags.Clear();
         objectState.Clear();
         particles.Clear();
         shockwave.Clear();
+        evaluatedLightState = null;
     }
 
     internal bool PreviewEventTrack(SceneObject target, AnimationTrack track)
     {
         if (!eventTrackPreview.Start(target, track, Time)) return false;
         EvaluateActors();
+        RefreshLightState();
         return true;
     }
 
@@ -301,6 +410,7 @@ public sealed partial class CinematicPlayback
     {
         eventTrackPreview.Clear();
         EvaluateActors();
+        RefreshLightState();
     }
 
     public void Restart()
@@ -322,10 +432,12 @@ public sealed partial class CinematicPlayback
         var shockwaves = shockwave.Evaluate(Time);
         allocationStart = CaptureAllocationDiagnostics ? GC.GetAllocatedBytesForCurrentThread() : 0;
         EvaluateActors();
-        cameraPags.Evaluate(Time);
+        cameraPags.Evaluate(Time, Camera?.RenderPose(Time));
         if (CaptureAllocationDiagnostics) allocatedByActors += GC.GetAllocatedBytesForCurrentThread() - allocationStart;
         allocationStart = CaptureAllocationDiagnostics ? GC.GetAllocatedBytesForCurrentThread() : 0;
-        MaterialState.Evaluate(Time, attack.Evaluate(Time), shockwaves);
+        float attackFactor = attack.Evaluate(Time);
+        MaterialState.Evaluate(Time, attackFactor, shockwaves);
+        RefreshLightState(attackFactor);
         afterEffects.Evaluate(Time);
         AdvanceFacialPlayback(Time);
         if (CaptureAllocationDiagnostics) allocatedByEffects += GC.GetAllocatedBytesForCurrentThread() - allocationStart;
@@ -341,14 +453,25 @@ public sealed partial class CinematicPlayback
         var shockwaves = shockwave.Evaluate(Time);
         ResetFacialPlayback();
         EvaluateActors();
-        cameraPags.Evaluate(Time);
-        MaterialState.Evaluate(Time, attack.Evaluate(Time), shockwaves);
+        cameraPags.Evaluate(Time, Camera?.RenderPose(Time));
+        float attackFactor = attack.Evaluate(Time);
+        MaterialState.Evaluate(Time, attackFactor, shockwaves);
+        RefreshLightState(attackFactor);
         afterEffects.Evaluate(Time);
         AdvanceFacialPlayback(Time);
     }
 
-    private static void EvaluateObject(SceneObject sceneObject, AnimationTrack[] tracks, float time) =>
-        sceneObject.PreviewMatrix = CinematicTransformSampler.Evaluate(sceneObject.Transform, tracks, time);
+    private void EvaluateObject(SceneObject sceneObject, AnimationTrack[] tracks, float time) =>
+        sceneObject.PreviewMatrix = AnimationMath.FromRender(
+            CinematicHierarchyTransformSampler.EvaluateWorldRender(sceneObject,
+                sceneObjectTracksByTarget, time, world.Objects, tracks));
+
+    private void RefreshLightState(float? attackFactor = null)
+    {
+        float resolvedAttackFactor = attackFactor ?? attack.Evaluate(Time);
+        CinematicWorldCycleLightEvaluation cycleLights = worldCycleLightState.Evaluate(resolvedAttackFactor);
+        evaluatedLightState = CinematicWorldCycleLightState.Compose(lightState.Evaluate(Time), cycleLights);
+    }
 
     private sealed record ObjectTrack(SceneObject Object, AnimationTrack[] Tracks);
 }

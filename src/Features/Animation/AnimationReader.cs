@@ -25,9 +25,47 @@ public static class AnimationReader
             var track = new AnimationTrack { Bone = bone, Target = target, ChannelFlags = flags, HeaderWord = headerWord }; clip.Tracks.Add(track); int firstFlags = 0; long frames = 0;
             for (int frame = 0; frame < count; frame++)
             {
-                int duration = (mode & 512) != 0 ? U8() : U16();
-                int f; if ((mode & 2048) != 0 && frame > 0) f = firstFlags & ~4; else { f = U16(); if (frame == 0) firstFlags = f; }
-                f &= ~2; var key = new AnimationKey { Time = frames / 60f, Duration = duration / 60f, Flags = f }; track.Keys.Add(key); frames += duration;
+                int encodedDuration = (mode & 512) != 0 ? U8() : U16();
+                bool flashCompressedRotation = (encodedDuration & 0x8000) != 0;
+                int duration = encodedDuration & 0x7fff;
+                int f;
+                if (flashCompressedRotation)
+                {
+                    f = 128;
+                }
+                else if ((mode & 2048) != 0 && frame > 0)
+                {
+                    f = firstFlags & ~4;
+                }
+                else
+                {
+                    f = U16();
+                    if (frame == 0) firstFlags = f;
+                }
+                f &= ~2;
+                var key = new AnimationKey
+                {
+                    Time = frames / 60f,
+                    Duration = duration / 60f,
+                    Flags = f,
+                    FlashCompressedRotation = flashCompressedRotation
+                };
+                track.Keys.Add(key);
+                frames += duration;
+
+                if (flashCompressedRotation)
+                {
+                    Need(6);
+                    float x = I16() / 32767f;
+                    float y = I16() / 32767f;
+                    float z = I16() / 32767f;
+                    key.Rotation = Quaternion.Normalize(new(x, y, z,
+                        MathF.Sqrt(Math.Max(0, 1 - x * x - y * y - z * z))));
+                    key.Format = 0x90;
+                    previousSize = 6;
+                    previousFormat = key.Format;
+                    continue;
+                }
                 if ((f & 1984) == 64)
                 {
                     int payloadStart = q;
@@ -97,6 +135,34 @@ public static class AnimationReader
             clip.Duration = Math.Max(clip.Duration, frames / 60f);
         }
         if (q != end) throw new InvalidDataException($"Animation cursor mismatch {q:X8}/{end:X8}.");
+        MarkFlashReferenceTracks(clip.Tracks);
         return clip;
+    }
+
+    private static void MarkFlashReferenceTracks(IReadOnlyList<AnimationTrack> tracks)
+    {
+        var flashTargets = new HashSet<uint>();
+        foreach (AnimationTrack track in tracks)
+        {
+            if (track.Bone < 0 && track.Target is > 2 and < uint.MaxValue
+                && flashTargets.Contains(track.Target))
+                track.UsesFlashReference = true;
+
+            bool firstKeyEnablesFlash = FirstKeyEnablesFlash(track);
+            if (track.Bone < 0 && track.Target is > 2 and < uint.MaxValue && firstKeyEnablesFlash)
+            {
+                flashTargets.Add(track.Target);
+                track.UsesFlashReference = true;
+            }
+        }
+    }
+
+    internal static bool FirstKeyEnablesFlash(AnimationTrack? track)
+    {
+        AnimationKey? firstKey = track?.Keys.FirstOrDefault();
+        bool firstKeyIsInterpolation = firstKey != null
+            && (((firstKey.Flags & 0x07c0) == 0x0080) || firstKey.FlashCompressedRotation);
+        return firstKeyIsInterpolation
+            && ((firstKey!.Flags & 0x0004) != 0 || firstKey.FlashCompressedRotation);
     }
 }

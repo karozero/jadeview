@@ -62,6 +62,7 @@ internal static class CinematicParticleStateChecks
         };
 
         var state = new CinematicParticleState(clip, world, resolver);
+        VerifyNestedCommands(world, resolver, particleObject, source);
         state.Evaluate(1);
         var preview = particleObject.CinematicParticles
             ?? throw new InvalidDataException("Cinematic PAG state did not provide an instance-local preview definition.");
@@ -119,6 +120,31 @@ internal static class CinematicParticleStateChecks
             && source.Acceleration.X == 1 && source.Color == 0xFF112233,
             "Clearing cinematic state must restore archive-owned PAG data without mutating it.");
         Console.WriteLine("PASS: cinematic PAG flags, parameter/color commands, instance isolation and reverse seek");
+    }
+
+    private static void VerifyNestedCommands(WorldData world, ResourceResolver resolver,
+        SceneObject particleObject, ParticleDefinition source)
+    {
+        (float Time, CinematicLiteralCall Call)[] nestedCommands =
+        [
+            (2, new(particleObject.GaoKey, 0x2105, [0x80402010])),
+            (2, new(particleObject.GaoKey, 0x210A, [BitConverter.SingleToUInt32Bits(1), 0, 0])),
+            (2, new(particleObject.GaoKey, 0x210A, [BitConverter.SingleToUInt32Bits(1), 0, 0])),
+            (3, new(particleObject.GaoKey, 0x20D6, [0, 0x40]))
+        ];
+        var nested = new CinematicParticleState(new AnimationClip(), world, resolver, nestedCommands);
+        nested.Evaluate(2.5f);
+        Require(particleObject.CinematicParticles is { Color: 0x80402010, IsActive: true },
+            "Scheduled child-EVE PAG color commands did not reach the preview.");
+        Require(particleObject.CinematicParticleShifts.Count == 1,
+            "Duplicate scheduled PAG shifts must not move particles twice.");
+        nested.Evaluate(3.5f);
+        Require(particleObject.CinematicParticles is { IsActive: false },
+            "Scheduled child-EVE PAG deactivation was ignored.");
+        nested.Evaluate(1);
+        Require(particleObject.CinematicParticles?.Color == source.Color
+            && particleObject.CinematicParticles.Flags == source.Flags,
+            "Child-EVE PAG state did not reset when seeking backward.");
     }
 
     private static void Require(bool condition, string message)

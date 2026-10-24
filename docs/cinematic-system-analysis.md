@@ -96,11 +96,19 @@ event inspector rather than the root cutscene picker. The source-links fixture
 guards this distinction.
 
 The `SFX_colpag_cam_scp_loop` behavior is also previewed by a dedicated adapter
-in JadeView. It follows the callback's OVA object references and global camera
-reference, then derives visibility, particle rates, and camera-relative poses
-from the cinematic capability timeline. Its mode changes are deterministic:
+in JadeView. It follows the callback's OVA object references, then derives
+visibility and particle rates from the cinematic capability timeline. The
+engine callback resolves the gameplay-global `_PJ_Camera.gao` (`71003F56`),
+but a cutscene preview can have a separate routed cinematic camera. JadeView
+therefore applies camera-relative placement using the currently selected
+cinematic camera's evaluated render pose, including routed position and target
+changes; PAG carriers do not require the global gameplay-camera GAO to be
+present in the assembled cinematic world. Its mode changes are deterministic:
 the source callback uses a random 1–4 second delay, while preview uses the
-2.5-second mean so seeking gives repeatable results. This does not execute the
+2.5-second mean so seeking gives repeatable results. Mapping the gameplay-global
+camera dependency to the routed cinematic preview camera is an approximation;
+native runtime camera selection may differ when those cameras are not the same.
+This does not execute the
 game's EOT callback scheduler or PRNG and does not prove that the callback is
 active in every scene containing its owner. Treat it as a tested approximation
 for this callback, not as a general script interpreter.
@@ -576,8 +584,10 @@ features are collected in [`gameplay-script-system-findings.md`](gameplay-script
    owners in each world, then resolve remaining trigger/start paths and
    conditional actor activation. Keep unknown edges explicit instead of
    filling them from clip names or archive order.
-2. Add a narrow evaluator and test for per-owner `OBJ_CapaSet` commands in shared
-   event clips, then verify its capability flags against the source.
+2. Keep literal EVE `OBJ_CapaSet` state deterministic per target and share it
+   with gate/material consumers; callback-derived capability changes now expose
+   a receiver when its source context is unique, but still need invocation time,
+   callback gates, and branch state before they can safely enter playback.
 3. Classify preview gaps by behavior family: actor/action scheduling, object
    activation and spawning, material/alpha, lighting/global state, audio, camera,
    and procedural GFX. Prioritize families by archive occurrence and user-visible

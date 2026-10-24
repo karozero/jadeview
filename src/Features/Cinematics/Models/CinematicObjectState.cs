@@ -2,12 +2,10 @@ namespace JadeView;
 
 internal sealed class CinematicObjectState
 {
-    internal const uint Invisible = 0x00200000;
-    internal const uint Inactive = 0x00400000;
-    private const int ObjectDestroy = 8113, ObjectFlagsSet = 8115;
+    internal const uint Invisible = GameObjectRuntimeFlags.Invisible;
+    internal const uint Inactive = GameObjectRuntimeFlags.Inactive;
+    private const int ObjectDestroy = 8113;
     private const int ObjectCapabilitiesSet = 8133, ObjectCapabilitiesToggle = 8145;
-    private const int ObjectInvisibleSet = 8152, ObjectInactiveSet = 8153;
-    private const int GroupInvisibleSet = 15300, GroupInactiveSet = 15301;
     private readonly SceneObject[] objects;
     private readonly (StateChange Change, SceneObject[] Targets)[] events;
     private readonly (CapabilityChange Change, SceneObject Target)[] capabilityEvents;
@@ -67,7 +65,8 @@ internal sealed class CinematicObjectState
             var (change, targets) = events[appliedEventCount++];
             foreach (var target in targets)
             {
-                target.PreviewControlFlags = (target.PreviewControlFlags!.Value & ~change.ClearMask) | change.SetMask;
+                target.PreviewControlFlags = GameObjectRuntimeFlags.Apply(
+                    target.PreviewControlFlags!.Value, change.SetMask, change.ClearMask);
                 if ((change.ClearMask & (Invisible | Inactive)) != 0) target.CinematicExcluded = false;
             }
         }
@@ -132,13 +131,9 @@ internal sealed class CinematicObjectState
         // their archive records. Runtime-generated objects also disappear.
         if (call.Selector == ObjectDestroy && call.Arguments.Length == 0)
             return new(time, call.Target, Invisible | Inactive, 0);
-        if (call.Selector == ObjectFlagsSet && call.Arguments.Length == 2)
-            return new(time, call.Target, call.Arguments[0] & 0xffff0000, call.Arguments[1] & 0xffff0000);
-        bool group = call.Selector is GroupInvisibleSet or GroupInactiveSet;
-        bool supported = group || call.Selector is ObjectInvisibleSet or ObjectInactiveSet;
-        if (call.Arguments.Length != 1 || !supported) return null;
-        uint mask = call.Selector is ObjectInvisibleSet or GroupInvisibleSet ? Invisible : Inactive;
-        return call.Arguments[0] != 0 ? new(time, call.Target, mask, 0, group) : new(time, call.Target, 0, mask, group);
+        var change = GameScriptObjectFlags.Decode(call.Target, call.Selector, call.Arguments);
+        return change == null ? null : new(time, change.TargetKey,
+            change.SetMask, change.ClearMask, change.TargetsGroup);
     }
 
     private sealed record StateChange(float Time, uint Target, uint SetMask, uint ClearMask, bool Group = false);

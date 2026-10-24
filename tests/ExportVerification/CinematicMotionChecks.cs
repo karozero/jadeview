@@ -103,12 +103,78 @@ internal static class CinematicMotionChecks
             throw new InvalidDataException("Empty source intervals were replaced by future/previous transform keys.");
         if (CinematicTransformSampler.Evaluate(root.Transform, [sparse], 2).Translation != new Vector3(100, 0, 0))
             throw new InvalidDataException("A camera/object lost its held transform during an empty source interval.");
+
+        VerifyRootPositionSetterDoesNotFreezeAnimation();
+
         var reference = Message47(0, 1);
         byte[] dynamic = reference.OpaquePayloads[0].Data.ToArray();
         dynamic[4 + 15 * 8 + 7] = 4;
         if (CinematicActionEvent.Decode(new(), 1, new("word-pair-list", 0, dynamic)) != null)
             throw new InvalidDataException("A dynamic action operand was treated as a literal.");
         Console.WriteLine("PASS: tagged retail messages, gameplay handoff, accumulated rotated root motion, loop continuity, empty intervals and reverse seek");
+    }
+
+    private static void VerifyRootPositionSetterDoesNotFreezeAnimation()
+    {
+        CinematicBodyTimeline CreateTimeline(bool addPositionSet)
+        {
+            var actorRoot = new SceneObject { GaoKey = 10 };
+            actorRoot.Transform.Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2);
+            var actor = new SceneActor { Root = actorRoot, Members = [actorRoot] };
+            var actionClip = new AnimationClip
+            {
+                Loaded = true,
+                Duration = 1,
+                Tracks = [new() { Bone = -1, Target = 0, Keys =
+                    [new() { Duration = 1, Position = Vector3.Zero },
+                        new() { Time = 1, Position = Vector3.UnitX }] }]
+            };
+            var action = new CinematicAction(0,
+                [new CinematicActionItem(actionClip, 0, 64, 100) { Flags = 0 }]);
+            var source = new AnimationClip
+            {
+                Loaded = true,
+                Duration = 2,
+                Tracks = [new() { Bone = -1, Target = actorRoot.GaoKey, Keys =
+                    [Message47(0, 1)] }]
+            };
+            (float Time, CinematicLiteralCall Call)[] nestedCalls = [];
+            if (addPositionSet)
+            {
+                source.Tracks.Add(new()
+                {
+                    Bone = -1,
+                    Target = 0,
+                    Keys = [CinematicTestEvents.VectorCall(0, actorRoot.GaoKey,
+                            0x1fa6, new(50, 0, 0)),
+                        CinematicTestEvents.VectorCall(.5f, actorRoot.GaoKey,
+                            0x1fa6, new(100, 0, 0))]
+                });
+                nestedCalls = [(.5f, new(actorRoot.GaoKey, 0x1fa6, [Bits(200), Bits(0), Bits(0)]))];
+            }
+            return CinematicBodyTimeline.Create(source, actor,
+                new Dictionary<uint, Dictionary<int, CinematicAction>>
+                { [actorRoot.GaoKey] = new() { [0] = action } }, nestedCalls);
+        }
+
+        CinematicBodyTimeline baseline = CreateTimeline(addPositionSet: false);
+        CinematicBodyTimeline withPositionSet = CreateTimeline(addPositionSet: true);
+        Vector3 baselineDelta = baseline.RootPose(.75f).Translation - baseline.RootPose(.5f).Translation;
+        Vector3 setPosition = withPositionSet.RootPose(.5f).Translation;
+        Vector3 movedAfterSet = withPositionSet.RootPose(.75f).Translation - setPosition;
+        Vector3 initialSetOffset = withPositionSet.RootPose(.25f).Translation - baseline.RootPose(.25f).Translation;
+        if (Vector3.Distance(initialSetOffset, new(50, 0, 0)) > .001f)
+            throw new InvalidDataException($"A time-zero OBJ_PosSet did not remain the body-motion origin: {initialSetOffset}.");
+        if (Vector3.Distance(setPosition, new(200, 0, 0)) > .001f)
+            throw new InvalidDataException("OBJ_PosSet did not apply its absolute position at the command time.");
+        if (baselineDelta.Length() < .1f || Vector3.Distance(movedAfterSet, baselineDelta) > .001f)
+            throw new InvalidDataException($"A one-shot OBJ_PosSet froze later ANI root motion: {movedAfterSet}, expected {baselineDelta}.");
+        Vector3 afterSet = withPositionSet.RootPose(.75f).Translation;
+        _ = withPositionSet.RootPose(.1f);
+        if (Vector3.Distance(withPositionSet.RootPose(.75f).Translation, afterSet) > .001f)
+            throw new InvalidDataException("Reverse seeking reapplied a one-shot position setter to a later pose.");
+
+        static uint Bits(float value) => BitConverter.SingleToUInt32Bits(value);
     }
 
     private static void CheckPosition(CinematicBodyTimeline timeline, float time, Vector3 expected)

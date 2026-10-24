@@ -5,9 +5,10 @@ public sealed partial class CinematicPlayback
     internal IEnumerable<string> FacialDiagnostics => facialPlaybacks.Select(playback =>
     {
         int mouthCommands = playback.Events.Count(item => item.Mouth?.AutomaticMouth != null);
+        int blinkCommands = playback.Events.Count(item => item.Mouth?.BlinkRequested == true);
         bool missingController = playback.Events.Any(item => item.Mouth?.AutomaticMouth == true)
             && !playback.Previews.Any(snapshot => snapshot.Preview.MouthCycleDefinition != null);
-        return $"{playback.Actor.Root.Name}: {playback.Signals.Length} animated facial signals, {mouthCommands} mouth start/stop commands"
+        return $"{playback.Actor.Root.Name}: {playback.Signals.Length} animated facial signals, {mouthCommands} mouth start/stop commands, {blinkCommands} explicit blink triggers"
             + (missingController ? "; mouth controller binding unavailable" : "");
     });
 
@@ -65,8 +66,10 @@ public sealed partial class CinematicPlayback
             playback.NextEvent = 0;
             playback.LastTime = 0;
             playback.ActivePreview = null;
+            playback.SallyBlinkStartTime = null;
             foreach (var snapshot in playback.Previews)
             {
+                snapshot.Preview.ClearCinematicBlinkOverlay();
                 snapshot.Transitions.Clear();
                 Restore(snapshot);
                 if (snapshot.Preview.MouthCycleDefinition is not { AutoStart: true } definition) continue;
@@ -76,11 +79,23 @@ public sealed partial class CinematicPlayback
         }
     }
 
+    private void ClearFacialOverlays()
+    {
+        foreach (var playback in facialPlaybacks)
+        {
+            playback.SallyBlinkStartTime = null;
+            foreach (var snapshot in playback.Previews)
+                snapshot.Preview.ClearCinematicBlinkOverlay();
+        }
+    }
+
     private void AdvanceFacialPlayback(float targetTime)
     {
         foreach (var playback in facialPlaybacks)
         {
             if (playback.Previews.Length == 0) continue;
+            foreach (var snapshot in playback.Previews)
+                snapshot.Preview.ClearCinematicBlinkOverlay();
             while (playback.NextEvent < playback.Events.Length
                 && playback.Events[playback.NextEvent].Time <= targetTime)
             {
@@ -94,11 +109,29 @@ public sealed partial class CinematicPlayback
                     ApplyMorphFactor(playback, signal, targetTime);
             AdvanceFacialState(playback, targetTime - playback.LastTime);
             playback.LastTime = targetTime;
+            ApplySallyBlink(playback, targetTime);
             // Facial signals update the mesh preview directly. Invalidate the
             // renderer's skinned-geometry cache without evaluating the full rig
             // a second time in the same cinematic frame.
             if (playback.Events.Length > 0) playback.Actor.InvalidatePose();
         }
+    }
+
+    private static void ApplySallyBlink(FacialPlayback playback, float targetTime)
+    {
+        if (playback.SallyBlinkStartTime is not { } startTime) return;
+        float elapsed = targetTime - startTime;
+        if (elapsed < 0) return;
+        float phase = elapsed * FaceMorphBlinkCurve.PhaseSpeed;
+        if (!float.IsFinite(phase) || phase >= FaceMorphBlinkCurve.PhaseLimit)
+        {
+            playback.SallyBlinkStartTime = null;
+            return;
+        }
+
+        foreach (var snapshot in playback.Previews)
+            if (snapshot.Preview.SupportsSallyBlink)
+                snapshot.Preview.ApplyCinematicBlinkOverlay(phase);
     }
 
     private static void AdvanceFacialState(FacialPlayback playback, float delta)
@@ -182,6 +215,7 @@ public sealed partial class CinematicPlayback
         internal int NextEvent { get; set; }
         internal float LastTime { get; set; }
         internal FaceMorphPreview? ActivePreview { get; set; }
+        internal float? SallyBlinkStartTime { get; set; }
     }
 
     private const float FacialSampleRate = 60;

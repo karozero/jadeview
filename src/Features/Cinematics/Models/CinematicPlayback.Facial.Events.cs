@@ -6,14 +6,23 @@ public sealed partial class CinematicPlayback
 {
     private const int SetMorphChannelFactorSelector = 8253;
     private const int SetMorphChannelProgressionSelector = 8255;
+    private const string AutomaticLipSyncCallback = "Cine_lipsynch_auto_Lips_lecture_messages";
+    private const string CompanionReflexCallback = "companion_co_exec_reflex";
+    private const string SallyMessageCallback = "Sally_sa_exec_message_read";
 
     private static FacialPlayback? CreateFacialPlayback(SceneActor actor, AnimationClip clip,
-        IReadOnlyCollection<SceneObject> sceneObjects)
+        IReadOnlyCollection<SceneObject> sceneObjects,
+        IReadOnlyList<(float Time, CinematicTimelineMessage Message)> nestedMessages,
+        IEnumerable<CinematicScriptOwner> scriptOwners, uint worldKey)
     {
+        var owners = scriptOwners.ToArray();
         var events = clip.Tracks
             .SelectMany(track => track.Keys.SelectMany(key =>
                 CinematicOwnerContext.ForTrack(clip, track)
-                    .SelectMany(context => DecodeFacialEvents(actor, track, key, sceneObjects, clip, context))))
+                    .SelectMany(context => DecodeFacialEvents(actor, track, key, sceneObjects, clip,
+                        context, owners, worldKey))))
+            .Concat(nestedMessages.Select(item => DecodeNestedFacialEvent(actor, item.Message, owners, worldKey))
+                .Where(item => item != null).Select(item => item!))
             .Where(item => item.ChannelForm != null
                 ? item.TrackTarget == actor.Root.GaoKey
                 : item.Mouth != null || item.MorphFactor != null || item.ChannelState != null)
@@ -23,9 +32,24 @@ public sealed partial class CinematicPlayback
         return events.Length > 0 ? new(actor, events) : null;
     }
 
+    private static FacialEvent? DecodeNestedFacialEvent(SceneActor actor,
+        CinematicTimelineMessage message, CinematicScriptOwner[] owners, uint worldKey)
+    {
+        var receiver = ResolveFacialMessageReceiver(message.ExecutionObjectKey, worldKey, owners);
+        var handler = receiver.Handler;
+        var facialEvent = handler == CinematicFacialMessageHandler.Unknown
+            ? null
+            : CinematicFacialEvent.Decode(message, handler);
+        uint? targetKey = facialEvent == null ? null
+            : ResolveFacialTargetKey(handler, message.ExecutionObjectKey, message.Gao, receiver.Owner);
+        if (facialEvent == null
+            || targetKey is not { } resolvedTarget || !TargetsActor(actor, resolvedTarget)) return null;
+        return new(message.Time, resolvedTarget, facialEvent with { ActorTargetKey = resolvedTarget }, null, null);
+    }
+
     private static IEnumerable<FacialEvent> DecodeFacialEvents(SceneActor actor,
         AnimationTrack track, AnimationKey key, IReadOnlyCollection<SceneObject> sceneObjects,
-        AnimationClip clip, uint trackTarget)
+        AnimationClip clip, uint trackTarget, CinematicScriptOwner[] owners, uint worldKey)
     {
         foreach (var payload in key.OpaquePayloads)
         {
@@ -35,9 +59,18 @@ public sealed partial class CinematicPlayback
                 yield return new(key.Time, channelChange.Member.GaoKey, null, null, null, channelChange);
         }
 
-        var mouthEvent = CinematicFacialEvent.Decode(key);
-        if (mouthEvent != null && TargetsFacialActor(trackTarget, mouthEvent.ActorTargetKey, actor))
-            yield return new(key.Time, trackTarget, mouthEvent, null, null);
+        var message = CinematicTimelineMessage.ReadMessage(key, trackTarget);
+        var receiver = message == null
+            ? (Owner: (CinematicScriptOwner?)null, Handler: CinematicFacialMessageHandler.Unknown)
+            : ResolveFacialMessageReceiver(trackTarget, worldKey, owners);
+        var handler = receiver.Handler;
+        var mouthEvent = handler == CinematicFacialMessageHandler.Unknown || message == null
+            ? null
+            : CinematicFacialEvent.Decode(message, handler);
+        uint? messageTarget = mouthEvent == null ? null
+            : ResolveFacialTargetKey(handler, trackTarget, message!.Gao, receiver.Owner);
+        if (mouthEvent != null && messageTarget is { } resolvedTarget && TargetsActor(actor, resolvedTarget))
+            yield return new(key.Time, resolvedTarget, mouthEvent with { ActorTargetKey = resolvedTarget }, null, null);
 
         var formEvent = CinematicChannelFormEvent.Decode(key);
         uint formTarget = formEvent?.TargetKey is > 0 and < uint.MaxValue ? formEvent.TargetKey : trackTarget;
@@ -63,6 +96,55 @@ public sealed partial class CinematicPlayback
     private static bool TargetsActor(SceneActor actor, uint targetKey) =>
         targetKey == actor.Root.GaoKey || actor.Members.Any(member => member.GaoKey == targetKey);
 
+    private static (CinematicScriptOwner? Owner, CinematicFacialMessageHandler Handler)
+        ResolveFacialMessageReceiver(uint contextKey,
+        uint worldKey, IEnumerable<CinematicScriptOwner> owners)
+    {
+        var owner = CinematicScriptOwnerResolver.Resolve(contextKey, worldKey, owners);
+        if (owner == null) return (null, CinematicFacialMessageHandler.Unknown);
+        (string Name, CinematicFacialMessageHandler Handler)[] callbacks =
+        [
+            (AutomaticLipSyncCallback, CinematicFacialMessageHandler.AutomaticLipSync),
+            (CompanionReflexCallback, CinematicFacialMessageHandler.Companion),
+            (SallyMessageCallback, CinematicFacialMessageHandler.Sally)
+        ];
+        var directMatches = callbacks.Where(candidate => owner.CallbackNames.Contains(candidate.Name,
+            StringComparer.Ordinal)).ToArray();
+        if (directMatches.Length == 1) return (owner, directMatches[0].Handler);
+        if (directMatches.Length > 1) return (owner, CinematicFacialMessageHandler.Unknown);
+
+        var reachableMatches = callbacks.Where(candidate =>
+            CinematicScriptReader.TryDescribeCallbackReachability(owner, candidate.Name, out _)).ToArray();
+        return reachableMatches.Length == 1
+            ? (owner, reachableMatches[0].Handler)
+            : (owner, CinematicFacialMessageHandler.Unknown);
+    }
+
+    internal static uint? ResolveFacialTargetKey(CinematicFacialMessageHandler handler,
+        uint executionObjectKey, uint messageTargetKey, CinematicScriptOwner? owner)
+    {
+        if (handler != CinematicFacialMessageHandler.AutomaticLipSync)
+            return CinematicObjectKey.IsArchiveObject(executionObjectKey) ? executionObjectKey : null;
+
+        if (messageTargetKey is not (0 or uint.MaxValue))
+            return CinematicObjectKey.IsArchiveObject(messageTargetKey) ? messageTargetKey : null;
+
+        var configuredTarget = owner?.EffectiveObjectReference("des_o_acteur");
+        if (configuredTarget != null)
+        {
+            if (configuredTarget.TargetKey == 0)
+                return owner!.OwnerKey;
+            return CinematicObjectKey.IsArchiveObject(configuredTarget.TargetKey)
+                ? configuredTarget.TargetKey
+                : null;
+        }
+
+        return owner?.EffectiveVariable("des_o_acteur") == null
+            && owner != null && CinematicObjectKey.IsArchiveObject(owner.OwnerKey)
+                ? owner.OwnerKey
+                : null;
+    }
+
     private static CinematicChannelStateChange? DecodeChannelStateChange(SceneActor actor,
         CinematicLiteralCall? call)
     {
@@ -78,12 +160,6 @@ public sealed partial class CinematicPlayback
 
         return new(member, (int)call.Arguments[0],
             call.Selector == SetMorphChannelFactorSelector, value);
-    }
-
-    private static bool TargetsFacialActor(uint trackTarget, uint messageTarget, SceneActor actor)
-    {
-        if (messageTarget is 0 or uint.MaxValue) return trackTarget == actor.Root.GaoKey;
-        return TargetsActor(actor, messageTarget);
     }
 
     private static int GetFacialEventPriority(FacialEvent facialEvent) =>
@@ -102,6 +178,8 @@ public sealed partial class CinematicPlayback
 
         if (facialEvent.Mouth is { } mouthEvent)
         {
+            if (mouthEvent.BlinkRequested && playback.SallyBlinkStartTime == null)
+                playback.SallyBlinkStartTime = facialEvent.Time;
             ApplyMouthEvent(playback, mouthEvent);
             ApplyChannelCommands(playback, mouthEvent);
         }

@@ -66,6 +66,9 @@ internal static class LayerBakeChecks
         Console.WriteLine("PASS: two-pass source alpha overlay, independent UVs and alpha override");
 
         world.Objects[0].RliColors = [0x800000FF, 0x800000FF, 0x800000FF];
+        // Request authored RLI explicitly, as the renderer's draw-mask contract requires.
+        uint previousDrawFlags = world.Objects[0].DrawFlags;
+        world.Objects[0].DrawFlags |= 0x40;
         string instancePath = Path.Combine(output, "alpha-overlay-instance.glb");
         SceneExporter.Export(instancePath, world, resolver, new() { Textures = true });
         using var instance = new GlbReader(instancePath);
@@ -76,6 +79,7 @@ internal static class LayerBakeChecks
             $"Instance RLI tint was dropped from the source-alpha overlay: {instancePixel}");
         Console.WriteLine("PASS: source-alpha overlays bake per-instance RLI color and alpha");
         world.Objects[0].RliColors = [];
+        world.Objects[0].DrawFlags = previousDrawFlags;
     }
 
     private static void VerifyReflectionDetail(WorldData world, ResourceResolver resolver, Geometry geometry, string output)

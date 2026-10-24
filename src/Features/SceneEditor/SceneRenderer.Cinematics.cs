@@ -30,6 +30,21 @@ public sealed partial class SceneRenderer
     private Vector4 CinematicFogColor => CinematicMaterials?.FogColor ?? Vector4.Zero;
     private float CinematicFogNear => CinematicMaterials?.FogNear ?? 0;
     private float CinematicFogFar => CinematicMaterials?.FogFar ?? 0;
+    private bool TryGetWorldAmbient(WorldData world, uint drawFlags, out Vector4 color)
+    {
+        color = Vector4.Zero;
+        if ((drawFlags & 0x100) == 0) return false;
+        bool firstChannel = (drawFlags & 0x00400000) != 0;
+        if (CinematicMaterials is { HasAmbient: true } lighting)
+            color = firstChannel ? lighting.AmbientColor : lighting.AmbientColor2;
+        else if (world.Lighting is { } source)
+        {
+            uint packed = firstChannel ? source.AmbientColor : source.EffectiveAmbientColor2;
+            color = new Vector4(packed & 255, packed >> 8 & 255, packed >> 16 & 255, packed >> 24) / 255f;
+        }
+        else return false;
+        return true;
+    }
     private float? previousCameraFov;
 
     internal unsafe RenderTexture2D RenderCinematicAfterEffects()

@@ -103,6 +103,36 @@ internal static class MaterialExportChecks
             }
         }
         Console.WriteLine("PASS: original and inverted vertex colors with alpha override");
+        VerifyInstanceVertexColors(world, resolver, geometry, materialBytes, output);
+    }
+
+    private static void VerifyInstanceVertexColors(WorldData world, ResourceResolver resolver, Geometry geometry,
+        byte[] materialBytes, string output)
+    {
+        uint[] originalColors = (uint[])geometry.VertexColors.Clone();
+        uint[] instanceColors = [0xff102030, 0x80406080]; // The third vertex must fall back to geometry RLI.
+        world.Objects[0].RliColors = instanceColors;
+        foreach (int mode in new[] { 3, 5 })
+        {
+            BitConverter.GetBytes(7u | (uint)mode << 12).CopyTo(materialBytes, 40);
+            string path = Path.Combine(output, $"instance-vertex-colors-{mode}.glb");
+            SceneExporter.Export(path, world, resolver, new() { Textures = false });
+            using var glb = new GlbReader(path);
+            var attributes = glb.Root.GetProperty("meshes")[0].GetProperty("primitives")[0].GetProperty("attributes");
+            var colors = glb.Accessor(attributes.GetProperty("COLOR_0").GetInt32());
+            for (int vertex = 0; vertex < colors.Length; vertex++)
+            {
+                uint packed = vertex < instanceColors.Length ? instanceColors[vertex] : originalColors[vertex];
+                float[] expected = [(packed & 255) / 255f, (packed >> 8 & 255) / 255f,
+                    (packed >> 16 & 255) / 255f, (packed >> 24) / 255f];
+                if (mode == 5) for (int channel = 0; channel < 3; channel++) expected[channel] = 1 - expected[channel];
+                Check(colors[vertex].Zip(expected).All(pair => Math.Abs(pair.First - pair.Second) < .0001f),
+                    "GLB raw/inverted RLI must prioritize instance RGB/alpha and retain geometry fallback.");
+            }
+        }
+        world.Objects[0].RliColors = [];
+        Check(geometry.VertexColors.SequenceEqual(originalColors), "Instance export mutated shared geometry RLI.");
+        Console.WriteLine("PASS: GLB instance RLI precedence, partial geometry fallback, independent alpha and source isolation");
     }
 
     internal static void VerifySallyMaterials(GlbReader glb)
