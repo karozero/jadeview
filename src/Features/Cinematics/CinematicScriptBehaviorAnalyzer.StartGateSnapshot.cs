@@ -2,12 +2,10 @@ namespace JadeView;
 
 internal static partial class CinematicScriptBehaviorAnalyzer
 {
-    private const int CapabilityStartGate = 0x008;
-
     private static string[] AnalyzeCapabilityGateSnapshot(CinematicScriptOwner owner,
         int enabledGateMask, IEnumerable<SceneObject>? worldObjects)
     {
-        if ((enabledGateMask & CapabilityStartGate) == 0) return [];
+        if ((enabledGateMask & CinematicStartGateCatalog.Capability) == 0) return [];
 
         const string referenceName = "des_o_actor_capa1";
         int? testedMask = EffectiveInteger(owner, "des_i_capa_test1");

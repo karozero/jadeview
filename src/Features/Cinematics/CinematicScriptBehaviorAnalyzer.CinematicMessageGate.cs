@@ -10,7 +10,7 @@ internal static partial class CinematicScriptBehaviorAnalyzer
     private static void AddCinematicMessageGateBehavior(List<string> diagnostics,
         CinematicScriptOwner owner, int testsMask)
     {
-        const int messageGateMask = 0x020;
+        const int messageGateMask = CinematicStartGateCatalog.Message;
         if ((testsMask & messageGateMask) == 0) return;
 
         int? expectedMessageId = EffectiveInteger(owner, "des_i_msg_ID");
@@ -159,7 +159,7 @@ internal static partial class CinematicScriptBehaviorAnalyzer
     {
         bool hasCinematicMessageGate = HasCinematicFunctionReference(gateOwner,
                 CinematicStartCallbackForMessageGate)
-            && (DeriveStartGateMask(gateOwner) & 0x020) != 0;
+            && (DeriveStartGateMask(gateOwner) & CinematicStartGateCatalog.Message) != 0;
         bool hasHelperTextMessageGate = CinematicScriptReader.TryDescribeCallbackReachability(gateOwner,
                 HelperTextStartCallbackForMessageGate, out _)
             && HasObjectReference(gateOwner, "des_o_acteur_msg");
@@ -290,7 +290,7 @@ internal static partial class CinematicScriptBehaviorAnalyzer
     private static bool HasMessageStartGate(CinematicScriptOwner owner)
     {
         bool cinematicGate = HasCinematicFunctionReference(owner, CinematicStartCallbackForMessageGate)
-            && (DeriveStartGateMask(owner) & 0x020) != 0;
+            && (DeriveStartGateMask(owner) & CinematicStartGateCatalog.Message) != 0;
         bool helperTextGate = CinematicScriptReader.TryDescribeCallbackReachability(owner,
                 HelperTextStartCallbackForMessageGate, out _)
             && HasObjectReference(owner, "des_o_acteur_msg");

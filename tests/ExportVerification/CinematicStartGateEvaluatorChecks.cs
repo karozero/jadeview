@@ -4,10 +4,23 @@ internal static class CinematicStartGateEvaluatorChecks
 {
     internal static void Verify()
     {
+        VerifySharedGateCatalog();
         VerifySavedFlagGateUsesOnlyKnownTimelineWrites();
         VerifyCapabilityGateUsesEvaluatedPreviewState();
         VerifyActorActivityGateRemainsUnknown();
         VerifyCustomBitGateUsesSerializedAndTimelinePreviewState();
+    }
+
+    private static void VerifySharedGateCatalog()
+    {
+        var gates = CinematicStartGateCatalog.StartGates;
+        Require(gates.Length == 10
+            && gates.Select(gate => gate.Mask).Distinct().Count() == gates.Length
+            && gates.Select(gate => gate.Variable).Distinct(StringComparer.Ordinal).Count() == gates.Length
+            && gates.Single(gate => gate.Mask == CinematicStartGateCatalog.Message).Variable == "des_o_acteur_msg"
+            && CinematicStartGateCatalog.InterruptionGates.All(gate =>
+                gates.Any(startGate => startGate.Mask == gate.Mask)),
+            "Cine_Events start and interruption predicates drifted from their shared mask catalog.");
     }
 
     private static void VerifySavedFlagGateUsesOnlyKnownTimelineWrites()

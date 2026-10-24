@@ -32,27 +32,6 @@ internal static partial class CinematicScriptBehaviorAnalyzer
     private const string SectorActivatorLoopCallback = "Activator_act_loop";
     private const string SectorActivatorAfterCallback = "Activator_act_afterrec";
     private const string SectorActivatorCutterCallback = "Activator_act_cutter";
-    private static readonly (int Mask, string Variable, string Description)[] CinematicStartGates =
-    [
-        (0x001, "des_o_actor_zone1", "zone 1 collision / optional model filter"),
-        (0x002, "des_o_actor_zone2", "zone 2 collision relation"),
-        (0x004, "des_o_actor_status1", "actor activity state"),
-        (0x008, "des_o_actor_capa1", "actor capability mask"),
-        (0x010, "des_o_actor_cbit1", "actor custom-bit mask"),
-        (0x020, "des_o_acteur_msg", "queued message ID and optional Int1 mask"),
-        (0x040, "des_o_actor_visible1", "actor visibility and viewport bounds"),
-        (0x080, "des_i_specialFlag_test1", "saved special flag test 1"),
-        (0x100, "des_i_specialFlag_test2", "saved special flag test 2"),
-        (0x200, "des_o_actor_desstruct", "destructible actor state")
-    ];
-    private static readonly (int Mask, string Variable, string Description)[] CinematicInterruptionGates =
-    [
-        (0x001, "des_o_actor_zone_exit1", "configured actor exit-zone collision test"),
-        (0x004, "des_o_actor_status_exit1", "actor activity-state exit test"),
-        (0x008, "des_o_actor_capa_exit1", "actor capability exit test"),
-        (0x080, "des_i_SPFlag_test_exit1", "saved special-flag exit test")
-    ];
-
     internal static string[] Analyze(CinematicScriptOwner owner,
         IEnumerable<CinematicScriptOwner>? loadedOwners = null,
         IEnumerable<SceneObject>? worldObjects = null)
@@ -171,7 +150,8 @@ internal static partial class CinematicScriptBehaviorAnalyzer
 
         var diagnostics = new List<string>();
         int testsMask = DeriveStartGateMask(owner);
-        var enabledGates = CinematicStartGates.Where(gate => (testsMask & gate.Mask) != 0)
+        var enabledGates = CinematicStartGateCatalog.StartGates
+            .Where(gate => (testsMask & gate.Mask) != 0)
             .Select(gate => gate.Description).ToArray();
         diagnostics.Add(enabledGates.Length == 0
             ? "No optional cine_tests_depart gates are derived from the effective OVA fields. "
@@ -179,11 +159,13 @@ internal static partial class CinematicScriptBehaviorAnalyzer
                 + "the serialized data alone cannot prove runtime activation."
             : $"Start gates derived by cine_init (mask 0x{testsMask:X}): {string.Join("; ", enabledGates)}. "
                 + "All enabled tests must pass; current gameplay state is unavailable.");
-        if (CinematicStartGates.Any(gate => !HasEffectiveValue(owner, gate.Variable)))
+        if (CinematicStartGateCatalog.StartGates.Any(gate => !HasEffectiveValue(owner, gate.Variable)))
             diagnostics.Add("Some start-gate OVA fields are unavailable; the derived mask may be incomplete.");
         diagnostics.AddRange(AnalyzeCapabilityGateSnapshot(owner, testsMask, worldObjects));
-        AddSpecialFlagTest(diagnostics, owner, testsMask, "des_i_specialFlag_test1", 0x80, 1);
-        AddSpecialFlagTest(diagnostics, owner, testsMask, "des_i_specialFlag_test2", 0x100, 2);
+        AddSpecialFlagTest(diagnostics, owner, testsMask, "des_i_specialFlag_test1",
+            CinematicStartGateCatalog.SpecialFlag1, 1);
+        AddSpecialFlagTest(diagnostics, owner, testsMask, "des_i_specialFlag_test2",
+            CinematicStartGateCatalog.SpecialFlag2, 2);
         AddCinematicMessageGateBehavior(diagnostics, owner, testsMask);
         return diagnostics.ToArray();
     }
@@ -611,9 +593,9 @@ internal static partial class CinematicScriptBehaviorAnalyzer
     private static int DeriveStartGateMask(CinematicScriptOwner owner)
     {
         int mask = 0;
-        foreach (var gate in CinematicStartGates)
+        foreach (var gate in CinematicStartGateCatalog.StartGates)
         {
-            if (gate.Mask >= 0x80
+            if (gate.Mask >= CinematicStartGateCatalog.SpecialFlag1
                 ? EffectiveInteger(owner, gate.Variable) is not 0 and not null
                 : HasObjectReference(owner, gate.Variable)
                     || gate.Variable == "des_o_actor_zone1"
@@ -813,12 +795,12 @@ internal static partial class CinematicScriptBehaviorAnalyzer
 
     private static void AddCinematicInterruptionBehavior(List<string> diagnostics, CinematicScriptOwner owner)
     {
-        int interruptionMask = CinematicInterruptionGates
-            .Where(gate => gate.Mask == 0x80
+        int interruptionMask = CinematicStartGateCatalog.InterruptionGates
+            .Where(gate => gate.Mask == CinematicStartGateCatalog.SpecialFlag1
                 ? EffectiveInteger(owner, gate.Variable) is not 0 and not null
                 : HasObjectReference(owner, gate.Variable))
             .Sum(gate => gate.Mask);
-        var configuredGates = CinematicInterruptionGates
+        var configuredGates = CinematicStartGateCatalog.InterruptionGates
             .Where(gate => (interruptionMask & gate.Mask) != 0)
             .Select(gate => gate.Description).ToArray();
 
@@ -829,9 +811,10 @@ internal static partial class CinematicScriptBehaviorAnalyzer
                 + "exit test passes; the callback then clears active-owner bit 0x4000, which sends playback "
                 + "through its stop-all and completion path.");
 
-        if ((interruptionMask & 0x001) != 0 && !HasEffectiveValue(owner, "des_o_actor_detec_exit1"))
+        if ((interruptionMask & CinematicStartGateCatalog.Zone1) != 0
+            && !HasEffectiveValue(owner, "des_o_actor_detec_exit1"))
             diagnostics.Add("The exit-zone test also reads des_o_actor_detec_exit1, which is unavailable in the loaded OVA snapshot.");
-        if (CinematicInterruptionGates.Any(gate => !HasEffectiveValue(owner, gate.Variable)))
+        if (CinematicStartGateCatalog.InterruptionGates.Any(gate => !HasEffectiveValue(owner, gate.Variable)))
             diagnostics.Add("Some cinematic exit-gate OVA fields are unavailable; the derived interruption mask may be incomplete.");
 
         float? duration = EffectiveFloat(owner, "des_f_duree_totale");

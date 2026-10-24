@@ -7,7 +7,7 @@ internal static partial class CinematicStartGateEvaluator
         (float Time, CinematicLiteralCall Call)[] timelineCalls,
         bool timelineCallsAvailable,
         float playhead,
-        (int Mask, string Variable, string Label, string[] MissingInputs) gate)
+        CinematicStartGateDefinition gate)
     {
         int? testedMask = ReadInteger(owner, "des_i_cbit_test1");
         int? expectedState = ReadInteger(owner, "des_i_cbit_etat1");
@@ -52,8 +52,7 @@ internal static partial class CinematicStartGateEvaluator
         out uint customBits,
         out string? diagnostic)
     {
-        const uint customBitMask = 0x0000FF00;
-        customBits = target.SerializedStateFlags & customBitMask;
+        customBits = target.SerializedStateFlags & GameObjectRuntimeFlags.CustomBitsMask;
         diagnostic = null;
         if (!float.IsFinite(playhead))
         {
@@ -102,15 +101,14 @@ internal static partial class CinematicStartGateEvaluator
 
     private static uint ApplyCustomBitMutation(uint currentBits, CinematicLiteralCall call)
     {
-        const uint customBitMask = 0x0000FF00;
         switch (CinematicEngineFunctionCatalog.NameFor(call.Selector))
         {
             case "OBJ_CustomBitsSet":
-                uint addedBits = call.Arguments[0] & customBitMask;
-                uint removedBits = call.Arguments[1] & customBitMask;
+                uint addedBits = call.Arguments[0] & GameObjectRuntimeFlags.CustomBitsMask;
+                uint removedBits = call.Arguments[1] & GameObjectRuntimeFlags.CustomBitsMask;
                 return (currentBits & ~removedBits) | addedBits;
             case "OBJ_CustomBitsNot":
-                return currentBits ^ (call.Arguments[0] & customBitMask);
+                return currentBits ^ (call.Arguments[0] & GameObjectRuntimeFlags.CustomBitsMask);
             default:
                 return currentBits;
         }

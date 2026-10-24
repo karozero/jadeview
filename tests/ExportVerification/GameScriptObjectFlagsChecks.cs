@@ -4,6 +4,13 @@ internal static class GameScriptObjectFlagsChecks
 {
     internal static void Verify()
     {
+        Check(CinematicEngineFunctionCatalog.NameFor(0x1FB3) == "OBJ_FlagsControlSet"
+            && CinematicEngineFunctionCatalog.NameFor(0x1FD8) == "OBJ_FlagInvisibleSet"
+            && CinematicEngineFunctionCatalog.NameFor(0x1FD9) == "OBJ_FlagInactiveSet"
+            && CinematicEngineFunctionCatalog.NameFor(0x3BC4) == "GRPInvisibleSet"
+            && CinematicEngineFunctionCatalog.NameFor(0x3BC5) == "GRPInactiveSet",
+            "Object flag handlers drifted from the embedded engine-function selector catalog.");
+
         const uint receiver = 0x1234;
         uint before = GameObjectRuntimeFlags.Inactive | 0xABCD;
         var clearInactive = GameScriptObjectFlags.Decode(receiver, 0x1FD9, [0])!;

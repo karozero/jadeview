@@ -114,8 +114,8 @@ internal static class CinematicEngineFunctionCatalog
             "OBJ_FlagsControlSet" when call.Arguments.Length >= 2 =>
                 $"add control flags 0x{call.Arguments[0]:X}, remove 0x{call.Arguments[1]:X}",
             "OBJ_CustomBitsSet" when call.Arguments.Length >= 2 =>
-                $"set target custom bits 0x{call.Arguments[0] & 0xFF00:X}, "
-                + $"clear 0x{call.Arguments[1] & 0xFF00:X} (engine applies only bits 8–15)",
+                $"set target custom bits 0x{call.Arguments[0] & GameObjectRuntimeFlags.CustomBitsMask:X}, "
+                + $"clear 0x{call.Arguments[1] & GameObjectRuntimeFlags.CustomBitsMask:X} (engine applies only bits 8–15)",
             "OBJ_RejoinAndOrient" when call.Arguments.Length >= 1 =>
                 $"copy the target's absolute transform from object {call.Arguments[0]:X8}",
             "OBJ_Rejoin" when call.Arguments.Length >= 1 =>
@@ -123,7 +123,7 @@ internal static class CinematicEngineFunctionCatalog
             "OBJ_FlagsIdentitySet" when call.Arguments.Length >= 2 =>
                 $"add identity flags 0x{call.Arguments[0]:X}, remove 0x{call.Arguments[1]:X}",
             "OBJ_CustomBitsTest" when call.Arguments.Length >= 1 =>
-                $"test whether target flags2 bits 8–15 intersect mask 0x{call.Arguments[0] & 0xFF00:X}",
+                $"test whether target flags2 bits 8–15 intersect mask 0x{call.Arguments[0] & GameObjectRuntimeFlags.CustomBitsMask:X}",
             "OBJFreezeModifier" when call.Arguments.Length >= 2 =>
                 $"{(call.Arguments[1] != 0 ? "freeze" : "unfreeze")} target modifier type {call.Arguments[0]}",
             "OBJ_BoneDisplayOrder" when call.Arguments.Length >= 2 =>

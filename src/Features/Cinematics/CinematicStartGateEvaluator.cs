@@ -9,20 +9,6 @@ namespace JadeView;
 internal static partial class CinematicStartGateEvaluator
 {
     private const string StartCallback = "Cine_Events_cine_tests_depart";
-    private static readonly (int Mask, string Variable, string Label, string[] MissingInputs)[] Gates =
-    [
-        (0x001, "des_o_actor_zone1", "Zone 1 collision", ["live actor position", "zone collision result"]),
-        (0x002, "des_o_actor_zone2", "Zone 2 relation", ["live actor/zone relation"]),
-        (0x004, "des_o_actor_status1", "Actor activity", ["target runtime flags2 bit 0 (activated-world state)", "des_i_activity_test1"]),
-        (0x008, "des_o_actor_capa1", "Actor capabilities", []),
-        (0x010, "des_o_actor_cbit1", "Actor custom bits", ["target serialized custom bits 8–15", "unambiguous timeline writes to the target"]),
-        (0x020, "des_o_acteur_msg", "Queued message", ["runtime message queue", "message ID and Int1"]),
-        (0x040, "des_o_actor_visible1", "Actor visibility", ["runtime visibility", "camera/viewport bounds"]),
-        (0x080, "des_i_specialFlag_test1", "Saved special flag test 1", []),
-        (0x100, "des_i_specialFlag_test2", "Saved special flag test 2", []),
-        (0x200, "des_o_actor_desstruct", "Destructible actor state", ["runtime destructible state"])
-    ];
-
     internal static CinematicStartGateEvaluation Evaluate(CinematicScriptOwner owner,
         IEnumerable<SceneObject>? worldObjects,
         IEnumerable<(float Time, CinematicLiteralCall Call)>? timelineCalls,
@@ -35,15 +21,16 @@ internal static partial class CinematicStartGateEvaluator
             return new(0, CinematicStartGateStatus.Unknown, [],
                 "No Cine_Events start callback is linked to this owner.");
 
-        var enabledGates = Gates.Where(gate => IsEnabled(owner, gate.Mask, gate.Variable)).ToArray();
+        var enabledGates = CinematicStartGateCatalog.StartGates
+            .Where(gate => IsEnabled(owner, gate.Mask, gate.Variable)).ToArray();
         bool timelineCallsAvailable = timelineCalls != null;
         var calls = timelineCalls?.ToArray() ?? [];
         var results = enabledGates.Select(gate => gate.Mask switch
         {
-            0x004 => EvaluateActivityGate(owner, worldObjects, gate),
-            0x008 => EvaluateCapabilityGate(owner, worldObjects, gate),
-            0x010 => EvaluateCustomBitGate(owner, worldObjects, calls, timelineCallsAvailable, playhead, gate),
-            0x080 or 0x100 => EvaluateSavedFlagGate(owner, calls, playhead, gate),
+            CinematicStartGateCatalog.Activity => EvaluateActivityGate(owner, worldObjects, gate),
+            CinematicStartGateCatalog.Capability => EvaluateCapabilityGate(owner, worldObjects, gate),
+            CinematicStartGateCatalog.CustomBits => EvaluateCustomBitGate(owner, worldObjects, calls, timelineCallsAvailable, playhead, gate),
+            CinematicStartGateCatalog.SpecialFlag1 or CinematicStartGateCatalog.SpecialFlag2 => EvaluateSavedFlagGate(owner, calls, playhead, gate),
             _ => Unknown(gate, "The source gate is configured, but its runtime input is not represented "
                 + "by the cinematic preview state.", gate.MissingInputs)
         }).ToArray();
@@ -73,7 +60,7 @@ internal static partial class CinematicStartGateEvaluator
 
     private static CinematicStartGateResult EvaluateActivityGate(CinematicScriptOwner owner,
         IEnumerable<SceneObject>? worldObjects,
-        (int Mask, string Variable, string Label, string[] MissingInputs) gate)
+        CinematicStartGateDefinition gate)
     {
         int? expectedActivity = ReadInteger(owner, "des_i_activity_test1");
         CinematicScriptObjectReference? actorReference = owner.EffectiveObjectReference(gate.Variable);
@@ -107,7 +94,7 @@ internal static partial class CinematicStartGateEvaluator
 
     private static CinematicStartGateResult EvaluateCapabilityGate(CinematicScriptOwner owner,
         IEnumerable<SceneObject>? worldObjects,
-        (int Mask, string Variable, string Label, string[] MissingInputs) gate)
+        CinematicStartGateDefinition gate)
     {
         int? testedMask = ReadInteger(owner, "des_i_capa_test1");
         int? expectedState = ReadInteger(owner, "des_i_capa_etat1");
@@ -146,7 +133,7 @@ internal static partial class CinematicStartGateEvaluator
     private static CinematicStartGateResult EvaluateSavedFlagGate(CinematicScriptOwner owner,
         (float Time, CinematicLiteralCall Call)[] timelineCalls,
         float playhead,
-        (int Mask, string Variable, string Label, string[] MissingInputs) gate)
+        CinematicStartGateDefinition gate)
     {
         int? encodedFlag = ReadInteger(owner, gate.Variable);
         if (encodedFlag is null)
@@ -206,7 +193,7 @@ internal static partial class CinematicStartGateEvaluator
     }
 
     private static CinematicStartGateResult Unknown(
-        (int Mask, string Variable, string Label, string[] MissingInputs) gate,
+        CinematicStartGateDefinition gate,
         string evidence,
         string[] missingInputs) => new(gate.Mask, gate.Label,
             CinematicStartGateStatus.Unknown,
@@ -216,10 +203,12 @@ internal static partial class CinematicStartGateEvaluator
 
     private static bool IsEnabled(CinematicScriptOwner owner, int mask, string variableName)
     {
-        if (mask >= 0x080) return ReadInteger(owner, variableName) is not 0 and not null;
+        if (mask >= CinematicStartGateCatalog.SpecialFlag1)
+            return ReadInteger(owner, variableName) is not 0 and not null;
         uint? reference = ReadUnsigned(owner, variableName);
         if (reference is > 0 and < uint.MaxValue) return true;
-        return mask == 0x001 && ReadInteger(owner, "des_i_actor_type1") is not 0 and not null;
+        return mask == CinematicStartGateCatalog.Zone1
+            && ReadInteger(owner, "des_i_actor_type1") is not 0 and not null;
     }
 
     private static int EnabledMask(CinematicStartGateResult[] results) =>

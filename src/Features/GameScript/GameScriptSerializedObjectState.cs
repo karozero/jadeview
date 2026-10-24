@@ -11,8 +11,6 @@ internal static class GameScriptSerializedObjectState
     internal const uint PreservedStateMask = 0x7B9C0080;
     internal const uint SerializedInvisibleBit = 0x20000000;
     internal const uint SerializedInactiveBit = 0x40000000;
-    private const uint CustomBitsMask = 0x0000FF00;
-
     internal static uint ProjectInitialFlags2(uint serializedState)
     {
         uint flags2 = serializedState & PreservedStateMask;
@@ -20,6 +18,6 @@ internal static class GameScriptSerializedObjectState
             flags2 |= GameObjectRuntimeFlags.Invisible;
         if ((serializedState & SerializedInactiveBit) != 0)
             flags2 |= GameObjectRuntimeFlags.Inactive;
-        return flags2 | (serializedState & CustomBitsMask);
+        return flags2 | (serializedState & GameObjectRuntimeFlags.CustomBitsMask);
     }
 }
