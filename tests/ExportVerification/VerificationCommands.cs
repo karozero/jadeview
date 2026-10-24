@@ -4,6 +4,9 @@ internal static class VerificationCommands
     {
         switch (arguments)
         {
+            case ["--script-model-variable-audit", var archive, var container]:
+                ScriptModelVariableAudit.Write(archive, container, output);
+                break;
             case ["--cinematic-audio-stream-clock-audit"]:
                 CinematicAudioStreamClockAudit.Run();
                 break;

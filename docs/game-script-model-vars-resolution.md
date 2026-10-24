@@ -18,4 +18,20 @@ This conclusion follows from the loader mechanics; it does **not** establish tha
 
 The passive model parser should represent model `.ova` entries as an ordered list, not a single candidate and not a set. JadeView's callback-slot resolver now follows this ordered replacement for the model reference list preserved by the PC loader: every candidate must resolve unambiguously in model-world scope, have a bounded payload and parse successfully before the final table can be returned. It retains repeated keys, so A/B/A selects A, and a final empty table replaces an earlier nonempty table. Missing, ambiguous or malformed inputs remain unresolved; no native pointer cache or callback execution is claimed. This avoids the unsafe “first nonzero OVA wins” behavior while retaining loader behavior for an exact, complete model key list.
 
+Callback slots, variable snapshots, object-reference lists and dialogue tables now share the same effective model-resource resolver. Earlier model fields cannot survive replacement by a later resource. A complete five-slot callback tail is required for model storage; instance storage is validated separately and retains owner-world scope.
+
 This resolves only AI model-level `.ova` destinations. Instance-level `.ova` references are separate: Iris queues one reference to `aiPtr->varsInstance` in `AI_ul_CallbackLoadInstance` (`ai_common.c:1387-1408`); Jaded queues its instance variable descriptor from a different destination (`AIload.c:2011-2039`). Their subsequent variable matching/instance initialization has separate semantics and is outside this note.
+
+## Retail reference census
+
+The read-only `--script-model-variable-audit <archive> <container>` verifier
+preserves the ordered OVA references of every decoded model, including repeated
+keys. It found 73 models in `FF005833`, 80 in `FF005520`, and 103 in `FF0045A2`;
+none of those models listed multiple OVA references. Counts are per container,
+not a deduplicated global inventory. Shared/fix resources may be outside the
+decoded container records. These fixtures therefore validate the ordinary
+single-model-resource case, but do not prove that ordered replacement causes
+any of the reported actor-pose defects. Synthetic ordered-reference fixtures
+cover replacement and absence of stale fields separately.
+
+A before/after comparison also checked callback keys and model/instance variable, object-reference and dialogue-line counts for 159 owners in FF005833, 204 in FF005520 and 248 in FF0045A2. All owner records matched. This establishes metadata stability on those fixtures, not runtime execution or a fix for the reported poses.
