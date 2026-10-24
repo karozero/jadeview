@@ -18,6 +18,7 @@ GameScriptSerializedObjectStateChecks.Verify();
 GameScriptObjectActivationChecks.Verify();
 PcCompiledScriptFunctionChecks.Verify();
 PcScriptCallbackSlotResolverChecks.Verify();
+ScriptOwnerResourceFixtureChecks.Verify();
 GameScriptObjectFlagsChecks.Verify();
 PcCollisionResourceChecks.Verify();
 CinematicActionLibraryChecks.Verify();

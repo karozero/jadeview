@@ -4,6 +4,9 @@ internal static class VerificationCommands
     {
         switch (arguments)
         {
+            case ["--script-owner-resource-fixture", var archive, var container, var ownerKey]:
+                ScriptOwnerResourceFixture.Write(archive, container, Convert.ToUInt32(ownerKey, 16), output);
+                break;
             case ["--script-model-variable-audit", var archive, var container]:
                 ScriptModelVariableAudit.Write(archive, container, output);
                 break;
