@@ -117,7 +117,7 @@ try {
         [void]$relocatedSymbolSet.Add($relocatedSymbol)
     }
     $directFunctionImports = @($functionImports | Where-Object { $relocatedSymbolSet.Contains($_) })
-    $directSameTranslationUnitCalls = @($definedFunctionSymbols | Where-Object { $relocatedSymbolSet.Contains($_) })
+    $directSameTranslationUnitReferences = @($definedFunctionSymbols | Where-Object { $relocatedSymbolSet.Contains($_) })
     $directDataReferences = @($dataSymbols | Where-Object { $relocatedSymbolSet.Contains($_) })
 
     @(
@@ -126,8 +126,8 @@ try {
         $(if ($sectionNumber) { "Scope: function section _$FunctionName (#$sectionNumber), compiled with /Gy" } else { 'Scope: all sections in this translation unit' })
         "Direct function imports referenced by relocations: $($directFunctionImports.Count)"
         ($directFunctionImports | ForEach-Object { "  $_" })
-        "Direct calls to functions defined in this translation unit: $($directSameTranslationUnitCalls.Count)"
-        ($directSameTranslationUnitCalls | ForEach-Object { "  $_" })
+        "Direct references to functions defined in this translation unit: $($directSameTranslationUnitReferences.Count)"
+        ($directSameTranslationUnitReferences | ForEach-Object { "  $_" })
         "Direct undefined data references in relocations: $($directDataReferences.Count)"
         ($directDataReferences | ForEach-Object { "  $_" })
     ) | Set-Content -LiteralPath $summaryFile -Encoding UTF8
