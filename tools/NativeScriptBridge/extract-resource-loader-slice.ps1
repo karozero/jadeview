@@ -4,8 +4,8 @@ $outputDirectory = Join-Path $repoRoot 'artifacts\native-script-bridge\resource-
 $outputSource = Join-Path $outputDirectory 'generated_source_slice.c'
 $outputManifest = Join-Path $outputDirectory 'generated_source_slice.manifest.json'
 $sourceDefinitions = @(
-    @{ Path = 'external/irisEng/ai_common.c'; Names = @('AI_ul_CallbackLoadInstance', 'AI_ul_CallbackLoadModel') },
-    @{ Path = 'external/irisEng/loading.c'; Names = @('LOA_ReadLong', 'LOA_ReadCharArray', 'LOA_MakeFileRef') }
+    @{ Path = 'external/irisEng/ai_common.c'; Names = @('AI_ul_CallbackLoadInstance', 'AI_ul_CallbackLoadModel', 'AI_ul_CallbackLoadVars') },
+    @{ Path = 'external/irisEng/loading.c'; Names = @('LOA_ReadLong', 'LOA_ReadShort', 'LOA_ReadFloat', 'LOA_ReadString', 'LOA_ReadCharArray', 'LOA_ReadVector', 'LOA_MakeFileRef') }
 )
 
 function Get-BytesSha256 {
@@ -213,7 +213,7 @@ $generatedStream.Dispose()
 
 $manifest = [pscustomobject]@{
     SchemaVersion = 1
-    Purpose = 'Exact-source native queue probe; no callback execution or BF/LOA resolution.'
+    Purpose = 'Exact-source native AIC/AIM/OVA reference queue probe; no OFC execution or BF-world resolution.'
     GeneratedSource = $outputSource.Substring($repoRoot.Length + 1)
     GeneratedSourceSha256 = Get-BytesSha256 -Bytes $generatedBytes
     GeneratedSourceEncoding = 'Original source bytes for extracted bodies; ASCII wrapper text'

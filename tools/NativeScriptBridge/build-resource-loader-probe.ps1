@@ -46,17 +46,33 @@ function Resolve-ManifestResource {
     }
 }
 
+function Get-LittleEndianWordHex {
+    param([byte[]] $Bytes, [int] $Offset)
+
+    if ($Offset -lt 0 -or $Offset -gt ($Bytes.Length - 4)) {
+        throw 'OVA callback/reference words are truncated.'
+    }
+
+    return [BitConverter]::ToUInt32($Bytes, $Offset).ToString('X8')
+}
+
 $instanceResource = Resolve-ManifestResource -Role 'instance'
 $instanceVariablesResource = Resolve-ManifestResource -Role 'instance-variables'
 $modelResource = Resolve-ManifestResource -Role 'model'
 $modelVariablesResource = Resolve-ManifestResource -Role 'model-entry:.ova'
 $modelFunctionResource = Resolve-ManifestResource -Role 'model-entry:.ofc'
+$instanceOvaResource = $instanceVariablesResource
 if ($instanceResource.Entry.Kind -ne 'q' -or
     $instanceVariablesResource.Entry.Kind -ne 't' -or
     $modelResource.Entry.Kind -ne 's' -or
     $modelVariablesResource.Entry.Kind -ne 't' -or
     $modelFunctionResource.Entry.Kind -ne 'r') {
     throw 'Manifest resource kinds do not match the bounded AIC/AIM reference chain.'
+}
+if ($instanceOvaResource.Entry.Kind -ne 't' -or
+    $instanceOvaResource.Entry.OvaSummary.Status -ne 'DecodedStorage' -or
+    $modelVariablesResource.Entry.OvaSummary.Status -ne 'DecodedStorage') {
+    throw 'Manifest OVA summaries are missing or unresolved; refusing to run the native OVA callbacks.'
 }
 if ($instanceResource.Entry.Size -ne 8 -or
     $modelResource.Entry.Size -le 0 -or
@@ -90,6 +106,10 @@ try {
         '/Foartifacts\native-script-bridge\resource-loader-probe\',
         '/Fe:artifacts\native-script-bridge\resource-loader-probe\resource_loader_probe.exe',
         'tools\NativeScriptBridge\resource_loader_probe.c',
+        'tools\NativeScriptBridge\resource_loader_probe_host.c',
+        'tools\NativeScriptBridge\resource_loader_probe_ova.c',
+        'tools\NativeScriptBridge\resource_loader_probe_report.c',
+        'external\irisEng\ai\ai_types.c',
         '/link', '/OPT:REF', '/INCREMENTAL:NO'
     ) -join ' '
     & $env:ComSpec /d /c $compileLine
@@ -103,7 +123,9 @@ try {
         $modelVariablesResource.Key,
         $modelFunctionResource.Key,
         $instanceResource.Path,
-        $modelResource.Path
+        $modelResource.Path,
+        $instanceOvaResource.Path,
+        $modelVariablesResource.Path
     )
     $outputLines = & $executablePath @runArguments 2>&1
     $exitCode = $LASTEXITCODE
@@ -117,12 +139,114 @@ try {
         ('INSTANCE_VARS_REF=' + $instanceVariablesResource.Key),
         ('MODEL_VARS_REF=' + $modelVariablesResource.Key),
         ('MODEL_FUNCTION_REF=' + $modelFunctionResource.Key),
-        'RESULT=source_callback_resource_references_only'
+        'RESULT=source_AIC_AIM_OVA_resource_references_only'
     )
     $observedLines = @($outputLines | ForEach-Object { $_.ToString().Trim() })
     foreach ($expectedLine in $expectedLines) {
         if ($observedLines -notcontains $expectedLine) {
             throw "Native callback output did not match manifest link '$expectedLine'. Actual output: $($observedLines -join ', ')"
+        }
+    }
+
+    foreach ($ovaCase in @(
+        [pscustomobject]@{ Label = 'INSTANCE'; Resource = $instanceOvaResource },
+        [pscustomobject]@{ Label = 'MODEL'; Resource = $modelVariablesResource }
+    )) {
+        $summary = $ovaCase.Resource.Entry.OvaSummary
+        $beginPrefix = 'OVA_BEGIN={0}|{1}|{2}' -f $ovaCase.Label, $summary.DescriptorCount, $summary.StorageLength
+        if ($observedLines -notcontains $beginPrefix) {
+            throw "Native OVA callback descriptor/storage counts differ from C# summary for $($ovaCase.Label)."
+        }
+        $nativeStorageLine = @($observedLines | Where-Object { $_.StartsWith("OVA_STORAGE=$($ovaCase.Label)|", [System.StringComparison]::Ordinal) })
+        $expectedStorageBuilder = [System.Text.StringBuilder]::new()
+        foreach ($storageWord in $summary.UntypedStorageWordsLittleEndian) {
+            $wordHex = [string]$storageWord
+            if ($wordHex.Length -ne 8 -or $wordHex -notmatch '^[0-9A-Fa-f]{8}$') {
+                throw "C# OVA storage summary contains an invalid 32-bit word for $($ovaCase.Label)."
+            }
+            for ($byteOffset = 6; $byteOffset -ge 0; $byteOffset -= 2) {
+                [void]$expectedStorageBuilder.Append($wordHex.Substring($byteOffset, 2).ToUpperInvariant())
+            }
+        }
+        $expectedStorage = $expectedStorageBuilder.ToString()
+        if ($nativeStorageLine.Count -ne 1 -or $nativeStorageLine[0] -ne "OVA_STORAGE=$($ovaCase.Label)|$expectedStorage") {
+            throw "Native OVA callback default storage differs from C# summary for $($ovaCase.Label)."
+        }
+
+        foreach ($descriptor in $summary.Descriptors) {
+            $descriptorLine = @($observedLines | Where-Object {
+                $_ -match ('^OVA_VAR=' + [regex]::Escape($ovaCase.Label) + '\|' + $descriptor.Index + '\|')
+            })
+            if ($descriptorLine.Count -ne 1) {
+                throw "Native OVA callback did not report one descriptor index $($descriptor.Index) for $($ovaCase.Label)."
+            }
+            $parts = $descriptorLine[0].Substring('OVA_VAR='.Length).Split('|')
+            $descriptorTail = [string]$descriptor.DescriptorTailHex
+            $expectedFlags = [Convert]::ToUInt16($descriptorTail, 16)
+            $valuePreview = [string]$descriptor.ValuePreview
+            if ($valuePreview.StartsWith('0x', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $expectedValue = [Convert]::ToUInt32($valuePreview.Substring(2), 16)
+            }
+            else {
+                $expectedValue = [uint32]::Parse($valuePreview, [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+            if ($parts[2] -ne $descriptor.Name -or
+                [int]$parts[3] -ne [int]$descriptor.Type -or
+                [int]$parts[4] -ne [int]$descriptor.StorageOffset -or
+                [uint32]$parts[5] -ne [Convert]::ToUInt32([string]$descriptor.PackedArrayCount, 16) -or
+                [Convert]::ToUInt16($parts[6], 16) -ne $expectedFlags -or
+                [Convert]::ToUInt32($parts[7], 16) -ne $expectedValue) {
+                throw "Native OVA descriptor/default value differs from C# summary for $($ovaCase.Label) index $($descriptor.Index)."
+            }
+        }
+
+        $ovaBytes = [System.IO.File]::ReadAllBytes($ovaCase.Resource.Path)
+        $callbackStart = [int]$summary.StorageStart + [int]$summary.StorageLength
+        $expectedCallbacks = @()
+        for ($slotIndex = 0; $slotIndex -lt 5; $slotIndex++) {
+            $callbackKey = Get-LittleEndianWordHex -Bytes $ovaBytes -Offset ($callbackStart + ($slotIndex * 4))
+            if ($callbackKey -ne '00000000' -and $callbackKey -ne 'FFFFFFFF') {
+                $expectedCallbacks += [pscustomobject]@{ Slot = $slotIndex; Key = $callbackKey; IsInstance = $false }
+            }
+        }
+
+        $functionListStart = $callbackStart + 20
+        if ($functionListStart -lt $ovaBytes.Length) {
+            $instanceFunctionCount = [Convert]::ToUInt32((Get-LittleEndianWordHex -Bytes $ovaBytes -Offset $functionListStart), 16)
+            if ($instanceFunctionCount -gt 4096 -or ($functionListStart + 4 + (4 * $instanceFunctionCount)) -ne $ovaBytes.Length) {
+                throw "OVA instance-function list is malformed for $($ovaCase.Label)."
+            }
+            for ($functionIndex = 0; $functionIndex -lt $instanceFunctionCount; $functionIndex++) {
+                $functionKey = Get-LittleEndianWordHex -Bytes $ovaBytes -Offset ($functionListStart + 4 + (4 * $functionIndex))
+                if ($functionKey -ne '00000000' -and $functionKey -ne 'FFFFFFFF') {
+                    $expectedCallbacks += [pscustomobject]@{ Slot = $functionIndex; Key = $functionKey; IsInstance = $true }
+                }
+            }
+        }
+
+        $actualCallbacks = @($observedLines | Where-Object {
+            $_.StartsWith("OVA_CALLBACK=$($ovaCase.Label)|", [System.StringComparison]::Ordinal)
+        } | ForEach-Object {
+            $parts = $_.Substring('OVA_CALLBACK='.Length).Split('|')
+            [pscustomobject]@{ Slot = [int]$parts[1]; Key = $parts[2]; Flags = [int]$parts[3]; IsInstance = $false }
+        })
+        $actualInstanceFunctions = @($observedLines | Where-Object {
+            $_.StartsWith("OVA_INSTANCE_FUNCTION=$($ovaCase.Label)|", [System.StringComparison]::Ordinal)
+        } | ForEach-Object {
+            $parts = $_.Substring('OVA_INSTANCE_FUNCTION='.Length).Split('|')
+            [pscustomobject]@{ Slot = [int]$parts[1]; Key = $parts[2]; Flags = [int]$parts[3]; IsInstance = $true }
+        })
+        $allActualReferences = @($actualCallbacks) + @($actualInstanceFunctions)
+        if ($allActualReferences.Count -ne $expectedCallbacks.Count) {
+            throw "Native OVA callback reference count differs from raw source fields for $($ovaCase.Label)."
+        }
+        foreach ($expectedCallback in $expectedCallbacks) {
+            $matchingReference = @($allActualReferences | Where-Object {
+                $_.Slot -eq $expectedCallback.Slot -and $_.Key -eq $expectedCallback.Key -and $_.IsInstance -eq $expectedCallback.IsInstance -and $_.Flags -eq 1
+            })
+            if ($matchingReference.Count -ne 1) {
+                throw "Native OVA callback key/slot/flag differs from raw source for $($ovaCase.Label), slot $($expectedCallback.Slot)."
+            }
         }
     }
 

@@ -9,6 +9,9 @@ typedef char NativeScriptNodeMustBe8Bytes[(sizeof(tAINode) == 8) ? 1 : -1];
 typedef char NativeScriptFunctionMustBe24Bytes[(sizeof(tAIFunction) == 24) ? 1 : -1];
 typedef char NativeScriptVariableDescriptorMustBe12Bytes[(sizeof(AIVarElem) == 12) ? 1 : -1];
 typedef char NativeScriptVariableNameMustBe30Bytes[(sizeof(AIVarNameElem) == 30) ? 1 : -1];
+typedef char NativeScriptVectorMustBe12Bytes[(sizeof(Vec3) == 12) ? 1 : -1];
+typedef char NativeScriptMessageMustBe52Bytes[(sizeof(tMessage) == 52) ? 1 : -1];
+typedef char NativeScriptTextReferenceMustBe8Bytes[(sizeof(tTextGet) == 8) ? 1 : -1];
 typedef char NativeScriptInstanceMustHaveFiveCallbackSlots[
     (sizeof(((tAI*)0)->instanceCallBacks) / sizeof(tAIFunction*) == 5) ? 1 : -1];
 

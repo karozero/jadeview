@@ -1,170 +1,7 @@
-#define _CRT_SECURE_NO_WARNINGS
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "resource_loader_probe_host.h"
 
-#include "../../external/irisEng/memory.h"
-#include "../../external/irisEng/ai.h"
-#include "../../external/irisEng/ai/ai_compiledscripts.h"
-#include "../../external/irisEng/bigfiles.h"
-#include "../../external/irisEng/loading.h"
-#include "native_layout_contract.h"
-
-#define INSTANCE_INPUT_TOKEN 0x1000u
-#define MODEL_INPUT_TOKEN 0x2000u
-#define MAX_HOST_ALLOCATION (16u * 1024u * 1024u)
-
-typedef struct sInputResource
-{
-    unsigned int token;
-    const char* path;
-    unsigned char* bytes;
-    int byteCount;
-} InputResource;
-
-static InputResource g_inputs[2];
-
-extern tAIModel* AI_ul_CallbackLoadModel(uint32_t offset);
-extern tAIVars* AI_ul_CallbackLoadVars(uint32_t offset);
-extern tAIFunction* AI_ul_CallbackLoadFunction(uint32_t offset);
-
-static void fail_fast(const char* apiName)
-{
-    fprintf(stderr, "UNSUPPORTED_ENGINE_API=%s\n", apiName);
-    exit(90);
-}
-
+/* Original extracted source bodies remain unmodified. */
 #include "../../artifacts/native-script-bridge/resource-loader-probe/generated_source_slice.c"
-
-/* These callback implementations are not executed by the queue probe. The
- * function addresses are retained only so LOA_MakeFileRef can capture them. */
-tAIVars* AI_ul_CallbackLoadVars(uint32_t offset)
-{
-    (void)offset;
-    fail_fast("AI_ul_CallbackLoadVars callback intentionally not executed");
-    return NULL;
-}
-
-tAIFunction* AI_ul_CallbackLoadFunction(uint32_t offset)
-{
-    (void)offset;
-    fail_fast("AI_ul_CallbackLoadFunction callback intentionally not executed");
-    return NULL;
-}
-
-static int read_input_resource(InputResource* resource)
-{
-    FILE* inputFile;
-    long inputLength;
-
-    inputFile = fopen(resource->path, "rb");
-    if (!inputFile)
-        return 0;
-
-    if (fseek(inputFile, 0, SEEK_END) != 0)
-    {
-        fclose(inputFile);
-        return 0;
-    }
-
-    inputLength = ftell(inputFile);
-    if (inputLength < 0 || inputLength > 16 * 1024 * 1024)
-    {
-        fclose(inputFile);
-        return 0;
-    }
-
-    if (fseek(inputFile, 0, SEEK_SET) != 0)
-    {
-        fclose(inputFile);
-        return 0;
-    }
-
-    resource->bytes = (unsigned char*)malloc((size_t)inputLength + 1);
-    if (!resource->bytes)
-    {
-        fclose(inputFile);
-        return 0;
-    }
-
-    resource->byteCount = (int)inputLength;
-    if (fread(resource->bytes, 1, (size_t)inputLength, inputFile) != (size_t)inputLength)
-    {
-        fclose(inputFile);
-        return 0;
-    }
-
-    resource->bytes[inputLength] = 0;
-    fclose(inputFile);
-    return 1;
-}
-
-static InputResource* find_input_resource(unsigned int token)
-{
-    int resourceIndex;
-
-    for (resourceIndex = 0; resourceIndex < 2; ++resourceIndex)
-    {
-        if (g_inputs[resourceIndex].token == token)
-            return &g_inputs[resourceIndex];
-    }
-
-    return NULL;
-}
-
-char* BIG_pc_ReadFileTmp(int offset, int* size)
-{
-    InputResource* resource;
-
-    resource = find_input_resource((unsigned int)offset);
-    if (!resource)
-        fail_fast("BIG_pc_ReadFileTmp outside manifest-selected fixture resources");
-
-    if (size)
-        *size = resource->byteCount;
-    return (char*)resource->bytes;
-}
-
-void* MEM_p_Alloc(unsigned int size)
-{
-    void* allocation;
-
-    if (size > MAX_HOST_ALLOCATION)
-        fail_fast("MEM_p_Alloc outside bounded fixture allocation limit");
-
-    allocation = calloc(1, size ? size : 1);
-    if (!allocation)
-        fail_fast("MEM_p_Alloc host allocation failure");
-    return allocation;
-}
-
-static int read_hex_key(const char* text, unsigned int* key)
-{
-    char* endPointer;
-    unsigned long parsedValue;
-
-    parsedValue = strtoul(text, &endPointer, 16);
-    if (text[0] == '\0' || *endPointer != '\0' || parsedValue > 0xfffffffful)
-        return 0;
-    *key = (unsigned int)parsedValue;
-    return 1;
-}
-
-static void write_key_line(const char* roleName, int key)
-{
-    printf("%s=%08X\n", roleName, (unsigned int)key);
-}
-
-static int verify_reference(int index, int expectedKey, void* expectedCallback, void** expectedDestination, byte expectedFlags)
-{
-    loaStackElem* queuedReference;
-
-    queuedReference = &LOA_gast_Stack[index];
-    return queuedReference->key == expectedKey &&
-        queuedReference->funcPtr == expectedCallback &&
-        queuedReference->retValPtr == expectedDestination &&
-        queuedReference->flags == expectedFlags;
-}
 
 int main(int argumentCount, char** arguments)
 {
@@ -175,9 +12,16 @@ int main(int argumentCount, char** arguments)
     tAI* loadedInstance;
     tAIModel* loadedModel;
 
-    if (argumentCount != 7)
+    tAIVars* instanceVariables;
+    tAIVars* modelVariables;
+    int firstInstanceOvaReference;
+    int lastInstanceOvaReference;
+    int firstModelOvaReference;
+    int lastModelOvaReference;
+
+    if (argumentCount != 9)
     {
-        fprintf(stderr, "Usage: resource_loader_probe <instance-key> <instance-vars-key> <model-vars-key> <function-key> <instance-resource> <model-resource>\n");
+        fprintf(stderr, "Usage: resource_loader_probe <model-key> <instance-vars-key> <model-vars-key> <function-key> <instance-aic> <model-aim> <instance-ova> <model-ova>\n");
         return 2;
     }
 
@@ -194,7 +38,12 @@ int main(int argumentCount, char** arguments)
     g_inputs[0].path = arguments[5];
     g_inputs[1].token = MODEL_INPUT_TOKEN;
     g_inputs[1].path = arguments[6];
-    if (!read_input_resource(&g_inputs[0]) || !read_input_resource(&g_inputs[1]))
+    g_inputs[2].token = INSTANCE_VARS_INPUT_TOKEN;
+    g_inputs[2].path = arguments[7];
+    g_inputs[3].token = MODEL_VARS_INPUT_TOKEN;
+    g_inputs[3].path = arguments[8];
+    if (!read_input_resource(&g_inputs[0]) || !read_input_resource(&g_inputs[1]) ||
+        !read_input_resource(&g_inputs[2]) || !read_input_resource(&g_inputs[3]))
     {
         fprintf(stderr, "Unable to read one of the explicit fixture resources.\n");
         return 2;
@@ -249,6 +98,42 @@ int main(int argumentCount, char** arguments)
         return 6;
     }
 
-    printf("RESULT=source_callback_resource_references_only\n");
+    if (!validate_compact_ova(&g_inputs[2]) || !validate_compact_ova(&g_inputs[3]))
+    {
+        fprintf(stderr, "OVA resource is malformed or uses an unsupported compact type/layout.\n");
+        return 7;
+    }
+
+    BIG_gi_ReadMode = 2;
+    LOA_gb_SpeedMode = 1;
+    firstInstanceOvaReference = LOA_gi_LastRef;
+    instanceVariables = AI_ul_CallbackLoadVars(INSTANCE_VARS_INPUT_TOKEN);
+    lastInstanceOvaReference = LOA_gi_LastRef;
+    if (!instanceVariables)
+    {
+        fprintf(stderr, "Native instance OVA callback returned null.\n");
+        return 8;
+    }
+    if (!report_vars_resource("INSTANCE", instanceVariables, firstInstanceOvaReference, lastInstanceOvaReference))
+    {
+        fprintf(stderr, "Instance OVA queued an unsupported callback destination or callback contract.\n");
+        return 10;
+    }
+
+    firstModelOvaReference = LOA_gi_LastRef;
+    modelVariables = AI_ul_CallbackLoadVars(MODEL_VARS_INPUT_TOKEN);
+    lastModelOvaReference = LOA_gi_LastRef;
+    if (!modelVariables)
+    {
+        fprintf(stderr, "Native model OVA callback returned null.\n");
+        return 9;
+    }
+    if (!report_vars_resource("MODEL", modelVariables, firstModelOvaReference, lastModelOvaReference))
+    {
+        fprintf(stderr, "Model OVA queued an unsupported callback destination or callback contract.\n");
+        return 11;
+    }
+
+    printf("RESULT=source_AIC_AIM_OVA_resource_references_only\n");
     return 0;
 }

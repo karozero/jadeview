@@ -83,4 +83,36 @@ $truncatedJson = ConvertTo-Json -InputObject $truncatedFixture.Manifest -Depth 2
 [System.IO.File]::WriteAllText($truncatedManifestPath, $truncatedJson, [System.Text.UTF8Encoding]::new($false))
 Assert-ProbeFailsWith -ManifestRelativePath $truncatedFixture.ManifestRelativePath -ExpectedText 'AIC/AIM manifest payload lengths'
 
-Write-Output 'Native resource-loader probe: both fixtures passed; hash mismatch and truncated AIC were rejected.'
+$truncatedOvaFixture = New-TemporaryFixture -SourceManifest $fixtureManifests[0] -DestinationName 'truncated-ova'
+$truncatedOvaLink = @($truncatedOvaFixture.Manifest.Fixture.Links | Where-Object { $_.Role -eq 'instance-variables' })[0]
+$truncatedOvaResource = @($truncatedOvaFixture.Manifest.Fixture.Resources | Where-Object { $_.File -eq $truncatedOvaLink.File })[0]
+$truncatedOvaPath = Join-Path $truncatedOvaFixture.Directory $truncatedOvaResource.File
+$truncatedOvaBytes = [System.IO.File]::ReadAllBytes($truncatedOvaPath)
+$shortOvaBytes = [byte[]]::new($truncatedOvaBytes.Length - 1)
+[Array]::Copy($truncatedOvaBytes, $shortOvaBytes, $shortOvaBytes.Length)
+[System.IO.File]::WriteAllBytes($truncatedOvaPath, $shortOvaBytes)
+$truncatedOvaResource.Size = $shortOvaBytes.Length
+$truncatedOvaResource.Sha256 = (Get-FileHash -LiteralPath $truncatedOvaPath -Algorithm SHA256).Hash
+$truncatedOvaManifestPath = Join-Path $truncatedOvaFixture.Directory 'manifest.json'
+$truncatedOvaJson = ConvertTo-Json -InputObject $truncatedOvaFixture.Manifest -Depth 20
+[System.IO.File]::WriteAllText($truncatedOvaManifestPath, $truncatedOvaJson, [System.Text.UTF8Encoding]::new($false))
+Assert-ProbeFailsWith -ManifestRelativePath $truncatedOvaFixture.ManifestRelativePath -ExpectedText 'OVA resource is malformed or uses an unsupported compact type/layout'
+
+$unknownTypeFixture = New-TemporaryFixture -SourceManifest $fixtureManifests[0] -DestinationName 'unknown-ova-type'
+$unknownTypeLink = @($unknownTypeFixture.Manifest.Fixture.Links | Where-Object { $_.Role -eq 'model-entry:.ova' })[0]
+$unknownTypeResource = @($unknownTypeFixture.Manifest.Fixture.Resources | Where-Object { $_.File -eq $unknownTypeLink.File })[0]
+$unknownTypePath = Join-Path $unknownTypeFixture.Directory $unknownTypeResource.File
+$unknownTypeBytes = [System.IO.File]::ReadAllBytes($unknownTypePath)
+# First descriptor begins at byte 4; its serialized type is at descriptor offset 8.
+$unknownTypeBytes[12] = 0xFF
+$unknownTypeBytes[13] = 0xFF
+[System.IO.File]::WriteAllBytes($unknownTypePath, $unknownTypeBytes)
+$unknownTypeResource.Size = $unknownTypeBytes.Length
+$unknownTypeResource.Sha256 = (Get-FileHash -LiteralPath $unknownTypePath -Algorithm SHA256).Hash
+# Keep the prior summary intentionally: rejection must come from native payload preflight.
+$unknownTypeManifestPath = Join-Path $unknownTypeFixture.Directory 'manifest.json'
+$unknownTypeJson = ConvertTo-Json -InputObject $unknownTypeFixture.Manifest -Depth 20
+[System.IO.File]::WriteAllText($unknownTypeManifestPath, $unknownTypeJson, [System.Text.UTF8Encoding]::new($false))
+Assert-ProbeFailsWith -ManifestRelativePath $unknownTypeFixture.ManifestRelativePath -ExpectedText 'OVA resource is malformed or uses an unsupported compact type/layout'
+
+Write-Output 'Native resource-loader probe: both fixtures passed; hash mismatch, truncated AIC, truncated OVA, and unknown OVA type were rejected.'
