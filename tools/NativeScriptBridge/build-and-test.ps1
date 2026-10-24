@@ -22,6 +22,7 @@ try {
         '/Foartifacts\native-script-bridge\',
         '/Fe:artifacts\native-script-bridge\activateur_capture.exe',
         'tools\NativeScriptBridge\activateur_capture.c',
+        'tools\NativeScriptBridge\capture_host.c',
         'external\irisEng\ai\ai_bge\ai_compiledscripts_activateur_avec_sf.c',
         '/link', '/OPT:REF', '/INCREMENTAL:NO'
     ) -join ' '
