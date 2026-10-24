@@ -118,8 +118,13 @@ sealed class App : IDisposable
 
     public void Run()
     {
+        var frameTrace = AssetsFrameTrace.Create();
+        if (frameTrace != null) _shell.Renderer.CapturePerformanceDiagnostics = true;
         while (!Raylib.WindowShouldClose())
         {
+            long traceStart = frameTrace != null ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+            long traceAllocated = frameTrace != null ? GC.GetAllocatedBytesForCurrentThread() : 0;
+            int traceGen2 = frameTrace != null ? GC.CollectionCount(2) : 0;
             // Обновление заголовка окна с индикацией dirty-статуса "*"
             UpdateWindowTitle();
 
@@ -129,10 +134,20 @@ sealed class App : IDisposable
 
             UpdateViewportMouseCapture();
             rlImGui.Begin();
+            long shellStart = frameTrace != null ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
             _shell.Draw();
+            double shellMilliseconds = frameTrace != null ? System.Diagnostics.Stopwatch.GetElapsedTime(shellStart).TotalMilliseconds : 0;
+            long submissionStart = frameTrace != null ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
             rlImGui.End();
-
+            double submissionMilliseconds = frameTrace != null ? System.Diagnostics.Stopwatch.GetElapsedTime(submissionStart).TotalMilliseconds : 0;
+            long presentStart = frameTrace != null ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
             Raylib.EndDrawing();
+            if (frameTrace != null)
+            {
+                double presentMilliseconds = System.Diagnostics.Stopwatch.GetElapsedTime(presentStart).TotalMilliseconds;
+                frameTrace.Record(_shell, traceStart, shellMilliseconds, submissionMilliseconds, presentMilliseconds, traceAllocated, traceGen2);
+                if (Raylib.IsKeyPressed(KeyboardKey.F10)) frameTrace.Save();
+            }
 
             // Автоматизированное smoke-тестирование
             if (_smokeDir != null && RunSmokeTest())
@@ -140,6 +155,7 @@ sealed class App : IDisposable
                 break;
             }
         }
+        frameTrace?.Save();
     }
 
     private void UpdateViewportMouseCapture()
