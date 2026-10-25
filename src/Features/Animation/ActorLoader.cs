@@ -9,7 +9,8 @@ internal static partial class ActorLoader
     private static DateTime fixStamp;
     private static byte[]? fixBytes;
     private static PcSceneLoader.Result? fixReplay;
-    public static void Build(byte[] bytes, PcSceneLoader.Result replay, SceneDocument doc)
+    public static void Build(byte[] bytes, PcSceneLoader.Result replay, SceneDocument doc,
+        bool resourceReferencesOnly = false)
     {
         var origins = replay.Records.ToDictionary(r => r, r => bytes);
         var all = new List<PcSceneLoader.Record>();
@@ -27,16 +28,19 @@ internal static partial class ActorLoader
             }
         }
         all.AddRange(replay.Records);
-        CinematicActionLibraryReader.Load(all, origins, doc);
-        CinematicSoundBankReader.Load(all, origins, doc);
-        CinematicScreenControllerReader.Load(all, origins, doc);
-        CinematicEnvironmentReader.Load(all, origins, doc);
-        CinematicShockwaveReader.Load(all, origins, doc);
-        CinematicFlashReader.Load(all, origins, doc);
-        CinematicLightningReader.Load(all, origins, doc);
+        if (!resourceReferencesOnly)
+        {
+            CinematicActionLibraryReader.Load(all, origins, doc);
+            CinematicSoundBankReader.Load(all, origins, doc);
+            CinematicScreenControllerReader.Load(all, origins, doc);
+            CinematicEnvironmentReader.Load(all, origins, doc);
+            CinematicShockwaveReader.Load(all, origins, doc);
+            CinematicFlashReader.Load(all, origins, doc);
+            CinematicLightningReader.Load(all, origins, doc);
+            CinematicScriptReader.Load(all, origins, doc);
+        }
         var resources = all.GroupBy(r => r.Key).ToDictionary(g => g.Key, g => g.Last());
         var scopedResources = new PcSceneResourceIndex(all);
-        CinematicScriptReader.Load(all, origins, doc);
         Dictionary<uint, PcSceneLoader.Record>? scope = null;
         PcSceneLoader.Record? Find(uint key) => scope?.GetValueOrDefault(key) ?? resources.GetValueOrDefault(key);
         List<PcSceneLoader.Record> Group(uint key)
@@ -49,7 +53,8 @@ internal static partial class ActorLoader
         var cinematicWorlds = replay.Worlds.Where(world => world.Name.Contains("cine", StringComparison.OrdinalIgnoreCase))
             .ToDictionary(world => world.Key, world => world.Name);
         var cinematicWorldKeys = cinematicWorlds.Keys.ToHashSet();
-        CinematicTimelineClipDiscovery.Load(doc, replay, origins, cinematicWorlds, sceneEventCache);
+        if (!resourceReferencesOnly)
+            CinematicTimelineClipDiscovery.Load(doc, replay, origins, cinematicWorlds, sceneEventCache);
         foreach (var w in doc.Worlds)
         {
             scope = replay.Worlds.FirstOrDefault(world => world.Key == w.Key)?.ActorResources;
@@ -123,7 +128,7 @@ internal static partial class ActorLoader
                 }
                 if (actor.Clips.Count == 0 && Find(r.Events) is { Kind: 'i' } e)
                     actor.Clips.Add(new() { Key = e.Key, Name = $"{e.Key:X8}", Read = () => AnimationReader.Read(origins[e], e.Offset, e.Size) });
-                if (actor.Clips.Count == 0)
+                if (actor.Clips.Count == 0 && !resourceReferencesOnly)
                 {
                     AddLinkedSceneMotionClips(actor, replay, origins, cinematicWorldKeys,
                         cinematicWorlds, sceneEventCache);
@@ -131,7 +136,8 @@ internal static partial class ActorLoader
                         ? "Scene motion tracks only. Gameplay animation table is not linked in this actor record."
                         : "No animation table or matching scene motion tracks in loaded data.";
                 }
-                AddCinematicClips(actor, root, replay, origins, cinematicWorlds, sceneEventCache);
+                if (!resourceReferencesOnly)
+                    AddCinematicClips(actor, root, replay, origins, cinematicWorlds, sceneEventCache);
                 actor.ApplyShape(r.Shape); actor.Evaluate(0); w.Actors.Add(actor);
             }
             w.Objects.RemoveAll(o => templates.Contains(o));
@@ -142,6 +148,7 @@ internal static partial class ActorLoader
                     sceneObject.GroupMemberKeys = Group(source.Prefab).Select(member => member.Key).ToArray();
             }
         }
+        if (resourceReferencesOnly) return;
         doc.CollisionResources = PcCollisionResourceCatalogBuilder.Build(all, origins, doc);
         foreach (var world in doc.Worlds)
         {

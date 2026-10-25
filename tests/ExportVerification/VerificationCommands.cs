@@ -4,6 +4,9 @@ internal static class VerificationCommands
     {
         switch (arguments)
         {
+            case ["--cinematic-loading-performance-audit", var archive, var container, var clipKey]:
+                CinematicLoadingPerformanceAudit.Run(archive, container, Convert.ToUInt32(clipKey, 16));
+                break;
             case ["--cinematic-sight-set-checks"]:
                 CinematicSightSetChecks.Verify(output);
                 break;

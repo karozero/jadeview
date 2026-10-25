@@ -33,10 +33,18 @@ internal static class CinematicScriptMaterialConstantChecks
         // The source setter is under `!AI_EvalFunc_ARRBitTest_C(..., 2452)`.
         // Model the known first-run state explicitly; an unknown persistent flag
         // must stay unresolved rather than being guessed by the preview.
-        IReadOnlyDictionary<uint, uint> constants = playback.Evaluate(0,
-            new Dictionary<int, bool?> { [2452] = false });
+        var savedFlags = new Dictionary<int, bool?> { [2452] = false };
+        IReadOnlyDictionary<uint, uint> constants = playback.Evaluate(0, savedFlags);
         if (!constants.TryGetValue(materialKey, out uint packedColor) || packedColor != 0x444444)
             throw new InvalidDataException($"Expected source-backed callback material color 0x444444, got 0x{packedColor:X8}; diagnostics={string.Join(" | ", playback.Diagnostics)}; callbacks={string.Join(",", document.CinematicScriptOwners[new(worldKey, ownerKey)].CallbackNames)}");
+
+        savedFlags[2452] = true;
+        if (playback.Evaluate(1, savedFlags).ContainsKey(materialKey))
+            throw new InvalidDataException("Changing a saved flag in the same dictionary must invalidate a cached material callback window.");
+        savedFlags[2452] = false;
+        if (!playback.Evaluate(0, savedFlags).ContainsKey(materialKey)
+            || playback.Evaluate(0, null).ContainsKey(materialKey))
+            throw new InvalidDataException("Reverse seek and returning to unknown flags must preserve callback gating.");
 
         Console.WriteLine("PASS: source-reachable MATSetConstant callback applies a static material color, not alpha");
     }

@@ -36,6 +36,7 @@ internal sealed class CinematicScriptLocalAlphaPlayback
     private readonly IReadOnlyDictionary<uint, ResolvedMaterial> materials;
     private readonly IReadOnlyList<(float Time, CinematicLiteralCall Call)> timelineCalls;
     private readonly Dictionary<(uint Material, int Level), byte> evaluated = [];
+    private readonly CinematicScriptCallbackWindowCache windowCache = new();
 
     private CinematicScriptLocalAlphaPlayback(Write[] writes, WorldData world,
         IReadOnlyDictionary<uint, ResolvedMaterial> materials,
@@ -62,7 +63,8 @@ internal sealed class CinematicScriptLocalAlphaPlayback
             var activeWrites = new List<(Write Write, float Start, byte Alpha)>();
             foreach (Write write in materialWrites)
             {
-                CinematicScriptCallbackWindow? window = ResolveWindow(write, savedFlags);
+                CinematicScriptCallbackWindow? window = windowCache.GetOrResolve(write, savedFlags,
+                    () => ResolveWindow(write, savedFlags));
                 if (window is not { } callbackWindow || playhead < callbackWindow.Start
                     || callbackWindow.End is { } end && playhead > end
                     || HasLaterTimelineAlpha(write, callbackWindow.Start, playhead))

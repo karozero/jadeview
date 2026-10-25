@@ -264,6 +264,8 @@ internal static class CinematicFacialSignalChecks
             .Add(100, staticGeometry);
 
         var playback = CinematicPlayback.Discover(document, world, resolver).Single();
+        if (target.MorphPreview != null)
+            throw new InvalidDataException("Cinematic discovery eagerly initialized static-object morph playback before the clip was activated.");
         if (!playback.FacialDiagnostics.Any(diagnostic => diagnostic.Contains("1 EVE morph-channel signal")))
             throw new InvalidDataException("Static morph playback diagnostics omitted the EVE target evidence.");
         playback.Activate();

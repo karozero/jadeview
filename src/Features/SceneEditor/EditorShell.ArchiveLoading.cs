@@ -1,4 +1,5 @@
 using System.Text;
+using System.Diagnostics;
 using System.Numerics;
 using ImGuiNET;
 using Raylib_cs;
@@ -54,6 +55,7 @@ public sealed partial class EditorShell
                 _cinematicWorld = null;
                 _cinematicPlayback = null;
                 _cinematicPlayers = [];
+                _cinematicClipSources = [];
                 _loadedCinematicEntry = null;
                 ClearCinematicPlayback();
                 Document = doc;
@@ -127,7 +129,8 @@ public sealed partial class EditorShell
         return scenes.OrderBy(sceneItem => sceneItem.Label, StringComparer.OrdinalIgnoreCase).ThenBy(sceneItem => sceneItem.Entry.Id, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    public void OpenSceneContainer(Entry sceneEntry, Action? onLoaded = null)
+    public void OpenSceneContainer(Entry sceneEntry, Action? onLoaded = null,
+        Func<SceneDocument, ResourceResolver, Action?>? prepareOnWorker = null)
     {
         if (Archive == null)
             return;
@@ -135,6 +138,7 @@ public sealed partial class EditorShell
             return;
         StartJob($"Loading scene {sceneEntry.Id} ({sceneEntry.Name})...", token =>
         {
+            long startedAt = Stopwatch.GetTimestamp();
             var res = new ResourceResolver();
             res.LoadFixContainer(Archive);
             res.LoadSceneContainer(Archive, sceneEntry);
@@ -142,6 +146,9 @@ public sealed partial class EditorShell
             var doc = SceneLoader.Load(Archive, sceneEntry);
             res.ResolveSceneDocument(doc);
             token.ThrowIfCancellationRequested();
+            Action? preparedResult = prepareOnWorker?.Invoke(doc, res);
+            token.ThrowIfCancellationRequested();
+            double workerMilliseconds = Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
             return () =>
             {
                 ClearCinematicPlayback();
@@ -163,7 +170,9 @@ public sealed partial class EditorShell
                 }
 
                 _statusMessage = $"Scene loaded: {sceneEntry.Id} ({sceneEntry.Name}) · Worlds: {doc.Worlds.Count} · Objects: {ActiveWorld?.Objects.Count ?? 0}";
+                preparedResult?.Invoke();
                 onLoaded?.Invoke();
+                _statusMessage += $" · worker {workerMilliseconds:F0} ms";
             };
         });
     }

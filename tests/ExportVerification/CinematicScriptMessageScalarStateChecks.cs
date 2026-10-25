@@ -37,6 +37,17 @@ internal static class CinematicScriptMessageScalarStateChecks
         Check(wrongRecipient.Count == 0,
             "Message fields must not cross into a different execution object's queue.");
 
+        owner.ModelFunctionNames[0] = "unresolved_source_fixture";
+        var unlinkedState = CinematicScriptMessageScalarStateResolver.Resolve(owner, ownerObject,
+            [(50.65f, timelineCall)], 55.8f, null);
+        Check(unlinkedState.Count == 0,
+            "Changing a model's function configuration must invalidate cached message readers and OVA accesses.");
+        owner.ModelFunctionNames[0] = "sfx_bouclier_phare_sbp_msg";
+        var restoredState = CinematicScriptMessageScalarStateResolver.Resolve(owner, ownerObject,
+            [(50.65f, timelineCall)], 55.8f, null);
+        Check(restoredState.GetValueOrDefault("des_f_time1") == 0.5,
+            "Restoring source function configuration must recover the message-derived state.");
+
         Console.WriteLine("PASS: source-confirmed message readers carry float OVA state into later callbacks");
     }
 

@@ -33,10 +33,13 @@ internal static partial class CinematicScriptRuntimeBranchEvaluator
         IReadOnlyDictionary<int, bool?>? savedFlagValues = null,
         IReadOnlyDictionary<string, long?>? additionalFields = null)
     {
+        CinematicScriptBranchConditionSource[] conditions = branches.ToArray();
+        if (conditions.Length == 0)
+            return new(CinematicScriptBranchValue.True, [], "The callback call site has no recorded enclosing branch.");
         var fields = ResolveFieldValues(owner, ownerObject, playhead, timelineCalls);
         if (additionalFields != null)
             foreach (var field in additionalFields) fields[field.Key] = field.Value;
-        return Evaluate(owner, ownerObject?.PreviewCapabilities, branches, fields,
+        return Evaluate(owner, ownerObject?.PreviewCapabilities, conditions, fields,
             savedFlagValues, playhead);
     }
 
@@ -57,14 +60,18 @@ internal static partial class CinematicScriptRuntimeBranchEvaluator
         CinematicScriptCallbackPathStep[] steps = pathSteps.ToArray();
         var conditions = new List<string>();
         var evidence = new List<string>();
+        Dictionary<string, long?>? fields = null;
         CinematicScriptBranchValue value = CinematicScriptBranchValue.True;
         foreach (CinematicScriptCallbackPathStep step in steps)
         {
             if (step.Dispatch != "replace-current-track" || !step.DispatchConditionsResolved)
                 return new(CinematicScriptBranchValue.Unknown, conditions.ToArray(),
                     $"Callback transition {step.FromFunction} → {step.ToFunction} is not uniquely resolved.");
-            CinematicScriptBranchEvaluation result = Evaluate(owner, ownerObject,
-                step.BranchConditions, playhead, timelineCalls, savedFlagValues);
+            if (step.BranchConditions.Length > 0)
+                fields ??= ResolveFieldValues(owner, ownerObject, playhead, timelineCalls);
+            CinematicScriptBranchEvaluation result = Evaluate(owner, ownerObject?.PreviewCapabilities,
+                step.BranchConditions, fields ?? new Dictionary<string, long?>(),
+                savedFlagValues, playhead);
             conditions.AddRange(result.Conditions);
             evidence.Add(result.Evidence);
             value = And(value, result.Value);
@@ -122,12 +129,12 @@ internal static partial class CinematicScriptRuntimeBranchEvaluator
     private static Dictionary<string, long?> InitialFieldValues(CinematicScriptOwner owner)
     {
         var fields = new Dictionary<string, long?>(StringComparer.OrdinalIgnoreCase);
-        foreach (string variableName in owner.Variables.Select(variable => variable.Name)
-                     .Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            CinematicScriptVariable? variable = owner.EffectiveVariable(variableName);
-            if (variable != null) fields[variableName] = ParseInteger(variable.Value);
-        }
+        // EffectiveVariable uses the last instance value, then the last model
+        // value. Reduce each layer once instead of searching the whole OVA per field.
+        foreach (var variable in owner.Variables.Where(variable => variable.Source == "model"))
+            fields[variable.Name] = ParseInteger(variable.Value);
+        foreach (var variable in owner.Variables.Where(variable => variable.Source == "instance"))
+            fields[variable.Name] = ParseInteger(variable.Value);
         return fields;
     }
 
@@ -137,12 +144,16 @@ internal static partial class CinematicScriptRuntimeBranchEvaluator
     {
         if (!float.IsFinite(playhead)) return;
 
+        var queuedCalls = timelineCalls.Where(item => item.Time <= playhead
+                && TryReadQueuedMessageForOwner(item.Call, owner.OwnerKey, out _))
+            .OrderBy(item => item.Time).ToArray();
+        if (queuedCalls.Length == 0) return;
+
         var messageReaders = new Dictionary<int, CinematicScriptMessageReader[]>();
         CinematicScriptReachableOvaFieldAccess[] fieldAccesses =
             CinematicScriptReader.ReachableOvaFieldAccesses(owner);
-        foreach (var (time, call) in timelineCalls.OrderBy(item => item.Time))
+        foreach (var (_, call) in queuedCalls)
         {
-            if (time > playhead) continue;
             if (!TryReadQueuedMessageForOwner(call, owner.OwnerKey, out int messageId)) continue;
 
             if (!messageReaders.TryGetValue(messageId, out CinematicScriptMessageReader[]? readers))

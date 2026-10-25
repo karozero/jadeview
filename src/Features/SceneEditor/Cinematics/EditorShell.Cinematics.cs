@@ -7,6 +7,7 @@ public sealed partial class EditorShell
     private WorldData? _assetWorldBeforeCinematic;
     private WorldData? _cinematicWorld;
     private CinematicPlayback[] _cinematicPlayers = [];
+    private AnimationClip[] _cinematicClipSources = [];
     private CinematicPlayback? _cinematicPlayback;
     private readonly HashSet<CinematicScriptOwnerId> _disabledCinematicCallbackOwners = [];
     private readonly HashSet<CinematicScriptOwnerId> _previewedCinematicSceneEventOwners = [];
@@ -55,6 +56,7 @@ public sealed partial class EditorShell
         _cinematicVideoPostRollCompleted = false;
         _cinematicVideoPostRollSeconds = 0;
         _cinematicPlayers = [];
+        _cinematicClipSources = [];
         _selectedCinematicScriptOwnerId = null;
         _cinematicFlagFlowDocument = null;
         _cinematicFlagFlowOwnerCount = -1;

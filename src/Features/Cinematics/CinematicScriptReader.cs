@@ -6,7 +6,7 @@ using System.IO.Compression;
 
 namespace JadeView;
 
-internal static class CinematicScriptReader
+internal static partial class CinematicScriptReader
 {
     private const string FunctionMapResource = "JadeView.CinematicScriptModelFunctions";
     private const string FunctionNamesResource = "JadeView.CinematicScriptFunctionNames";
@@ -55,7 +55,10 @@ internal static class CinematicScriptReader
         return path != null;
     }
 
-    internal static CinematicScriptFunctionPath[] NestedCallbackPaths(CinematicScriptOwner owner)
+    internal static CinematicScriptFunctionPath[] NestedCallbackPaths(CinematicScriptOwner owner) =>
+        GetOwnerAnalysis(owner).CallbackPaths.Value;
+
+    private static CinematicScriptFunctionPath[] ReadNestedCallbackPaths(CinematicScriptOwner owner)
     {
         var modelFunctions = owner.ModelFunctionNames.ToHashSet(StringComparer.Ordinal);
         var roots = owner.CallbackNames.ToHashSet(StringComparer.Ordinal);
@@ -314,7 +317,10 @@ internal static class CinematicScriptReader
             .ThenBy(reference => reference.Line).ToArray();
     }
 
-    internal static CinematicScriptMessageReader[] ReachableMessageReaders(CinematicScriptOwner owner)
+    internal static CinematicScriptMessageReader[] ReachableMessageReaders(CinematicScriptOwner owner) =>
+        GetOwnerAnalysis(owner).MessageReaders.Value;
+
+    private static CinematicScriptMessageReader[] ReadReachableMessageReaders(CinematicScriptOwner owner)
     {
         var reachablePaths = ReachableCallbackPaths(owner);
         CinematicScriptReachableEngineCall[] reachableCalls = ReachableEngineCalls(owner);
@@ -407,7 +413,10 @@ internal static class CinematicScriptReader
             .ThenBy(reference => reference.Line).ToArray();
     }
 
-    internal static CinematicScriptReachableOvaFieldAccess[] ReachableOvaFieldAccesses(CinematicScriptOwner owner)
+    internal static CinematicScriptReachableOvaFieldAccess[] ReachableOvaFieldAccesses(CinematicScriptOwner owner) =>
+        GetOwnerAnalysis(owner).OvaFieldAccesses.Value;
+
+    private static CinematicScriptReachableOvaFieldAccess[] ReadReachableOvaFieldAccesses(CinematicScriptOwner owner)
     {
         var reachablePaths = ReachableCallbackPaths(owner);
         return reachablePaths.SelectMany(path => OvaFieldAccesses.Value

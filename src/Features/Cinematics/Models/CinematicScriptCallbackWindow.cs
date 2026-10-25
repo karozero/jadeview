@@ -45,6 +45,14 @@ internal static class CinematicScriptCallbackWindowResolver
         bool allowUnboundedStateMutation = false)
     {
         float[] candidateTimes = CandidateTimes(timelineCalls);
+        CinematicScriptCallbackPathStep[] exitSteps = outgoingPaths
+            .Select(path => path.Steps.LastOrDefault())
+            .OfType<CinematicScriptCallbackPathStep>()
+            .Where(step => step.FromFunction == functionName
+                && step.Dispatch == "replace-current-track"
+                && step.ToFunction != functionName
+                && step.DispatchConditionsResolved)
+            .ToArray();
 
         float? start = null;
         float? end = null;
@@ -55,31 +63,26 @@ internal static class CinematicScriptCallbackWindowResolver
             {
                 ownerObject.PreviewCapabilities = CapabilitiesAt(ownerObject, candidateTime,
                     timelineCalls);
-                var route = CinematicScriptRuntimeBranchEvaluator.EvaluateCallbackPath(owner,
-                    ownerObject, entryPath, candidateTime, timelineCalls, savedFlags);
-                var entry = CinematicScriptRuntimeBranchEvaluator.Evaluate(owner, ownerObject,
-                    entryConditions, candidateTime, timelineCalls, savedFlags, entryAliases);
-                if (start == null && route.Value == CinematicScriptBranchValue.True
-                    && entry.Value == CinematicScriptBranchValue.True)
+                if (start == null)
                 {
+                    var route = CinematicScriptRuntimeBranchEvaluator.EvaluateCallbackPath(owner,
+                        ownerObject, entryPath, candidateTime, timelineCalls, savedFlags);
+                    if (route.Value != CinematicScriptBranchValue.True) continue;
+                    var entry = CinematicScriptRuntimeBranchEvaluator.Evaluate(owner, ownerObject,
+                        entryConditions, candidateTime, timelineCalls, savedFlags, entryAliases);
+                    if (entry.Value != CinematicScriptBranchValue.True) continue;
                     start = candidateTime;
+                    // A callback without a resolved replacement cannot acquire a
+                    // later exit. Its route also does not need resampling after entry.
+                    if (exitSteps.Length == 0)
+                        return allowUnboundedStateMutation ? new(candidateTime, null) : null;
                 }
 
                 if (start is not { } startTime || candidateTime < startTime) continue;
-                bool exitReached = outgoingPaths.Any(path =>
-                {
-                    CinematicScriptCallbackPathStep? lastStep = path.Steps.LastOrDefault();
-                    if (lastStep == null || lastStep.FromFunction != functionName
-                        || lastStep.Dispatch != "replace-current-track"
-                        // Iris returns normal continuation when AITrackCurChangeNow
-                        // targets the function that is already running. This call
-                        // does not leave the callback or start a new interval.
-                        || lastStep.ToFunction == functionName
-                        || !lastStep.DispatchConditionsResolved) return false;
-                    return CinematicScriptRuntimeBranchEvaluator.Evaluate(owner, ownerObject,
-                        lastStep.BranchConditions, candidateTime, timelineCalls, savedFlags).Value
-                        == CinematicScriptBranchValue.True;
-                });
+                bool exitReached = exitSteps.Any(step =>
+                    CinematicScriptRuntimeBranchEvaluator.Evaluate(owner, ownerObject,
+                        step.BranchConditions, candidateTime, timelineCalls, savedFlags).Value
+                        == CinematicScriptBranchValue.True);
                 if (exitReached)
                 {
                     end = candidateTime;

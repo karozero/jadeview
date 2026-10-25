@@ -25,6 +25,7 @@ internal sealed class CinematicScriptMaterialConstantPlayback
 
     private readonly Write[] writes;
     private readonly Dictionary<uint, uint> evaluated = [];
+    private readonly CinematicScriptCallbackWindowCache windowCache = new();
 
     private CinematicScriptMaterialConstantPlayback(Write[] writes) => this.writes = writes;
 
@@ -49,10 +50,11 @@ internal sealed class CinematicScriptMaterialConstantPlayback
             var activeWrites = new List<(Write Write, float Start)>();
             foreach (Write write in materialWrites)
             {
-                CinematicScriptCallbackWindow? window = CinematicScriptCallbackWindowResolver.Resolve(
+                CinematicScriptCallbackWindow? window = windowCache.GetOrResolve(write, savedFlags,
+                    () => CinematicScriptCallbackWindowResolver.Resolve(
                     write.Owner, write.OwnerObject, write.Call.FunctionName, write.EntryPath.Steps,
                     [], new Dictionary<string, long?>(), write.OutgoingPaths, write.Timeline,
-                    savedFlags, allowUnboundedStateMutation: true);
+                    savedFlags, allowUnboundedStateMutation: true));
                 if (window is not { } resolvedWindow || playhead < resolvedWindow.Start) continue;
 
                 uint? originalCapabilities = write.OwnerObject.PreviewCapabilities;

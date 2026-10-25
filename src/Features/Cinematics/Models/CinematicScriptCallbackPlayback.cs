@@ -5,7 +5,7 @@ namespace JadeView;
 /// visibility state changes when the recovered callback route is reachable.
 /// Unsupported callback gates remain unknown and are not applied.
 /// </summary>
-internal sealed class CinematicScriptCallbackPlayback
+internal sealed partial class CinematicScriptCallbackPlayback
 {
     private sealed record TransferRuntime(CinematicScriptOwner Owner, SceneObject OwnerObject,
         SceneObject SourceObject, FaceMorphPreview SourcePreview, SceneObject TargetObject,
@@ -31,9 +31,17 @@ internal sealed class CinematicScriptCallbackPlayback
     private IReadOnlyDictionary<uint, uint> materialConstants = new Dictionary<uint, uint>();
     private readonly Dictionary<string, CinematicScriptCallbackWindow?> callbackWindows = new(StringComparer.Ordinal);
     private readonly Dictionary<uint, (float Time, CinematicLiteralCall Call)[]> ownerTimelineCalls = [];
+    private readonly Dictionary<uint, CinematicScriptCallbackStateEffect[]> ownerStateEffects = [];
+    private readonly Dictionary<SceneObject, StateEffectRuntime[]> visibilityEffectsByTarget = [];
+    private readonly Dictionary<SceneObject, int[]> visibilitySavedFlagsByTarget;
+    private readonly Dictionary<string, bool> unreachablePaths = new(StringComparer.Ordinal);
+    private readonly Dictionary<(uint Target, string Api), float[]> explicitStateCallTimes = [];
+    private readonly SceneObject[] visibilityTargets;
     private IReadOnlyDictionary<int, bool?>? savedFlagAssumptions;
     private Dictionary<int, bool?>? savedFlagSnapshot;
+    private string assumptionCacheKey = string.Empty;
     private float lastTime;
+    internal Action<string>? DiagnosticTrace { get; set; }
 
     private CinematicScriptCallbackPlayback(
         (float Time, CinematicLiteralCall Call)[] timelineCalls,
@@ -50,6 +58,21 @@ internal sealed class CinematicScriptCallbackPlayback
         this.rliDisplayPlayback = rliDisplayPlayback;
         this.materialConstantPlayback = materialConstantPlayback;
         this.localAlphaPlayback = localAlphaPlayback;
+        visibilityEffectsByTarget = stateEffects
+            .Where(effect => IsVisibilityStateEffect(effect.Effect))
+            .GroupBy(effect => effect.TargetObject)
+            .ToDictionary(group => group.Key, group => group.ToArray());
+        visibilityTargets = visibilityEffectsByTarget.Keys.ToArray();
+        visibilitySavedFlagsByTarget = visibilityEffectsByTarget.ToDictionary(pair => pair.Key,
+            pair => pair.Value.SelectMany(ReferencedSavedFlags).Distinct().ToArray());
+        ownerStateEffects = stateEffects
+            .GroupBy(effect => effect.Owner.OwnerKey)
+            .ToDictionary(group => group.Key, group => group.Select(item => item.Effect).ToArray());
+        explicitStateCallTimes = timelineCalls
+            .Select(item => (item.Call.Target, Api: CinematicEngineFunctionCatalog.NameFor(item.Call.Selector), item.Time))
+            .Where(item => IsExplicitStateTimelineApi(item.Api))
+            .GroupBy(item => (item.Target, item.Api))
+            .ToDictionary(group => group.Key, group => group.Select(item => item.Time).Order().ToArray());
         morphSnapshots = transfers.Select(transfer => transfer.TargetObject)
             .Distinct().Select(target =>
             {
@@ -65,7 +88,10 @@ internal sealed class CinematicScriptCallbackPlayback
             if (SameAssumptions(savedFlagSnapshot, value)) return;
             savedFlagAssumptions = value;
             savedFlagSnapshot = value?.ToDictionary(pair => pair.Key, pair => pair.Value);
-            callbackWindows.Clear();
+            assumptionCacheKey = savedFlagSnapshot is not { Count: > 0 } assumptions
+                ? string.Empty
+                : string.Join(';', assumptions.OrderBy(pair => pair.Key)
+                    .Select(pair => $"{pair.Key}={(pair.Value is null ? "?" : pair.Value.Value ? "1" : "0")}"));
         }
     }
 
@@ -251,19 +277,28 @@ internal sealed class CinematicScriptCallbackPlayback
     internal void Evaluate(float time)
     {
         if (!float.IsFinite(time)) return;
+        branchFieldSnapshots.Clear();
         if (time < lastTime) ResetMorphTargets();
+        DiagnosticTrace?.Invoke("callback state effects");
         ApplyLinkedStateEffects(time);
+        DiagnosticTrace?.Invoke("callback channel transfers");
         ApplyChannelTransfers(time);
+        DiagnosticTrace?.Invoke("callback RLI");
         rliDisplayPlayback?.Evaluate(time, savedFlagAssumptions, objectMorphPlayback);
+        DiagnosticTrace?.Invoke("callback material constants");
         materialConstants = materialConstantPlayback?.Evaluate(time, savedFlagAssumptions)
             ?? new Dictionary<uint, uint>();
+        DiagnosticTrace?.Invoke("callback local alpha");
         localAlphaPlayback?.Evaluate(time, savedFlagAssumptions);
+        DiagnosticTrace?.Invoke("callback complete");
         lastTime = time;
     }
 
     internal void EvaluateVisibilityState(float time)
     {
-        if (float.IsFinite(time)) ApplyLinkedStateEffects(time);
+        if (!float.IsFinite(time)) return;
+        branchFieldSnapshots.Clear();
+        ApplyLinkedStateEffects(time);
     }
 
     internal void Reset()
@@ -280,10 +315,7 @@ internal sealed class CinematicScriptCallbackPlayback
 
     private void ApplyLinkedStateEffects(float time)
     {
-        Dictionary<SceneObject, uint> initialControlFlags = stateEffects
-            .Where(effect => IsVisibilityStateEffect(effect.Effect))
-            .Select(effect => effect.TargetObject)
-            .Distinct()
+        Dictionary<SceneObject, uint> initialControlFlags = visibilityTargets
             .ToDictionary(target => target,
                 target => target.PreviewControlFlags ?? target.ControlFlags);
         var activeEffects = new List<(StateEffectRuntime Runtime, float SampleTime)>();
@@ -300,14 +332,15 @@ internal sealed class CinematicScriptCallbackPlayback
             var receiverFields = runtime.Effect.ReceiverGuardAliases.ToDictionary(
                 alias => alias, _ => (long?)1, StringComparer.Ordinal);
             AddCallResultFields(runtime, sampleTime, receiverFields);
-            CinematicScriptBranchEvaluation branchResult = CinematicScriptRuntimeBranchEvaluator.Evaluate(
+            CinematicScriptBranchEvaluation branchResult = EvaluateBranch(
                 runtime.Owner, runtime.OwnerObject, runtime.Effect.BranchConditions,
-                sampleTime, OwnerTimeline(runtime.Owner), savedFlagAssumptions, receiverFields);
+                sampleTime, receiverFields);
             if (branchResult.Value != CinematicScriptBranchValue.True) continue;
             activeEffects.Add((runtime, sampleTime));
         }
 
         var updatedFlags = new Dictionary<SceneObject, uint>();
+        DiagnosticTrace?.Invoke($"state candidates complete ({stateEffects.Length} effects)");
         var updatedCapabilities = new Dictionary<SceneObject, uint>();
         var updatedDrawMasks = new Dictionary<SceneObject, uint>();
         var updatedCollisionActivationMasks = new Dictionary<SceneObject, ushort>();
@@ -366,7 +399,9 @@ internal sealed class CinematicScriptCallbackPlayback
         foreach ((SceneObject target, ushort activationMask) in updatedCollisionActivationMasks)
             target.PreviewCollisionActivationMask = activationMask;
 
+        DiagnosticTrace?.Invoke("state mutations complete");
         ApplyEquivalentUnknownFlagVisibility(time, initialControlFlags);
+        DiagnosticTrace?.Invoke("state flag alternatives complete");
     }
 
     private void ApplyEquivalentUnknownFlagVisibility(float time,
@@ -374,12 +409,8 @@ internal sealed class CinematicScriptCallbackPlayback
     {
         foreach ((SceneObject target, uint initialFlags) in initialControlFlags)
         {
-            StateEffectRuntime[] targetEffects = stateEffects
-                .Where(effect => effect.TargetObject == target && IsVisibilityStateEffect(effect.Effect))
-                .ToArray();
-            int[] unknownFlags = targetEffects
-                .SelectMany(ReferencedSavedFlags)
-                .Distinct()
+            StateEffectRuntime[] targetEffects = visibilityEffectsByTarget[target];
+            int[] unknownFlags = visibilitySavedFlagsByTarget[target]
                 .Where(flag => savedFlagAssumptions?.TryGetValue(flag, out bool? value) != true
                     || value == null)
                 .ToArray();
@@ -419,9 +450,14 @@ internal sealed class CinematicScriptCallbackPlayback
                     allowUnboundedStateMutation: IsPersistentStateMutation(runtime.Effect.Api));
                 if (window == null)
                 {
-                    bool unreachable = CinematicScriptCallbackWindowResolver.IsPathProvenUnreachable(
-                        runtime.Owner, runtime.OwnerObject, runtime.EntryPath,
-                        OwnerTimeline(runtime.Owner), savedFlagAssumptions);
+                    string pathKey = WindowCacheKey(runtime.Owner, runtime.EntryPath, true);
+                    if (!unreachablePaths.TryGetValue(pathKey, out bool unreachable))
+                    {
+                        unreachable = CinematicScriptCallbackWindowResolver.IsPathProvenUnreachable(
+                            runtime.Owner, runtime.OwnerObject, runtime.EntryPath,
+                            OwnerTimeline(runtime.Owner), savedFlagAssumptions);
+                        unreachablePaths[pathKey] = unreachable;
+                    }
                     if (unreachable) continue;
                     return false;
                 }
@@ -433,9 +469,9 @@ internal sealed class CinematicScriptCallbackPlayback
                 var receiverFields = runtime.Effect.ReceiverGuardAliases.ToDictionary(
                     alias => alias, _ => (long?)1, StringComparer.Ordinal);
                 AddCallResultFields(runtime, sampleTime, receiverFields);
-                CinematicScriptBranchEvaluation branchResult = CinematicScriptRuntimeBranchEvaluator.Evaluate(
+                CinematicScriptBranchEvaluation branchResult = EvaluateBranch(
                     runtime.Owner, runtime.OwnerObject, runtime.Effect.BranchConditions,
-                    sampleTime, OwnerTimeline(runtime.Owner), savedFlagAssumptions, receiverFields);
+                    sampleTime, receiverFields);
                 if (branchResult.Value == CinematicScriptBranchValue.Unknown) return false;
                 if (branchResult.Value == CinematicScriptBranchValue.True)
                     activeEffects.Add((runtime, sampleTime));
@@ -516,9 +552,9 @@ internal sealed class CinematicScriptCallbackPlayback
 
             var receiverFields = runtime.Transfer.ReceiverGuardAliases.ToDictionary(
                 alias => alias, _ => (long?)1, StringComparer.Ordinal);
-            CinematicScriptBranchEvaluation branchResult = CinematicScriptRuntimeBranchEvaluator.Evaluate(
+            CinematicScriptBranchEvaluation branchResult = EvaluateBranch(
                 runtime.Owner, runtime.OwnerObject, runtime.Transfer.BranchConditions,
-                sampleTime, OwnerTimeline(runtime.Owner), savedFlagAssumptions, receiverFields);
+                sampleTime, receiverFields);
             if (branchResult.Value != CinematicScriptBranchValue.True) continue;
 
             FaceMorphChannelState[]? sourceChannels = ReadChannelState(runtime.SourcePreview);
@@ -552,7 +588,7 @@ internal sealed class CinematicScriptCallbackPlayback
         SceneObject ownerObject, CinematicScriptFunctionPath entryPath,
         CinematicScriptFunctionPath[] outgoingPaths, bool allowUnboundedStateMutation = false)
     {
-        string key = $"{owner.OwnerKey:X8}:{entryPath.FunctionName}:{allowUnboundedStateMutation}";
+        string key = WindowCacheKey(owner, entryPath, allowUnboundedStateMutation);
         if (callbackWindows.TryGetValue(key, out CinematicScriptCallbackWindow? cached)) return cached;
         CinematicScriptCallbackWindow? resolved = CinematicScriptCallbackWindowResolver.Resolve(
             owner, ownerObject, entryPath.FunctionName, entryPath.Steps, [],
@@ -561,6 +597,10 @@ internal sealed class CinematicScriptCallbackPlayback
         callbackWindows[key] = resolved;
         return resolved;
     }
+
+    private string WindowCacheKey(CinematicScriptOwner owner, CinematicScriptFunctionPath entryPath,
+        bool allowUnboundedStateMutation) =>
+        $"{owner.WorldKey:X8}:{owner.OwnerKey:X8}:{entryPath.FunctionName}:{allowUnboundedStateMutation}:{assumptionCacheKey}";
 
     private IReadOnlyList<(float Time, CinematicLiteralCall Call)> OwnerTimeline(
         CinematicScriptOwner owner)
@@ -576,10 +616,8 @@ internal sealed class CinematicScriptCallbackPlayback
     private void AddCallResultFields(StateEffectRuntime runtime, float sampleTime,
         Dictionary<string, long?> fields)
     {
-        CinematicScriptCallbackStateEffect[] ownerEffects = stateEffects
-            .Where(effect => effect.Owner.OwnerKey == runtime.Owner.OwnerKey)
-            .Select(effect => effect.Effect)
-            .ToArray();
+        CinematicScriptCallbackStateEffect[] ownerEffects = ownerStateEffects
+            .GetValueOrDefault(runtime.Owner.OwnerKey, []);
         foreach ((string name, long? value) in CinematicScriptCallResultEvaluator.Resolve(
                      runtime.Owner, runtime.OwnerObject, runtime.Effect, ownerEffects,
                      sampleTime, OwnerTimeline(runtime.Owner), savedFlagAssumptions))
@@ -587,10 +625,25 @@ internal sealed class CinematicScriptCallbackPlayback
     }
 
     private bool HasLaterExplicitStateCall(SceneObject target, string api,
-        float sampleTime, float playhead) => timelineCalls.Any(item => item.Time > sampleTime
-        && item.Time <= playhead && item.Call.Target == target.GaoKey
-        && (CinematicEngineFunctionCatalog.NameFor(item.Call.Selector) == api
-            || CinematicEngineFunctionCatalog.NameFor(item.Call.Selector) == "OBJDestroy"));
+        float sampleTime, float playhead) => HasLaterCall(target.GaoKey, api, sampleTime, playhead)
+        || (api != "OBJDestroy" && HasLaterCall(target.GaoKey, "OBJDestroy", sampleTime, playhead));
+
+    private bool HasLaterCall(uint targetKey, string api, float sampleTime, float playhead)
+    {
+        if (!explicitStateCallTimes.TryGetValue((targetKey, api), out float[]? times)) return false;
+        int firstLaterIndex = Array.BinarySearch(times, sampleTime);
+        if (firstLaterIndex < 0) firstLaterIndex = ~firstLaterIndex;
+        else
+        {
+            while (firstLaterIndex < times.Length && times[firstLaterIndex] <= sampleTime)
+                firstLaterIndex++;
+        }
+        return firstLaterIndex < times.Length && times[firstLaterIndex] <= playhead;
+    }
+
+    private static bool IsExplicitStateTimelineApi(string api) => api is "OBJ_FlagInvisibleSet"
+        or "OBJ_FlagInactiveSet" or "OBJDestroy" or "OBJDrawMaskSet" or "OBJ_CapaSet"
+        or "COLSetActivationSet";
 
     private static bool SameAssumptions(Dictionary<int, bool?>? current,
         IReadOnlyDictionary<int, bool?>? next) => current == null

@@ -29,7 +29,8 @@ public static class SceneLoader
 
     public sealed record ChunkInfo(int Offset, int Size, uint Magic, bool IsSpecialTag);
 
-    public static SceneDocument Load(byte[] bytes, string containerName = "", string bfPath = "", string bfSha256 = "", uint? worldListKey = null)
+    public static SceneDocument Load(byte[] bytes, string containerName = "", string bfPath = "", string bfSha256 = "", uint? worldListKey = null,
+        bool resourceReferencesOnly = false)
     {
         var doc = new SceneDocument
         {
@@ -88,7 +89,7 @@ public static class SceneLoader
                     }
                     doc.Worlds.Add(world);
                 }
-                ActorLoader.Build(bytes, replay, doc);
+                ActorLoader.Build(bytes, replay, doc, resourceReferencesOnly);
                 foreach (var obj in doc.Worlds.SelectMany(w => w.Objects))
                     foreach (var resource in new[] { (obj.GeometryKey, ResourceType.Geometry), (obj.MaterialKey, ResourceType.Material) })
                         if (resource.Item1 is not (0 or uint.MaxValue))

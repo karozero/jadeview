@@ -18,14 +18,25 @@ public sealed partial class EditorShell
         DrawCategoryTitle("Source");
         ImGui.TextWrapped($"{_cinematicWorld.Name}\n{_cinematicWorld.Actors.Count} actor rigs · {_cinematicWorld.Objects.Count} objects");
         DrawCopyNameContextMenu("CinematicSourceName", _cinematicWorld.Name);
-        if (_cinematicPlayers.Length == 0)
+        if (_cinematicClipSources.Length == 0)
         {
             ImGui.TextWrapped("No shared cinematic animation clip was linked to multiple loaded actor rigs. Static script and EVE records remain available for inspection.");
             DrawCinematicStaticInspectorTabs();
             return;
         }
-
         SelectCinematicClip();
+        if (_cinematicPlayback == null)
+        {
+            if (_activeJob != null)
+                ImGui.TextDisabled("Preparing the selected cinematic clip...");
+            else
+            {
+                ImGui.TextWrapped("No shared cinematic animation clip was linked to multiple loaded actor rigs. Static script and EVE records remain available for inspection.");
+                DrawCinematicStaticInspectorTabs();
+            }
+            return;
+        }
+
         if (!ImGui.BeginTabBar("CinematicInspectorWorkspace")) return;
         if (ImGui.BeginTabItem("Playback"))
         {
@@ -384,21 +395,20 @@ public sealed partial class EditorShell
         _messageGatePreviewTimeCache.Clear();
         _cinematicAiTrackMutationCache.Clear();
         _cinematicOwnerActionContributionCache.Clear();
-        uint clipKey = previousPlayback.Key;
         float playhead = previousPlayback.Time;
         bool resumePlayback = previousPlayback.Playing;
         int cameraIndex = previousPlayback.CameraIndex;
         previousPlayback.Deactivate();
 
-        _cinematicPlayers = CinematicPlayback.Discover(Document, _cinematicWorld, Resolver, Archive?.Entries,
+        CinematicPlayback? updatedPlayback = CinematicPlayback.DiscoverClip(previousPlayback.SourceClip,
+            Document, _cinematicWorld, Resolver,
             _disabledCinematicCallbackOwners, _previewedCinematicSceneEventOwners,
-            _previewedCinematicSceneEventStartTimes);
-        foreach (CinematicPlayback player in _cinematicPlayers)
-            player.BindSavedFlagAssumptions(GetCinematicSavedFlagStates());
-        _cinematicPlayback = _cinematicPlayers.FirstOrDefault(candidate => candidate.Key == clipKey)
-            ?? _cinematicPlayers.FirstOrDefault();
+            _previewedCinematicSceneEventStartTimes, Archive?.Entries);
+        _cinematicPlayers = updatedPlayback == null ? [] : [updatedPlayback];
+        _cinematicPlayback = updatedPlayback;
         if (_cinematicPlayback == null) return;
 
+        _cinematicPlayback.BindSavedFlagAssumptions(GetCinematicSavedFlagStates());
         _cinematicPlayback.CameraIndex = cameraIndex;
         _cinematicPlayback.Activate();
         _cinematicPlayback.Seek(playhead);
@@ -414,24 +424,18 @@ public sealed partial class EditorShell
 
     private void SelectCinematicClip()
     {
-        int selectedIndex = Array.IndexOf(_cinematicPlayers, _cinematicPlayback);
+        int selectedIndex = Array.FindIndex(_cinematicClipSources,
+            sourceClip => sourceClip.Key == _cinematicPlayback?.Key);
         if (selectedIndex < 0) selectedIndex = 0;
-        string[] clipNames = _cinematicPlayers.Select(player =>
-            $"{player.Name} · {player.ParticipantCount} tracks · {player.Duration:F1}s").ToArray();
+        string[] clipNames = _cinematicClipSources.Select(sourceClip =>
+            $"{sourceClip.Name} · {sourceClip.Tracks.Count} source tracks · {sourceClip.Duration:F1}s").ToArray();
         ImGui.SetNextItemWidth(-1);
+        ImGui.BeginDisabled(_activeJob != null);
         bool changed = ImGui.Combo("##CinematicClip", ref selectedIndex, clipNames, clipNames.Length);
-        DrawCopyNameContextMenu("CinematicClipName", _cinematicPlayers[selectedIndex].Name);
-        if (changed || _cinematicPlayback == null)
-        {
-            _cinematicPlayback?.Deactivate();
-            ResetCinematicAudio();
-            _cinematicVideoPostRollActive = false;
-            _cinematicVideoPostRollCompleted = false;
-            _cinematicVideoPostRollSeconds = 0;
-            _cinematicPlayback = _cinematicPlayers[selectedIndex];
-            _cinematicPlayback.Activate();
-        }
-        EnsureCinematicAudio();
+        ImGui.EndDisabled();
+        DrawCopyNameContextMenu("CinematicClipName", _cinematicClipSources[selectedIndex].Name);
+        if (changed) LoadCinematicClip(_cinematicClipSources[selectedIndex]);
+        if (_cinematicPlayback != null) EnsureCinematicAudio();
     }
 
     private void DrawPlaybackControls()

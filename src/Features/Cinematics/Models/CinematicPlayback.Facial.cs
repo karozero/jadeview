@@ -11,7 +11,7 @@ public sealed partial class CinematicPlayback
             return $"{playback.Actor.Root.Name}: {playback.Signals.Length} animated facial signals, {mouthCommands} mouth start/stop commands, {blinkCommands} explicit blink triggers"
                 + (missingController ? "; mouth controller binding unavailable" : "");
         })
-        .Concat(objectMorphPlayback?.Diagnostics ?? []);
+        .Concat(EnsureScriptPlayback().MorphPlayback?.Diagnostics ?? []);
 
     private static PreviewSnapshot[] CreatePreviewSnapshots(SceneActor actor, ResourceResolver resolver)
     {
@@ -33,6 +33,7 @@ public sealed partial class CinematicPlayback
 
     public Dictionary<SceneObject, FaceMorphKeyframe[]> SampleFacialMorphTimelines()
     {
+        EnsureScriptPlayback();
         var result = facialPlaybacks.SelectMany(playback => playback.Previews)
             .ToDictionary(snapshot => snapshot.Target, _ => new List<FaceMorphKeyframe>());
         foreach (SceneObject target in objectMorphPlayback?.Targets ?? [])

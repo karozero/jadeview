@@ -11,6 +11,16 @@ internal static class CinematicScriptRuntimeBranchChecks
             "(!v29->i_cine || AI_EvalFunc_OBJ_CapaTest_C_CURRENT(0x100)) && "
             + "(v29->i_cine || AI_EvalFunc_TIMEElapsed_C(v29->f_time, v29->des_f_time0))", 12);
 
+        var layeredOwner = owner with
+        {
+            Variables = [new("field", 0, "instance", "2"), new("FIELD", 0, "model", "3"),
+                new("field", 0, "instance", "4"), new("modelOnly", 0, "model", "5"),
+                new("modelOnly", 0, "model", "6")]
+        };
+        var layeredFields = CinematicScriptRuntimeBranchEvaluator.ResolveFieldValues(layeredOwner, null, 0, []);
+        Check(layeredFields["field"] == 4 && layeredFields["modelOnly"] == 6,
+            "OVA field reduction must retain the last instance value over any model value, independently of serialization order.");
+
         CinematicScriptBranchEvaluation satisfied = CinematicScriptRuntimeBranchEvaluator.Evaluate(
             owner, 0x100, [branch],
             new Dictionary<string, long?> { ["i_cine"] = 1 });

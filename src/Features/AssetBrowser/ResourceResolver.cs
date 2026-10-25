@@ -82,7 +82,9 @@ public sealed class ResourceResolver
 
     private void LoadArchiveResourceFallback(Archive archive, Entry targetEntry, byte[] targetBytes)
     {
-        var targetDoc = SceneLoader.Load(targetBytes, targetEntry.Id, archive.PathName);
+        // Keep actor components and default shapes, but skip cinematic/script
+        // analysis when matching geometry and material references across packs.
+        var targetDoc = SceneLoader.Load(targetBytes, targetEntry.Id, archive.PathName, resourceReferencesOnly: true);
         var targetObjects = targetDoc.Worlds.SelectMany(w => w.Objects).ToArray();
         var targetGeoNames = targetObjects.Where(o => o.GeometryKey != 0)
             .GroupBy(o => o.GeometryKey).ToDictionary(g => g.Key, g => g.Select(o => o.Name).Distinct().ToArray());
@@ -104,7 +106,7 @@ public sealed class ResourceResolver
             SceneAssets assets;
             try
             {
-                doc = SceneLoader.Load(bytes, entry.Id, archive.PathName);
+                doc = SceneLoader.Load(bytes, entry.Id, archive.PathName, resourceReferencesOnly: true);
                 assets = Models.Read(bytes, archive.PathName);
                 sourceKeys[entry.Key] = assets.Models.Select(m => m.Key).Concat(assets.Materials.Select(m => m.Key)).ToHashSet();
             }
