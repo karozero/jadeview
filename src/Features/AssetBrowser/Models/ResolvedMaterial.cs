@@ -15,8 +15,10 @@ public sealed class ResolvedMaterial
     public int Offset { get; init; }
     public uint Diffuse { get; init; }
     /// <summary>Serialized ul_Specular color for single and multi-texture materials.</summary>
-    public uint? Specular => Type is 3 or 5 && SourceBytes is { Length: >= 20 } bytes
-        ? BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(16, sizeof(uint)))
+    // Serialized GRO type is followed by ambient, diffuse, then specular.
+    // Offset 16 is the float specular exponent, not the packed constant color.
+    public uint? Specular => Type is 3 or 5 && SourceBytes is { Length: >= 16 } bytes
+        ? BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(12, sizeof(uint)))
         : null;
     public float Opacity { get; init; } = 1.0f;
     public uint Flags { get; init; }

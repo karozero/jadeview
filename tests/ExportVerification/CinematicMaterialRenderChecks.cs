@@ -79,6 +79,7 @@ internal static class CinematicMaterialRenderChecks
             VerifyAuthoredDiffuseColor(renderer);
             VerifyDiffuse2x(renderer);
             VerifyCinematicRliInputs(renderer);
+            VerifySerializedConstantColor(renderer);
             Console.WriteLine("PASS: GPU raw RLI/invert, computed diffuse, draw-mask controls and instance/geometry color precedence");
             VerifyCinematicFog(renderer);
             Console.WriteLine("PASS: GPU material activation, vertex-color diffuse/2x, packed cinematic RLI subtraction, opacity, sprite alpha, cinematic fog and reverse seek");
@@ -88,6 +89,34 @@ internal static class CinematicMaterialRenderChecks
         void Register<T>(string field, uint key, T value) =>
             ((Dictionary<uint, T>)typeof(ResourceResolver).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(resolver)!).Add(key, value);
+
+        void VerifySerializedConstantColor(SceneRenderer renderer)
+        {
+            const uint constantMaterialKey = 0x4700f001;
+            var constantBytes = new byte[56];
+            BitConverter.GetBytes(5).CopyTo(constantBytes, 0);
+            BitConverter.GetBytes(0x00ff0000u).CopyTo(constantBytes, 8); // Diffuse must remain independent.
+            BitConverter.GetBytes(0x00808080u).CopyTo(constantBytes, 12);
+            BitConverter.GetBytes(0f).CopyTo(constantBytes, 16); // Specular exponent can be zero.
+            BitConverter.GetBytes(0x00002007u).CopyTo(constantBytes, 40);
+            Register("_materials", constantMaterialKey, new ResolvedMaterial
+                { Id = new(constantMaterialKey), Type = 5, SourceBytes = constantBytes });
+            world.Objects.Clear();
+            world.Objects.Add(new() { GaoKey = 0x4700f002, GeometryKey = geometryKey,
+                MaterialKey = constantMaterialKey });
+            renderer.Render(160, 120, new(), world, null, resolver);
+            var image = Raylib.LoadImageFromTexture(renderer.Target.Texture);
+            try
+            {
+                var fallback = enabledPixel!.Value;
+                var expected = new Raylib_cs.Color((byte)((fallback.R * 128 + 127) / 255),
+                    (byte)((fallback.G * 128 + 127) / 255),
+                    (byte)((fallback.B * 128 + 127) / 255), (byte)255);
+                AssertPixelNear(Raylib.GetImageColor(image, 80, 60), expected, 3,
+                    "Constant-color rendering must read packed specular RGB, independently of a zero exponent");
+            }
+            finally { Raylib.UnloadImage(image); }
+        }
 
         static void AssertPixelNear(Raylib_cs.Color actual, Raylib_cs.Color expected, int tolerance, string message)
         {

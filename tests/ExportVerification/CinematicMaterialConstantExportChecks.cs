@@ -114,7 +114,7 @@ internal static class CinematicMaterialConstantExportChecks
         RegisterTexture(resolver, blackTextureKey, [0, 0, 0, 255]);
         byte[] bytes = new byte[76];
         BitConverter.GetBytes(5).CopyTo(bytes, 0);
-        BitConverter.GetBytes(0xff0000ffu).CopyTo(bytes, 16); // source red; preview overrides it with green
+        BitConverter.GetBytes(0xff0000ffu).CopyTo(bytes, 12); // source red; preview overrides it with green
         Layer(bytes, 36, 0, 0x00202004, whiteTextureKey);
         // Inverse/additive reflection has OverrideAlpha set; provide full local alpha
         // so the test isolates the base layer's mode-2 constant tint.
@@ -144,7 +144,7 @@ internal static class CinematicMaterialConstantExportChecks
     {
         byte[] bytes = new byte[56];
         BitConverter.GetBytes(5).CopyTo(bytes, 0);
-        BitConverter.GetBytes(constant).CopyTo(bytes, 16);
+        BitConverter.GetBytes(constant).CopyTo(bytes, 12);
         BitConverter.GetBytes(0x00002000u).CopyTo(bytes, 40); // ColorMode 2
         return new() { Id = new(key), Type = 5, SourceBytes = bytes };
     }

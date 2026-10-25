@@ -12,8 +12,8 @@ internal static class MaterialExportChecks
             Parts = [new(0, [0, 1, 2], [])] };
         var bytes = new byte[56];
         BitConverter.GetBytes(5).CopyTo(bytes, 0);
-        BitConverter.GetBytes(0xFFAACCEE).CopyTo(bytes, 12); // ul_Diffuse must not drive constant-color mode.
-        BitConverter.GetBytes(0xFF204080u).CopyTo(bytes, 16);
+        BitConverter.GetBytes(0xFFAACCEE).CopyTo(bytes, 8); // ul_Diffuse must not drive constant-color mode.
+        BitConverter.GetBytes(0xFF204080u).CopyTo(bytes, 12);
         BitConverter.GetBytes((ushort)0xF8D0).CopyTo(bytes, 38);
         BitConverter.GetBytes(0x00612404u).CopyTo(bytes, 40);
         BitConverter.GetBytes(703u).CopyTo(bytes, 52);
@@ -47,8 +47,9 @@ internal static class MaterialExportChecks
     private static void VerifySpecularSourceColor()
     {
         byte[] materialBytes = new byte[20];
-        BitConverter.GetBytes(0xFFAACCEEu).CopyTo(materialBytes, 12);
-        BitConverter.GetBytes(0x80402010u).CopyTo(materialBytes, 16);
+        BitConverter.GetBytes(0xFFAACCEEu).CopyTo(materialBytes, 8);
+        BitConverter.GetBytes(0x80402010u).CopyTo(materialBytes, 12);
+        BitConverter.GetBytes(0f).CopyTo(materialBytes, 16); // Real black-material regression: zero exponent, nonzero color.
         var singleMaterial = new ResolvedMaterial { Type = 3, SourceBytes = materialBytes };
         var multiTextureMaterial = new ResolvedMaterial { Type = 5, SourceBytes = materialBytes };
         Check(singleMaterial.Specular == 0x80402010u && multiTextureMaterial.Specular == 0x80402010u,
@@ -58,7 +59,7 @@ internal static class MaterialExportChecks
             && MaterialLayerTint.ReadConstant(multiTextureMaterial) == expectedConstant,
             "Constant-color mode must use ul_Specular RGB, ignore ul_Diffuse, and force alpha to one.");
         Check(new ResolvedMaterial { Type = 4, SourceBytes = materialBytes }.Specular == null
-            && new ResolvedMaterial { Type = 5, SourceBytes = materialBytes[..19] }.Specular == null,
+            && new ResolvedMaterial { Type = 5, SourceBytes = materialBytes[..15] }.Specular == null,
             "Multi-material containers and truncated records must not be interpreted as single-material specular colors.");
         Console.WriteLine("PASS: single and multi-texture source specular color offsets and invalid-layout handling");
     }
