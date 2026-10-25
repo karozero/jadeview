@@ -6,6 +6,7 @@ public sealed partial class CinematicPlayback
 {
     private const int SetMorphChannelFactorSelector = 8253;
     private const int SetMorphChannelProgressionSelector = 8255;
+    private const int AnimateMorphChannelWithoutKeySelector = 8262;
     private const string AutomaticLipSyncCallback = "Cine_lipsynch_auto_Lips_lecture_messages";
     private const string CompanionReflexCallback = "companion_co_exec_reflex";
     private const string SallyMessageCallback = "Sally_sa_exec_message_read";
@@ -57,6 +58,12 @@ public sealed partial class CinematicPlayback
             var channelChange = DecodeChannelStateChange(actor, call);
             if (channelChange != null)
                 yield return new(key.Time, channelChange.Member.GaoKey, null, null, null, channelChange);
+
+            var animatedChannel = DecodeAnimatedMorphChannel(actor, track, key, sceneObjects, clip, call);
+            if (animatedChannel == null) continue;
+            yield return new(key.Time, track.Target, null, null, animatedChannel);
+            if (key.Duration > 0)
+                yield return new(key.Time + key.Duration, track.Target, null, null, animatedChannel);
         }
 
         var message = CinematicTimelineMessage.ReadMessage(key, trackTarget);
@@ -160,6 +167,29 @@ public sealed partial class CinematicPlayback
 
         return new(member, (int)call.Arguments[0],
             call.Selector == SetMorphChannelFactorSelector, value);
+    }
+
+    private static CinematicMorphFactorChange? DecodeAnimatedMorphChannel(SceneActor actor,
+        AnimationTrack carrierTrack, AnimationKey key, IReadOnlyCollection<SceneObject> sceneObjects,
+        AnimationClip clip, CinematicLiteralCall? call)
+    {
+        if (call is not { Selector: AnimateMorphChannelWithoutKeySelector, Arguments.Length: 3 }) return null;
+
+        uint targetKey = call.Arguments[0];
+        int moduleSelector = unchecked((int)call.Arguments[1]);
+        uint channelValue = call.Arguments[2];
+        bool validModuleSelector = moduleSelector == -1 || moduleSelector is >= 0 and <= byte.MaxValue;
+        if (!validModuleSelector || channelValue > int.MaxValue || !TargetsActor(actor, targetKey)) return null;
+
+        SceneObject? member = moduleSelector == -1 ? actor.Root : actor.FindModule((byte)moduleSelector);
+        SceneObject? carrier = sceneObjects.FirstOrDefault(sceneObject => sceneObject.GaoKey == carrierTrack.Target);
+        if (member == null || carrier == null) return null;
+
+        AnimationTrack[] carrierTracks = clip.Tracks
+            .Where(candidate => candidate.Target == carrier.GaoKey && candidate.Bone < 0)
+            .ToArray();
+        return new(member, (int)channelValue, carrier.Transform.Clone(), carrierTracks,
+            key.Time, key.Time + key.Duration);
     }
 
     private static int GetFacialEventPriority(FacialEvent facialEvent) =>

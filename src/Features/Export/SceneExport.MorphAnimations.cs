@@ -20,9 +20,25 @@ public sealed partial class SceneExporter
         morphTimelines.Add(new(actor, meshNode, $"Manual morphs · {actor.Root.Name} · {sceneObject.Name}", timeline.CopyKeys()));
     }
 
-    private void WriteMorphAnimations(SceneActor actor)
+    private void CaptureStaticMorphTimeline(SceneObject sceneObject, int meshNode)
     {
-        foreach (var timeline in morphTimelines.Where(timeline => timeline.Actor == actor))
+        if (!options.MorphAnimations || options.CinematicMorphTimelines == null
+            || !options.CinematicMorphTimelines.TryGetValue(sceneObject, out var keys)
+            || keys.Length <= 1) return;
+
+        int meshIndex = (int)nodes[meshNode]["mesh"];
+        if (!meshes[meshIndex].ContainsKey("weights")) return;
+
+        AnimationClip? sourceClip = options.CinematicPlayback?.SourceClip;
+        morphTimelines.Add(new(null, meshNode,
+            $"Cinematic morph events · {sceneObject.Name}", keys,
+            "Source-time EVE morph-channel events sampled at 60 Hz; game callback gates are not reconstructed",
+            "LINEAR", sourceClip));
+    }
+
+    private void WriteMorphAnimations()
+    {
+        foreach (var timeline in morphTimelines)
         {
             var times = timeline.Keys.Select(key => key.Time).ToArray();
             int targetCount = timeline.Keys[0].Weights.Length;

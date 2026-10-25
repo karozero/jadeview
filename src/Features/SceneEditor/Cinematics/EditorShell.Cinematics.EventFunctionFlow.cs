@@ -28,6 +28,15 @@ public sealed partial class EditorShell
                 _ => "no serialized return-value wait flag; node behavior is not evaluated"
             };
             ImGui.BulletText($"Key {functionEvent.KeyIndex} · {functionEvent.Time:F3}s · {behavior} · flags 0x{functionEvent.KeyFlags:X4}");
+            if (functionEvent.WaitMode != CinematicEventFunctionWaitMode.None
+                && functionEvent.DownstreamKeyCount > 0)
+            {
+                string affectedRange = functionEvent.FirstDownstreamKeyTime is { } firstTime
+                    && functionEvent.LastDownstreamKeyTime is { } lastTime
+                    ? $"{firstTime:F3}–{lastTime:F3}s"
+                    : "unknown time range";
+                ImGui.TextDisabled($"  May delay {functionEvent.DownstreamKeyCount} later keys on this channel ({affectedRange}); preview keeps authored times.");
+            }
         }
         if (functionEvents.Length > 24)
             ImGui.TextDisabled($"{functionEvents.Length - 24} additional AI-function keys omitted.");

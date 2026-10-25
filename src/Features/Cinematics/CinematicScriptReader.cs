@@ -17,6 +17,7 @@ internal static class CinematicScriptReader
     private const string MessageReadersResource = "JadeView.CinematicScriptMessageReaders";
     private const string SourceReferencesResource = "JadeView.CinematicScriptSourceReferences";
     private const string OvaFieldAccessesResource = "JadeView.CinematicScriptOvaFieldAccesses";
+    private const string RliValueFlowResource = "JadeView.CinematicScriptRliValueFlow";
     private static readonly Lazy<IReadOnlyDictionary<uint, string[]>> FunctionMap = new(ReadFunctionMap);
     private static readonly Lazy<IReadOnlyDictionary<uint, string>> FunctionNames = new(ReadFunctionNames);
     private static readonly Lazy<IReadOnlyDictionary<string, CinematicScriptFunctionCall[]>> FunctionCalls = new(ReadFunctionCalls);
@@ -26,6 +27,7 @@ internal static class CinematicScriptReader
     private static readonly Lazy<IReadOnlyDictionary<string, CinematicScriptMessageReaderSite[]>> MessageReaders = new(ReadMessageReaders);
     private static readonly Lazy<IReadOnlyDictionary<string, CinematicScriptSourceReferenceSite[]>> SourceReferences = new(ReadSourceReferences);
     private static readonly Lazy<IReadOnlyDictionary<string, CinematicScriptOvaFieldAccessSite[]>> OvaFieldAccesses = new(ReadOvaFieldAccesses);
+    private static readonly Lazy<IReadOnlyDictionary<string, CinematicScriptRliValueFlowAssignment[]>> RliValueFlow = new(ReadRliValueFlow);
 
     internal static int CallbackCatalogModelCount => FunctionMap.Value.Count;
     internal static string[] CallbacksFor(uint modelKey) => FunctionMap.Value.GetValueOrDefault(modelKey) ?? [];
@@ -87,9 +89,55 @@ internal static class CinematicScriptReader
 
         return previous.Keys.Where(functionName => !roots.Contains(functionName))
             .Select(functionName => new CinematicScriptFunctionPath(functionName,
-                FormatPath(functionName, previous)))
+                FormatPath(functionName, previous), BuildSteps(functionName, previous)))
             .OrderBy(path => path.FunctionName, StringComparer.Ordinal)
             .ToArray();
+
+        static CinematicScriptCallbackPathStep[] BuildSteps(string endpoint,
+            IReadOnlyDictionary<string, (string Parent, string Dispatch, int? TrackIndex,
+                string? IndirectField, string? AssignmentFunction, string? AssignmentSource, int? AssignmentLine,
+                string? ReferenceVariable, string? ResolvedFunctionKey)> parents)
+        {
+            var steps = new List<CinematicScriptCallbackPathStep>();
+            string current = endpoint;
+            while (parents.TryGetValue(current, out var step) && !string.IsNullOrEmpty(step.Parent))
+            {
+                steps.Add(new(step.Parent, current, step.Dispatch, step.TrackIndex,
+                    step.AssignmentFunction, step.AssignmentLine, step.ReferenceVariable,
+                    step.ResolvedFunctionKey, ResolveDispatchConditions(step.Parent, step.Dispatch,
+                        step.ReferenceVariable, current, out bool conditionsResolved), conditionsResolved));
+                current = step.Parent;
+            }
+            steps.Reverse();
+            return steps.ToArray();
+        }
+
+        static CinematicScriptBranchConditionSource[] ResolveDispatchConditions(string parentFunction,
+            string dispatch, string? referenceVariable, string targetFunction, out bool resolved)
+        {
+            string? api = dispatch switch
+            {
+                "execute" => "AIExecute",
+                "set-current-track" => "AITrackCurChange",
+                "replace-current-track" => "AITrackCurChangeNow",
+                "track-change" => "AITrackChange",
+                _ => null
+            };
+            if (api == null || referenceVariable is not { Length: > 0 })
+            {
+                resolved = false;
+                return [];
+            }
+
+            CinematicScriptEngineCallSite[] matches = EngineCalls.Value
+                .GetValueOrDefault(parentFunction, [])
+                .Where(call => call.Api == api && call.Arguments.Any(argument =>
+                    Regex.IsMatch(argument,
+                        $"(?<![A-Za-z0-9_]){Regex.Escape(referenceVariable)}(?![A-Za-z0-9_])")))
+                .ToArray();
+            resolved = matches.Length == 1;
+            return resolved ? matches[0].BranchConditions : [];
+        }
 
         static string FormatPath(string endpoint,
             IReadOnlyDictionary<string, (string Parent, string Dispatch, int? TrackIndex,
@@ -224,17 +272,53 @@ internal static class CinematicScriptReader
                     call.Variant, call.Arguments, call.ArgumentAssignments, call.ArgumentFields,
                     call.MessageFields, call.BranchConditions, call.Source, call.Line, path.Value,
                      call.LoopContexts, call.ArgumentAssignmentAlternatives, call.OvaFieldWrites,
-                    call.MessageFieldWrites)))
+                    call.MessageFieldWrites, call.ResultVariable)))
             .OrderBy(call => call.Api, StringComparer.Ordinal)
             .ThenBy(call => call.Variant, StringComparer.Ordinal)
             .ThenBy(call => call.FunctionName, StringComparer.Ordinal)
             .ThenBy(call => call.Line).ToArray();
     }
 
+    internal static CinematicScriptReachableEngineCall[] ConfiguredModelEngineCalls(
+        CinematicScriptOwner owner)
+    {
+        var reachablePaths = ReachableCallbackPaths(owner);
+        return ConfiguredModelFunctions(owner).SelectMany(functionName =>
+                EngineCalls.Value.GetValueOrDefault(functionName, []).Select(call =>
+                    new CinematicScriptReachableEngineCall(functionName, call.Api, call.Variant,
+                        call.Arguments, call.ArgumentAssignments, call.ArgumentFields,
+                        call.MessageFields, call.BranchConditions, call.Source, call.Line,
+                        reachablePaths.GetValueOrDefault(functionName,
+                            "configured model function; source callback path unresolved"),
+                        call.LoopContexts, call.ArgumentAssignmentAlternatives, call.OvaFieldWrites,
+                        call.MessageFieldWrites, call.ResultVariable)))
+            .OrderBy(call => call.FunctionName, StringComparer.Ordinal)
+            .ThenBy(call => call.Source, StringComparer.Ordinal)
+            .ThenBy(call => call.Line).ToArray();
+    }
+
+    internal static CinematicScriptReachableSourceReference[] ConfiguredModelSourceReferences(
+        CinematicScriptOwner owner)
+    {
+        var reachablePaths = ReachableCallbackPaths(owner);
+        return ConfiguredModelFunctions(owner).SelectMany(functionName =>
+                SourceReferences.Value.GetValueOrDefault(functionName, []).Select(reference =>
+                    new CinematicScriptReachableSourceReference(functionName, reference.Kind,
+                        reference.Symbol, uint.Parse(reference.Key.AsSpan(2), NumberStyles.HexNumber,
+                            CultureInfo.InvariantCulture), reference.Source, reference.Line,
+                        reachablePaths.GetValueOrDefault(functionName,
+                            "configured model function; source callback path unresolved"))))
+            .OrderBy(reference => reference.Kind, StringComparer.Ordinal)
+            .ThenBy(reference => reference.Symbol, StringComparer.Ordinal)
+            .ThenBy(reference => reference.FunctionName, StringComparer.Ordinal)
+            .ThenBy(reference => reference.Line).ToArray();
+    }
+
     internal static CinematicScriptMessageReader[] ReachableMessageReaders(CinematicScriptOwner owner)
     {
         var reachablePaths = ReachableCallbackPaths(owner);
-        var explicitIdReads = ReachableEngineCalls(owner).Where(call => call.Api == "MSGGetByID"
+        CinematicScriptReachableEngineCall[] reachableCalls = ReachableEngineCalls(owner);
+        var explicitIdReads = reachableCalls.Where(call => call.Api == "MSGGetByID"
                 && call.Arguments.Length >= 2
                 && call.Arguments[0] == "AI_gpst_CurrentGameObject"
                 && TryParseMessageId(call.Arguments[1], out _))
@@ -244,11 +328,23 @@ internal static class CinematicScriptReader
                 return new CinematicScriptMessageReader(messageId, call.FunctionName, call.Source,
                     call.Line, call.CallbackPath, "MSGGetByID", "AI_gpst_CurrentGameObject");
             });
-        var genericReads = reachablePaths.SelectMany(path => MessageReaders.Value
+        CinematicScriptMessageReader[] genericReads = reachablePaths.SelectMany(path => MessageReaders.Value
                 .GetValueOrDefault(path.Key, [])
                 .Select(reader => new CinematicScriptMessageReader(reader.MessageId, path.Key,
-                    reader.Source, reader.Line, path.Value, reader.ReadApi, reader.QueueObject)));
-        return explicitIdReads.Concat(genericReads)
+                    reader.Source, reader.Line, path.Value, reader.ReadApi, reader.QueueObject)))
+            .ToArray();
+        string[] functionsWithSpecificReaders = explicitIdReads.Concat(genericReads)
+            .Select(reader => reader.FunctionName)
+            .Distinct(StringComparer.Ordinal).ToArray();
+        var anyMessageReads = reachableCalls.Where(call => call.Api == "MSGGet"
+                && call.Variant == "CURRENT"
+                && !functionsWithSpecificReaders.Contains(call.FunctionName, StringComparer.Ordinal)
+                && reachableCalls.Any(countCall => countCall.FunctionName == call.FunctionName
+                    && countCall.Api == "MSGGetCount"
+                    && countCall.Arguments is ["AI_gpst_CurrentGameObject"]))
+            .Select(call => new CinematicScriptMessageReader(null, call.FunctionName,
+                call.Source, call.Line, call.CallbackPath, "MSGGet", "AI_gpst_CurrentGameObject"));
+        return explicitIdReads.Concat(genericReads).Concat(anyMessageReads)
             .OrderBy(reader => reader.MessageId)
             .ThenBy(reader => reader.FunctionName, StringComparer.Ordinal)
             .ThenBy(reader => reader.Source, StringComparer.Ordinal)
@@ -258,8 +354,23 @@ internal static class CinematicScriptReader
     }
 
     internal static CinematicScriptMessageReader[] ReachableMessageReaders(
-        CinematicScriptOwner owner, int messageId) => ReachableMessageReaders(owner)
-        .Where(reader => reader.MessageId == messageId).ToArray();
+        CinematicScriptOwner owner, int messageId)
+    {
+        CinematicScriptMessageReader[] readers = ReachableMessageReaders(owner);
+        CinematicScriptMessageReader[] matchingReaders = readers
+            .Where(reader => reader.MessageId == messageId).ToArray();
+        if (matchingReaders.Length > 0) return matchingReaders;
+
+        // A generic queue read proves that an owner can dequeue a message, but it
+        // does not identify handling for an arbitrary ID when the same owner has
+        // message-specific readers. Keep that fallback only for wholly generic
+        // owners such as script controllers that drain their queue without an
+        // indexed per-ID reader.
+        bool hasMessageSpecificReaders = readers.Any(reader => reader.MessageId != null);
+        return hasMessageSpecificReaders
+            ? []
+            : readers.Where(reader => reader.MessageId == null).ToArray();
+    }
 
     private static bool TryParseMessageId(string expression, out int messageId) =>
         int.TryParse(expression, NumberStyles.Integer, CultureInfo.InvariantCulture, out messageId);
@@ -309,6 +420,18 @@ internal static class CinematicScriptReader
             .ThenBy(access => access.Line).ToArray();
     }
 
+    internal static CinematicScriptRliValueFlowAssignment[] ReachableRliValueFlowAssignments(
+        CinematicScriptOwner owner)
+    {
+        var reachablePaths = ReachableCallbackPaths(owner);
+        return reachablePaths.SelectMany(path => RliValueFlow.Value
+                .GetValueOrDefault(path.Key, [])
+                .Select(assignment => assignment with { CallbackPath = path.Value }))
+            .OrderBy(assignment => assignment.FunctionName, StringComparer.Ordinal)
+            .ThenBy(assignment => assignment.Line)
+            .ToArray();
+    }
+
     private static Dictionary<string, string> ReachableCallbackPaths(CinematicScriptOwner owner)
     {
         var modelFunctions = owner.ModelFunctionNames.ToHashSet(StringComparer.Ordinal);
@@ -319,6 +442,10 @@ internal static class CinematicScriptReader
         return paths;
     }
 
+    private static string[] ConfiguredModelFunctions(CinematicScriptOwner owner) =>
+        owner.ModelFunctionNames.Concat(owner.CallbackNames)
+            .Distinct(StringComparer.Ordinal).ToArray();
+
     internal static void Load(IEnumerable<PcSceneLoader.Record> records,
         IReadOnlyDictionary<PcSceneLoader.Record, byte[]> origins, SceneDocument document)
     {
@@ -326,6 +453,7 @@ internal static class CinematicScriptReader
         var resources = new PcSceneResourceIndex(recordArray);
         var eventResources = new PcSceneResourceIndex(recordArray.Where(record => record.Kind == 'i'));
         var decodedEventRecords = new Dictionary<PcSceneLoader.Record, AnimationClip>();
+        var functionResourcesByModel = new Dictionary<PcSceneLoader.Record, CinematicScriptFunctionResource[]>();
         foreach (var owner in recordArray.Where(record => record.Kind == 'l'))
         {
             var embeddedLists = new List<CinematicEmbeddedEventTrackList>();
@@ -450,7 +578,11 @@ internal static class CinematicScriptReader
             var engineCallbackSlots = modelVariablePayload is { } engineCallbackPayload
                 ? PcScriptEngineCallbackReader.Read(engineCallbackPayload.Span, FunctionNames.Value)
                 : null;
-            var functionResources = PcScriptFunctionResourceReader.Read(model, resources, origins);
+            if (!functionResourcesByModel.TryGetValue(model, out CinematicScriptFunctionResource[]? functionResources))
+            {
+                functionResources = PcScriptFunctionResourceReader.Read(model, resources, origins);
+                functionResourcesByModel.Add(model, functionResources);
+            }
             var callbackNames = EffectiveCallbackNames(callbackSlots);
             var objectReferences = ReadObjectReferences(model, instanceKey, owner.LoadWorldKey, resources, origins);
             var variables = ReadVariables(model, instanceKey, owner.LoadWorldKey, resources, origins);
@@ -634,8 +766,15 @@ internal static class CinematicScriptReader
         using Stream resource = Assembly.GetExecutingAssembly().GetManifestResourceStream(EngineCallsResource)
             ?? throw new InvalidDataException($"Embedded script engine-call index '{EngineCallsResource}' is missing.");
         using var decompressed = new GZipStream(resource, CompressionMode.Decompress);
-        return JsonSerializer.Deserialize<Dictionary<string, CinematicScriptEngineCallSite[]>>(decompressed)
+        var serialized = JsonSerializer.Deserialize<Dictionary<string, CinematicScriptEngineCallSite[]>>(decompressed)
             ?? throw new InvalidDataException("Embedded script engine-call index is empty.");
+        return serialized.ToDictionary(pair => pair.Key,
+            pair => pair.Value.Select(call => call with
+            {
+                Source = call.Source.StartsWith("ai/", StringComparison.OrdinalIgnoreCase)
+                    ? call.Source
+                    : $"ai/{call.Source}"
+            }).ToArray(), StringComparer.Ordinal);
     }
 
     private static IReadOnlyDictionary<string, CinematicScriptMessageReaderSite[]> ReadMessageReaders()
@@ -663,5 +802,14 @@ internal static class CinematicScriptReader
         using var decompressed = new GZipStream(resource, CompressionMode.Decompress);
         return JsonSerializer.Deserialize<Dictionary<string, CinematicScriptOvaFieldAccessSite[]>>(decompressed)
             ?? throw new InvalidDataException("Embedded OVA field-access index is empty.");
+    }
+
+    private static IReadOnlyDictionary<string, CinematicScriptRliValueFlowAssignment[]> ReadRliValueFlow()
+    {
+        using Stream resource = Assembly.GetExecutingAssembly().GetManifestResourceStream(RliValueFlowResource)
+            ?? throw new InvalidDataException($"Embedded script value-flow index '{RliValueFlowResource}' is missing.");
+        using var decompressed = new GZipStream(resource, CompressionMode.Decompress);
+        return JsonSerializer.Deserialize<Dictionary<string, CinematicScriptRliValueFlowAssignment[]>>(decompressed)
+            ?? throw new InvalidDataException("Embedded script value-flow index is empty.");
     }
 }

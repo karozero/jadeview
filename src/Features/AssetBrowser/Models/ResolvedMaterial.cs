@@ -6,14 +6,18 @@ using System.Text;
 namespace JadeView;
 
 /// <summary>
-/// Разрешённый material Jade (MultiMaterial 0x04 или MultiTexture 0x05) с полным графом связей.
+/// Resolved Jade material resource with its source payload and dependency graph.
 /// </summary>
 public sealed class ResolvedMaterial
 {
     public ResourceId Id { get; init; }
-    public int Type { get; init; } // 4 = MultiMaterial, 5 = MultiTexture
+    public int Type { get; init; } // 3 = single, 4 = MultiMaterial, 5 = MultiTexture
     public int Offset { get; init; }
     public uint Diffuse { get; init; }
+    /// <summary>Serialized ul_Specular color for single and multi-texture materials.</summary>
+    public uint? Specular => Type is 3 or 5 && SourceBytes is { Length: >= 20 } bytes
+        ? BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(16, sizeof(uint)))
+        : null;
     public float Opacity { get; init; } = 1.0f;
     public uint Flags { get; init; }
     public byte[]? SourceBytes { get; init; }

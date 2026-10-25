@@ -20,6 +20,14 @@ public sealed partial class EditorShell
         ImGui.TextUnformatted($"Map: {FormatCollisionKey(resources.MapKey)}");
         DrawCategoryTitle("Instance");
         DrawCollisionResource(resources.InstanceKey, resources.Instance);
+        if (resources.Instance?.Instance is { } collisionInstance)
+        {
+            ushort effectiveActivation = sceneObject.PreviewCollisionActivationMask
+                ?? collisionInstance.ActivationMask;
+            string previewMarker = sceneObject.PreviewCollisionActivationMask.HasValue
+                ? " · cinematic script preview" : " · source";
+            ImGui.TextUnformatted($"Effective activation mask: 0x{effectiveActivation:X4}{previewMarker}");
+        }
         if (resources.Set != null)
         {
             DrawCategoryTitle("Referenced ColSet");

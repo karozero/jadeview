@@ -36,6 +36,23 @@
   - `Detect_o_Zone` selects BV-overlap or ZDE-pivot collision, tracks enter/exit,
     and can apply timed saved-flag and capability changes. Trigger preview must
     model these as state transitions, not static collider visibility.
+    The reproducible `--archive-zone-trigger-census` now finds 24 owners in
+    15 worlds, all uniquely bound to the shared OVA and all using the BV route.
+    It found one serialized `SceneEvents` join: the 01_04 door-zone owner writes
+    invert flag 1007 and is targeted by an EVE track. Live actor-slot,
+    collision, callback, timer, and saved-state results remain unknown. See
+    [`gameplay-zone-trigger-census.md`](gameplay-zone-trigger-census.md).
+    A source/archive join traces flag 1007 from that zone to a gameplay door
+    and kickable prop, while confirming the cinematic EVE track only gates
+    the zone and does not itself write the flag. Runtime order remains
+    unresolved; see
+    [`gameplay-saved-flag-1007-chain.md`](gameplay-saved-flag-1007-chain.md).
+  - The archive-wide engine-hook census resolves 4,179 configured callbacks
+    across 3,060 owners (IDs 0–2 only); Iris source has dispatch sites for IDs
+    0–3, but no retail assignment for ID 3 or IDs 4–9 in this BF. A targeted
+    join in `BF00218E` links OVA callbacks with EVE targets, while keeping them
+    separate from time-stamped capability commands. This still does not prove
+    callback execution; see [`game-script-engine-callbacks.md`](game-script-engine-callbacks.md).
   - A source-wide API scan of 143 recovered script files finds recurring calls
     for AI-track changes (74 files), object destruction (77), capability
     changes (58), collision activation (31), and collision predicates (32).
@@ -59,6 +76,24 @@
     production audit of `FF005833 / BF00218E` found 22 adds and 4 deletes but
     no fully resolved matching tuple or reachable reset site; destinations in
     the inspected adds were dynamic or null.
+  - EVE `OBJ_AnimMorphFactorNoKey` now drives actor root/module and static
+    type-4 morph targets from the carrier X/Y track. Static morph deformation
+    is shown in the viewport and sampled into cinematic GLB animations; tests
+    cover deterministic seek/reverse-seek and export sampling. The lighthouse
+    physical dome now follows the generic static-object path. Its initial hide
+    still depends on unsupported `sbp_init`/saved-flag handling and needs a
+    comparison against the game.
+  - [ ] Implement bounded source-backed AI initialization/event callback
+    effects for preview, including explicit branch/save-state diagnostics.
+    Keep callback candidates and unknown runtime state visible; do not execute
+    arbitrary recovered script bodies.
+    - The branch inspector now accepts temporary set/clear assumptions only
+      for bit tests whose source explicitly resolves to Iris's
+      `Flag_speciaux_sauve` buffer. Unknown flags remain unknown and arbitrary
+      bitsets are not treated as save state. It lists guarded source callback
+      state effects and reports their evaluated predicates, but this remains
+      diagnostic-only; callback effects and resulting object visibility are
+      not simulated.
   - The global-startup inspector and cinematic Script Owners now show
     `AITrackChange`, `AITrackStop`, `AITrackCurChange`,
     `AITrackCurChangeNow`, and `AITrackCurStop` candidates from reachable
@@ -74,6 +109,28 @@
   - Cinematic literal-state preview now models `OBJ_CapaNot` as a 16-bit XOR
     alongside add/remove `OBJ_CapaSet`, matching IrisEngine's `uw_Capacities`.
     This does not evaluate callback branches or collision/saved-flag gates.
+  - Bounded callback preview now uses source-resolved receiver evidence before
+    applying `OBJ_CapaSet` and `OBJDrawMaskSet` operands, and projects literal
+    `COLSetActivationSet` changes onto a uniquely resolved collision instance.
+    The inspector shows the effective preview mask without modifying the
+    serialized collision resource. This does not run collision predicates,
+    zone triggers, map-activation calls, or arbitrary AI callbacks.
+    - Fresh `FF0045A2 / 3500B8EA` verification resolves 70 collision-bearing
+      objects and the camera/Sally instance resources, but sampled callback
+      masks remain unknown. Iris's configured `camera_cam_1_init` would clear
+      collision bit 0; the preview does not yet establish startup callback
+      admission. The inspector now reports that the serialized slot is due
+      after fresh AI reinitialization, conditional on owner admission and a
+      resolved callback function; it still does not apply the collision change.
+      Use this as a regression fixture while reconstructing init dispatch, and
+      do not apply the static call just because it is reachable.
+  - The zone audit now separates Iris's polled BV/ZDE trigger callbacks from
+    queued messages, and Jaded's serialized `TYPE_TRIGGER`/`call_trigger` path
+    from its message queue. Next, surface these as distinct inspector records:
+    trigger owner + actor + selected collision route + callback assignment on
+    one side, sender/recipient + message payload + consumer candidate on the
+    other. Runtime overlap, queue contents, dispatch, and execution stay
+    unknown without a source-backed state path or runtime trace.
   - Preserve provenance and unresolved edges; do not infer callback behavior
     from asset or scene names.
   - Research notes: [`gameplay-script-system-findings.md`](gameplay-script-system-findings.md).

@@ -115,7 +115,7 @@ internal static class LayerBakeChecks
         using var moved = new GlbReader(movedPath);
         Check(moved.Image(0).SequenceEqual(originalImage), "Scene translation shifted the reference reflection");
         RegisterTexture(resolver, 815, [20, 40, 60, 255, 20, 40, 60, 255]);
-        BitConverter.GetBytes(0xFF808080u).CopyTo(bytes, 12);
+        BitConverter.GetBytes(0xFF808080u).CopyTo(bytes, 16); // ul_Specular supplies the constant RGB.
         Layer(bytes, 36, 0, 0x00202004, 811);
         Layer(bytes, 56, 0, 0x00023084, 815);
         geometry.VertexColors = [0x80808080, 0x80808080, 0x80808080];

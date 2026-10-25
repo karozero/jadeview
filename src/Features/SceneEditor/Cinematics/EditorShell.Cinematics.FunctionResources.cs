@@ -31,6 +31,32 @@ public sealed partial class EditorShell
                 ImGui.TextWrapped($"Local constants: {metadata.LocalConstantBytes.Length} bytes · hex {constantsHex}{suffix}");
                 ImGui.TextDisabled("Compact-layout candidate only. The node body is absent; native registry resolution and execution remain unproven.");
             }
+            else if (resource.SerializedFunction is { } function)
+            {
+                int previewLength = Math.Min(function.LocalStringConstants.Length, ScriptConstantPreviewByteLimit);
+                string constantsHex = Convert.ToHexString(function.LocalStringConstants.AsSpan(0, previewLength));
+                string suffix = previewLength < function.LocalStringConstants.Length ? "…" : "";
+                ImGui.TextWrapped($"Serialized node body: {function.Nodes.Length} nodes · debug nodes: {function.DebugNodes.Length} · stack offsets: {function.StackOffsetCount}");
+                ImGui.TextWrapped($"Local constants: {function.LocalStringConstants.Length} bytes · local variables: {function.LocalVariables.Length} · trailing bytes: {function.TrailingBytes.Length}");
+                if (function.LocalStringConstants.Length > 0)
+                    ImGui.TextDisabled($"Local constant bytes: {constantsHex}{suffix}");
+                if (ImGui.TreeNode($"Decoded nodes ({function.Nodes.Length})"))
+                {
+                    foreach (PcAiInstruction node in function.Nodes.Take(64))
+                    {
+                        string symbol = string.IsNullOrWhiteSpace(node.SymbolName)
+                            ? node.CategoryName
+                            : $"{node.CategoryName} · {node.SymbolName}";
+                        ImGui.BulletText($"{node.Index}: {symbol} · value 0x{unchecked((uint)node.Value):X8} · id 0x{node.EncodedValue2:X4} · flags 0x{node.Flags:X2}");
+                        if (node.BranchDescription is { Length: > 0 } branch)
+                            ImGui.TextDisabled(branch);
+                    }
+                    if (function.Nodes.Length > 64)
+                        ImGui.TextDisabled($"Showing 64 of {function.Nodes.Length} nodes.");
+                    ImGui.TreePop();
+                }
+                ImGui.TextDisabled("Decoded serialized nodes only. Stack execution, branch values, callback scheduling and side effects are not simulated.");
+            }
             else if (!string.IsNullOrWhiteSpace(resource.Diagnostic))
                 ImGui.TextWrapped(resource.Diagnostic);
 

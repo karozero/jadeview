@@ -74,8 +74,18 @@ public sealed partial class SceneRenderer
         bool procedural = geo.Source.Billboards.Count > 0 || geo.Source.Particles != null;
         if (procedural && geo.DeformationOwner == obj && geo.ProceduralFrame == _proceduralFrame && geo.ProceduralMatrix == obj.RenderMatrix && geo.ProceduralCameraPosition == Camera.Position && geo.ProceduralCameraTarget == Camera.Target) return;
         uint[]? particleColors = null;
-        if (!procedural && geo.DeformationOwner == obj && obj.Actor != null && geo.DeformationRevision == obj.Actor.PoseRevision) return;
+        FaceMorphPreview? morphPreview = obj.Actor == null && obj.Modifiers.Any(modifier => modifier.Type == 4)
+            ? obj.MorphPreview ?? FaceMorphPreview.Get(obj, geo.Source)
+            : null;
+        int deformationRevision = obj.Actor?.PoseRevision ?? morphPreview?.DeformationRevision ?? 0;
+        if (!procedural && geo.DeformationOwner == obj && geo.DeformationRevision == deformationRevision) return;
         var posed = obj.Actor?.Skin(obj, geo.Source);
+        if (posed == null && morphPreview != null
+            && morphPreview.DeformationRevision != 0)
+        {
+            var morphPositions = morphPreview.Positions();
+            if (!ReferenceEquals(morphPositions, geo.Source.Positions)) posed = morphPositions;
+        }
         if (posed == null && geo.DeformationOwner == null && !procedural) return;
         _skinUpdatesThisFrame++;
         var positions = posed ?? geo.Source.Positions;
@@ -160,7 +170,7 @@ public sealed partial class SceneRenderer
         geo.LocalBounds = new(min, max); geo.LocalCenter = (min + max) * .5f; geo.BoundingRadius = (max - min).Length() * .5f;
         geo.DeformationOwner = posed == null && !procedural ? null : obj;
         geo.ProceduralFrame = _proceduralFrame; geo.ProceduralMatrix = obj.RenderMatrix; geo.ProceduralCameraPosition = Camera.Position; geo.ProceduralCameraTarget = Camera.Target;
-        geo.DeformationRevision = obj.Actor?.PoseRevision ?? 0;
+        geo.DeformationRevision = deformationRevision;
     }
 
     private void SetUvSpace(SceneObject obj, JadeMaterialLayer layer)

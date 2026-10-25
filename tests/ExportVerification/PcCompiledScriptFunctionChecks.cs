@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using JadeView;
 
 internal static class PcCompiledScriptFunctionChecks
@@ -9,7 +10,7 @@ internal static class PcCompiledScriptFunctionChecks
         VerifyBinaryLocalConstants();
         VerifyMalformedPayloadsAreRejected();
         VerifyModelScopedFunctionResourceResolution();
-        Console.WriteLine("PASS: bounded compact PC OFC metadata candidate and malformed payload checks");
+        Console.WriteLine("PASS: bounded full-body/compact-metadata PC OFC layouts and malformed payload checks");
     }
 
     private static void VerifyRetailCineEventsInitHeader()
@@ -92,24 +93,28 @@ internal static class PcCompiledScriptFunctionChecks
         {
             LoadWorldKey = modelWorldKey,
             References =
-            [new(functionKey, 'r'), new(wrongKindKey, 'r'), new(missingKey, 'r'),
+            [new(functionKey, 'r'), new(0x20000006, 'r'), new(wrongKindKey, 'r'), new(missingKey, 'r'),
              new(malformedKey, 'r'), new(ambiguousKey, 'r')]
         };
         byte[] validPayload = Convert.FromHexString("010000001000000000000000");
         byte[] unsupportedPayload = Convert.FromHexString("01000000100000000000000000");
         byte[] alternateWorldPayload = Convert.FromHexString("020000001800000000000000");
+        byte[] serializedFunctionPayload = CreateSerializedFunctionPayload();
 
         var localFunction = CreateRecord(functionKey, 'r', modelWorldKey, validPayload, "local.ofc");
+        var serializedFunction = CreateRecord(0x20000006, 'r', modelWorldKey,
+            serializedFunctionPayload, "serialized.ofc");
         var shadowedFunction = CreateRecord(functionKey, 'r', 0x10000002, alternateWorldPayload, "other.ofc");
         var wrongKind = CreateRecord(wrongKindKey, 'c', modelWorldKey, [], "not-ofc");
         var malformed = CreateRecord(malformedKey, 'r', modelWorldKey, unsupportedPayload, "malformed.ofc");
         var ambiguousFirst = CreateRecord(ambiguousKey, 'r', 0x10000002, alternateWorldPayload, "ambiguous-a.ofc");
         var ambiguousSecond = CreateRecord(ambiguousKey, 'r', 0x10000003, alternateWorldPayload, "ambiguous-b.ofc");
-        var records = new[] { model, localFunction, shadowedFunction, wrongKind, malformed,
+        var records = new[] { model, localFunction, serializedFunction, shadowedFunction, wrongKind, malformed,
             ambiguousFirst, ambiguousSecond };
         var origins = new Dictionary<PcSceneLoader.Record, byte[]>
         {
             [localFunction] = validPayload,
+            [serializedFunction] = serializedFunctionPayload,
             [shadowedFunction] = alternateWorldPayload,
             [wrongKind] = [],
             [malformed] = unsupportedPayload,
@@ -124,6 +129,10 @@ internal static class PcCompiledScriptFunctionChecks
             && resources[functionKey].WorldKey == modelWorldKey
             && resources[functionKey].Metadata is { StackOffsetCount: 1, DeclaredNodeByteSize: 16 },
             "A model-local .ofc reference should resolve in model scope and expose metadata only.");
+        Require(resources[0x20000006].Status == "SerializedBody"
+            && resources[0x20000006].Metadata == null
+            && resources[0x20000006].SerializedFunction is { StackOffsetCount: 2, Nodes.Length: 1 },
+            "A full model-local .ofc body should be decoded before trying the compact metadata layout.");
         Require(resources[wrongKindKey].Status == "WrongResourceKind"
             && resources[missingKey].Status == "MissingResource"
             && resources[malformedKey].Status == "UnsupportedLayout"
@@ -136,6 +145,19 @@ internal static class PcCompiledScriptFunctionChecks
             LoadWorldKey = worldKey,
             Name = name
         };
+
+        static byte[] CreateSerializedFunctionPayload()
+        {
+            byte[] payload = new byte[sizeof(int) * 4 + sizeof(ulong)];
+            BinaryPrimitives.WriteInt32LittleEndian(payload, 2);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int)), sizeof(ulong));
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) * 2), 0x1234);
+            BinaryPrimitives.WriteUInt16LittleEndian(payload.AsSpan(sizeof(int) * 2 + sizeof(int)), 0x1785);
+            payload[sizeof(int) * 2 + sizeof(int) + sizeof(ushort)] = 1;
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) * 2 + sizeof(ulong)), 0);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) * 3 + sizeof(ulong)), 0);
+            return payload;
+        }
     }
 
     private static byte[] CreatePayload(int size, string headerHex)

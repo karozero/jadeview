@@ -44,6 +44,9 @@ internal static class ArchiveCinematicScriptIndex
     }
     private sealed record UnmappedCallbackExample(string Container, string WorldKey, string WorldName,
         string OwnerKey, string OwnerName, string BrainKey, string ModelKey, int SlotIndex);
+    private sealed record EngineCallbackAssignment(string Container, string WorldKey, string WorldName,
+        string OwnerKey, string OwnerName, string BrainKey, string ModelKey, int EventId,
+        uint ModelOvaKey, uint FunctionKey, string? FunctionName, bool UniqueModelOvaBinding);
 
     private sealed class ScriptUsage(uint key)
     {
@@ -89,7 +92,63 @@ internal static class ArchiveCinematicScriptIndex
         return !ambiguousResult.ContainsKey(('q', 0xA100))
             && ambiguousKeys.Contains(('q', 0xA100))
             && sharedResult.ContainsKey(('s', 0xA200))
-            && sharedAmbiguities.Count == 0;
+            && sharedAmbiguities.Count == 0
+            && VerifyEngineCallbackCandidates();
+    }
+
+    private static bool VerifyEngineCallbackCandidates()
+    {
+        const uint firstOvaKey = 0xA300;
+        const uint secondOvaKey = 0xA301;
+        const uint callbackKey = 0xB300;
+        var functionNames = new Dictionary<uint, string> { [callbackKey] = "test_after_record" };
+
+        RecordView MakeModel(params (uint Key, string Type)[] references)
+        {
+            byte[] modelBytes = new byte[references.Length * 8];
+            for (int index = 0; index < references.Length; index++)
+            {
+                BinaryPrimitives.WriteUInt32LittleEndian(modelBytes.AsSpan(index * 8), references[index].Key);
+                System.Text.Encoding.ASCII.GetBytes(references[index].Type, modelBytes.AsSpan(index * 8 + 4, 4));
+            }
+            return new("FF001000", modelBytes, 0xA200, 's', 0, modelBytes.Length,
+                0xA100, "model", -1, uint.MaxValue, uint.MaxValue, []);
+        }
+
+        RecordView MakeOva(uint key, params uint[] callbacks)
+        {
+            byte[] payload = new byte[12 + 5 * sizeof(uint) + sizeof(int) + callbacks.Length * sizeof(uint)];
+            int countOffset = 12 + 5 * sizeof(uint);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(countOffset), callbacks.Length);
+            for (int index = 0; index < callbacks.Length; index++)
+                BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(countOffset + sizeof(int) + index * sizeof(uint)), callbacks[index]);
+            return new("FF001000", payload, key, 't', 0, payload.Length,
+                0xA100, $"OVA {key:X8}", -1, uint.MaxValue, uint.MaxValue, []);
+        }
+
+        RecordView uniqueModel = MakeModel((firstOvaKey, ".ova"), (0xA400, ".ofc"));
+        var uniqueResources = new Dictionary<(char Kind, uint Key), RecordView>
+        {
+            [('t', firstOvaKey)] = MakeOva(firstOvaKey, callbackKey)
+        };
+        var uniqueCandidates = ReadEngineCallbackCandidates(uniqueModel, uniqueResources, functionNames);
+        bool uniqueBindingPreservesTypedProvenance = uniqueCandidates.Length == 1
+            && uniqueCandidates[0].OvaKey == firstOvaKey
+            && uniqueCandidates[0].Slot.EventId == 0
+            && uniqueCandidates[0].Slot.FunctionKey == callbackKey
+            && uniqueCandidates[0].Slot.FunctionName == "test_after_record";
+
+        RecordView ambiguousModel = MakeModel((firstOvaKey, ".ova"), (secondOvaKey, ".ova"));
+        var ambiguousResources = new Dictionary<(char Kind, uint Key), RecordView>
+        {
+            [('t', firstOvaKey)] = MakeOva(firstOvaKey, callbackKey),
+            [('t', secondOvaKey)] = MakeOva(secondOvaKey, callbackKey)
+        };
+        var ambiguousCandidates = ReadEngineCallbackCandidates(ambiguousModel, ambiguousResources, functionNames);
+        bool multipleOvaAssignmentsRemainAmbiguous = ambiguousCandidates.Length == 2
+            && ambiguousCandidates.Select(candidate => candidate.OvaKey).Distinct().Count() == 2;
+
+        return uniqueBindingPreservesTypedProvenance && multipleOvaAssignmentsRemainAmbiguous;
     }
 
     private static void Write(string archivePath, string sourceRoot, string output, bool includeAllWorlds)
@@ -121,6 +180,7 @@ internal static class ArchiveCinematicScriptIndex
         var aiFunctionPayloadCoverage = new AiFunctionPayloadCoverage();
         var decodedEventClips = new Dictionary<(string Container, uint Key), AnimationClip>();
         var unmappedCallbackOwners = new Dictionary<uint, List<UnmappedCallbackExample>>();
+        var engineCallbackAssignments = new List<EngineCallbackAssignment>();
         int containerIndex = 0;
         int cinematicContainers = 0;
         int brainOwners = 0;
@@ -252,6 +312,18 @@ internal static class ArchiveCinematicScriptIndex
                 catch (InvalidDataException)
                 {
                     // Keep callback-slot coverage separate from variable-layout diagnostics.
+                }
+                (uint OvaKey, CinematicScriptEngineCallbackSlot Slot)[] engineCallbackCandidates =
+                    ReadEngineCallbackCandidates(model, resources, functionNames);
+                bool uniqueModelOvaBinding = engineCallbackCandidates
+                    .Select(candidate => candidate.OvaKey).Distinct().Count() == 1;
+                foreach ((uint ovaKey, CinematicScriptEngineCallbackSlot callback) in engineCallbackCandidates)
+                {
+                    if (callback.FunctionKey == 0) continue;
+                    engineCallbackAssignments.Add(new(entry.Id, owner.World.ToString("X8"), worldName,
+                        owner.Key.ToString("X8"), owner.Name, brainKey.ToString("X8"),
+                        modelKey.ToString("X8"), callback.EventId, ovaKey, callback.FunctionKey,
+                        callback.FunctionName, uniqueModelOvaBinding));
                 }
                 OwnerTrackMutation[] ownerTrackMutations = ReadOwnerTrackMutations(model, resources,
                     functionNames, parsedFunctionsByPayload, aiFunctionPayloadCoverage);
@@ -540,6 +612,44 @@ internal static class ArchiveCinematicScriptIndex
             OwnersWithoutDecodedCallbackSlots = resolvedOwners - ownersWithDecodedCallbackSlots,
             OwnersWithUnmappedCallbacks = ownersWithUnmappedCallbacks,
             ConfiguredCallbackSlots = configuredCallbackSlots,
+            EngineCallbackOwners = engineCallbackAssignments
+                .DistinctBy(assignment => (assignment.Container, assignment.WorldKey, assignment.OwnerKey))
+                .Count(),
+            EngineCallbackAssignmentCandidates = engineCallbackAssignments.Count,
+            UniquelyBoundEngineCallbackAssignments = engineCallbackAssignments
+                .Count(assignment => assignment.UniqueModelOvaBinding),
+            AmbiguousEngineCallbackAssignmentCandidates = engineCallbackAssignments
+                .Count(assignment => !assignment.UniqueModelOvaBinding),
+            EngineCallbackIds = engineCallbackAssignments.GroupBy(assignment => assignment.EventId)
+                .OrderBy(group => group.Key).Select(group => new
+                {
+                    EventId = group.Key,
+                    Event = CinematicEngineCallbackCatalog.Describe(group.Key),
+                    IrisCallSiteConfirmed = CinematicEngineCallbackCatalog.IsConfirmedByIrisCallSite(group.Key),
+                    AssignmentCandidates = group.Count(),
+                    UniquelyBoundAssignments = group.Count(assignment => assignment.UniqueModelOvaBinding),
+                    AmbiguousCandidates = group.Count(assignment => !assignment.UniqueModelOvaBinding),
+                    CandidateOwners = group.Select(assignment => (assignment.Container, assignment.WorldKey,
+                        assignment.OwnerKey)).Distinct().Count(),
+                    Containers = group.Select(assignment => assignment.Container)
+                        .Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+                    Functions = group.Select(assignment => assignment.FunctionName
+                            ?? $"{assignment.FunctionKey:X8}")
+                        .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase)
+                        .Take(24).ToArray(),
+                    Examples = group.Take(12).Select(assignment => new
+                    {
+                        assignment.Container,
+                        assignment.WorldKey,
+                        assignment.WorldName,
+                        assignment.OwnerKey,
+                        assignment.OwnerName,
+                        ModelOvaKey = assignment.ModelOvaKey.ToString("X8"),
+                        FunctionKey = assignment.FunctionKey.ToString("X8"),
+                        assignment.FunctionName,
+                        assignment.UniqueModelOvaBinding
+                    }).ToArray()
+                }).ToArray(),
             UnmappedCallbackSlots = unmappedCallbackSlots,
             UnmappedCallbackKeys = unmappedCallbackOwners.OrderByDescending(pair => pair.Value.Count)
                 .ThenBy(pair => pair.Key).Select(pair => new
@@ -641,6 +751,32 @@ internal static class ArchiveCinematicScriptIndex
         foreach (Match match in pattern.Matches(File.ReadAllText(sourcePath)))
             functionNames[Convert.ToUInt32(match.Groups[1].Value, 16)] = match.Groups[2].Value;
         return functionNames;
+    }
+
+    private static (uint OvaKey, CinematicScriptEngineCallbackSlot Slot)[] ReadEngineCallbackCandidates(RecordView model,
+        IReadOnlyDictionary<(char Kind, uint Key), RecordView> resources,
+        IReadOnlyDictionary<uint, string> functionNames)
+    {
+        var modelOvaKeys = new HashSet<uint>();
+        for (int offset = 0; offset <= model.Size - 8; offset += 8)
+        {
+            ReadOnlySpan<byte> typeTag = model.Source.AsSpan(model.Offset + offset + sizeof(uint), sizeof(uint));
+            if (typeTag.SequenceEqual(".ova"u8))
+                modelOvaKeys.Add(ReadUInt32(model.Source, model.Offset + offset));
+        }
+
+        var candidates = new List<(uint OvaKey, CinematicScriptEngineCallbackSlot Slot)>();
+        foreach (uint ovaKey in modelOvaKeys)
+        {
+            if (!resources.TryGetValue(('t', ovaKey), out RecordView? variableRecord)) continue;
+            CinematicScriptEngineCallbackSlot[]? slots = PcScriptEngineCallbackReader.Read(
+                variableRecord.Source.AsSpan(variableRecord.Offset, variableRecord.Size), functionNames);
+            if (slots == null) continue;
+            candidates.AddRange(slots.Where(slot => slot.FunctionKey != 0)
+                .Select(slot => (ovaKey, slot)));
+        }
+
+        return candidates.ToArray();
     }
 
     private static OwnerTrackMutation[] ReadOwnerTrackMutations(RecordView model,

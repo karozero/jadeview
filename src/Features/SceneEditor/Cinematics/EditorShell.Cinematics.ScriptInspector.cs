@@ -140,7 +140,9 @@ public sealed partial class EditorShell
 
             DrawCinematicScriptSchedulerEvidence(selected);
             DrawCinematicEventSchedulerEvidence(selected);
-            DrawCinematicScriptReferencedObjectCalls(selected);
+            CinematicScriptChannelTransfer[] channelTransfers =
+                DrawCinematicScriptReferencedObjectCalls(selected);
+            DrawCinematicRuntimeCallbackGatePreview(selected, channelTransfers);
             DrawCinematicScriptCallPaths(selected);
             DrawCinematicScriptIncomingReferences(selected, sceneScripts);
             DrawCinematicScriptVariables(selected);

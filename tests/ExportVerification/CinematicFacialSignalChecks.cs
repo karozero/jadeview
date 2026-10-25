@@ -60,6 +60,8 @@ internal static class CinematicFacialSignalChecks
         if (actor.CinematicClockOwned) throw new InvalidDataException("Cinematic clock ownership leaked after exit.");
         Console.WriteLine("PASS: continuous facial helper from separate event/transform tracks, shared clock, seek and cleanup");
         VerifyDirectChannelCalls();
+        VerifyEveMorphFactorNoKey();
+        VerifyEveMorphFactorNoKeyOnStaticObject();
         VerifyNestedTimelineMessagesUseScheduledClock();
         VerifyFacialMessageCommandsTargetTheSourceModule();
 
@@ -131,6 +133,201 @@ internal static class CinematicFacialSignalChecks
             if (MathF.Abs(state.Weight - expectedWeight) > .0001f
                 || MathF.Abs(state.Progression - expectedProgression) > .0001f)
                 throw new InvalidDataException($"Morph channel script call at {time} produced {state}, expected {expectedWeight}/{expectedProgression}.");
+        }
+    }
+
+    private static void VerifyEveMorphFactorNoKey()
+    {
+        const uint actorKey = 0x111;
+        const uint carrierKey = 0x113;
+        const uint cameraKey = 0x112;
+        var root = new SceneObject
+        {
+            GaoKey = actorKey,
+            GeometryKey = 100,
+            Modifiers = [new(4, MorphPreviewChecks.Payload(1))]
+        };
+        var actor = new SceneActor { Root = root, Members = [root] };
+        root.Actor = actor;
+        var camera = new SceneObject { GaoKey = cameraKey, Name = "Camera" };
+        var carrier = new SceneObject { GaoKey = carrierKey };
+        var clip = new AnimationClip
+        {
+            Loaded = true,
+            Key = 0x114,
+            Duration = 1,
+            Cinematic = true,
+            Tracks =
+            [
+                new() { Bone = -1, Target = actorKey, Keys = [new() { Duration = 1 }] },
+                new() { Bone = -1, Target = cameraKey, Keys = [new() { Duration = 1, Position = Vector3.UnitZ }] },
+                new()
+                {
+                    Bone = -1,
+                    Target = carrierKey,
+                    Keys =
+                    [
+                        new()
+                        {
+                            Duration = 1,
+                            Position = new(0, -1, 0),
+                            OpaquePayloads = [CinematicTestEvents.Call(0, carrierKey, 8262,
+                                actorKey, uint.MaxValue, 0).OpaquePayloads[0]]
+                        },
+                        new() { Time = 1, Position = new(1, 0, 0) }
+                    ]
+                }
+            ]
+        };
+        var document = new SceneDocument();
+        document.CinematicClips.Add(clip.Key, clip);
+        var world = new WorldData();
+        world.Objects.AddRange([root, carrier, camera]);
+        world.Actors.Add(actor);
+        var resolver = new ResourceResolver();
+        ((Dictionary<uint, Geometry>)typeof(ResourceResolver)
+            .GetField("_geometries", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(resolver)!)
+            .Add(100, new Geometry { Key = 100, Positions = [Vector3.Zero] });
+
+        var playback = CinematicPlayback.Discover(document, world, resolver).Single();
+        playback.Activate();
+        VerifyChannel(.5f, .5f);
+        VerifyChannel(1, 1);
+        VerifyChannel(.25f, .25f);
+        playback.Deactivate();
+        Console.WriteLine("PASS: EVE OBJ_AnimMorphFactorNoKey samples carrier X/Y into actor morph channels with seek and endpoint handling");
+
+        void VerifyChannel(float time, float expected)
+        {
+            playback.Seek(time);
+            var state = root.MorphPreview!.GetChannel(0);
+            if (MathF.Abs(state.Weight - expected) > .0001f
+                || MathF.Abs(state.Progression - expected) > .0001f)
+                throw new InvalidDataException($"OBJ_AnimMorphFactorNoKey at {time} produced {state}, expected {expected}/{expected}.");
+        }
+    }
+
+    private static void VerifyEveMorphFactorNoKeyOnStaticObject()
+    {
+        const uint targetKey = 0x121;
+        const uint carrierKey = 0x123;
+        const uint cameraKey = 0x122;
+        var target = new SceneObject
+        {
+            GaoKey = targetKey,
+            GeometryKey = 100,
+            Flags = 2,
+            Modifiers = [new(4, MorphPreviewChecks.Payload(3))]
+        };
+        var camera = new SceneObject { GaoKey = cameraKey, Name = "Camera" };
+        var carrier = new SceneObject { GaoKey = carrierKey };
+        var clip = new AnimationClip
+        {
+            Loaded = true,
+            Key = 0x124,
+            Duration = 1,
+            Cinematic = true,
+            Tracks =
+            [
+                new() { Bone = -1, Target = cameraKey, Keys = [new() { Duration = 1, Position = Vector3.UnitZ }] },
+                new()
+                {
+                    Bone = -1,
+                    Target = carrierKey,
+                    Keys =
+                    [
+                        new()
+                        {
+                            Duration = 1,
+                            Position = new(0, -1, 0),
+                            OpaquePayloads = [CinematicTestEvents.Call(0, carrierKey, 8262,
+                                targetKey, uint.MaxValue, 0).OpaquePayloads[0]]
+                        },
+                        new() { Time = 1, Position = new(1, 0, 0) }
+                    ]
+                }
+            ]
+        };
+        var document = new SceneDocument();
+        document.CinematicClips.Add(clip.Key, clip);
+        var world = new WorldData();
+        world.Objects.AddRange([target, carrier, camera]);
+        var resolver = new ResourceResolver();
+        var staticGeometry = new Geometry
+        {
+            Key = 100,
+            Positions = [Vector3.Zero, Vector3.UnitX, Vector3.UnitY],
+            Parts = [new(0, [0, 1, 2], [0, 1, 2])]
+        };
+        ((Dictionary<uint, Geometry>)typeof(ResourceResolver)
+            .GetField("_geometries", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(resolver)!)
+            .Add(100, staticGeometry);
+
+        var playback = CinematicPlayback.Discover(document, world, resolver).Single();
+        if (!playback.FacialDiagnostics.Any(diagnostic => diagnostic.Contains("1 EVE morph-channel signal")))
+            throw new InvalidDataException("Static morph playback diagnostics omitted the EVE target evidence.");
+        playback.Activate();
+        VerifyChannel(.5f, .5f);
+        VerifyChannel(1, 1);
+        VerifyChannel(.25f, .25f);
+        var sampled = playback.SampleFacialMorphTimelines();
+        if (!sampled.TryGetValue(target, out var keys) || keys.Length != 61
+            || MathF.Abs(keys[30].Time - .5f) > .0001f)
+            throw new InvalidDataException("Static EVE morph target was omitted from the cinematic export timeline.");
+        VerifyStaticMorphGlb(playback, document, world, resolver, target, sampled);
+        playback.Deactivate();
+        Console.WriteLine("PASS: EVE OBJ_AnimMorphFactorNoKey drives static morph objects and includes them in cinematic export sampling");
+
+        void VerifyChannel(float time, float expected)
+        {
+            playback.Seek(time);
+            var state = target.MorphPreview!.GetChannel(0);
+            if (MathF.Abs(state.Weight - expected) > .0001f
+                || MathF.Abs(state.Progression - expected) > .0001f)
+                throw new InvalidDataException($"Static OBJ_AnimMorphFactorNoKey at {time} produced {state}, expected {expected}/{expected}.");
+        }
+
+        static void VerifyStaticMorphGlb(CinematicPlayback activePlayback, SceneDocument sourceDocument,
+            WorldData sourceWorld, ResourceResolver sourceResolver, SceneObject morphTarget,
+            IReadOnlyDictionary<SceneObject, FaceMorphKeyframe[]> morphTimelines)
+        {
+            string exportPath = Path.Combine(Path.GetTempPath(), $"jadeview-static-morph-{Guid.NewGuid():N}.glb");
+            try
+            {
+                SceneExporter.Export(exportPath, sourceWorld, sourceResolver, new()
+                {
+                    Textures = false,
+                    Actors = false,
+                    Animations = true,
+                    CinematicClipKey = activePlayback.Key,
+                    CinematicDocument = sourceDocument,
+                    CinematicPlayback = activePlayback,
+                    CinematicMorphTimelines = morphTimelines
+                });
+                using var glb = new GlbReader(exportPath);
+                var nodes = glb.Root.GetProperty("nodes");
+                int targetNode = Enumerable.Range(0, nodes.GetArrayLength())
+                    .Single(index => nodes[index].GetProperty("name").GetString() == morphTarget.Name);
+                var animation = glb.Root.GetProperty("animations").EnumerateArray()
+                    .FirstOrDefault(candidate => candidate.GetProperty("channels").EnumerateArray()
+                        .Any(channel => channel.GetProperty("target").GetProperty("node").GetInt32() == targetNode
+                            && channel.GetProperty("target").GetProperty("path").GetString() == "weights"));
+                if (animation.ValueKind == System.Text.Json.JsonValueKind.Undefined)
+                    throw new InvalidDataException("GLB export omitted the static object's cinematic morph weight channel.");
+                var morphChannel = animation.GetProperty("channels").EnumerateArray().Single(channel =>
+                    channel.GetProperty("target").GetProperty("node").GetInt32() == targetNode
+                    && channel.GetProperty("target").GetProperty("path").GetString() == "weights");
+                var sampler = animation.GetProperty("samplers")[morphChannel.GetProperty("sampler").GetInt32()];
+                var times = glb.Accessor(sampler.GetProperty("input").GetInt32()).Select(value => value[0]).ToArray();
+                var weights = glb.Accessor(sampler.GetProperty("output").GetInt32()).Select(value => value[0]).ToArray();
+                int midpointFrame = Array.FindIndex(times, time => MathF.Abs(time - .5f) < .0001f);
+                if (midpointFrame < 0 || MathF.Abs(weights[midpointFrame * 2 + 1] - .25f) > .0001f)
+                    throw new InvalidDataException("GLB static morph deformation does not match channel weight × progression at 0.5 seconds.");
+            }
+            finally
+            {
+                if (File.Exists(exportPath)) File.Delete(exportPath);
+            }
         }
     }
 

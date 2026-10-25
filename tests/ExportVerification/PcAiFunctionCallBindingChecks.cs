@@ -90,6 +90,37 @@ internal static class PcAiFunctionCallBindingChecks
                 && unresolvedLoadedWorld.ResolvedIntegerValue == null,
             "An unknown integer operator must not be folded into a runtime slot value.");
 
+        var constantOperations = new (string Name, ushort Key, int Right, int Expected)[]
+        {
+            ("Equal", 0x08A1, 1, 1),
+            ("GreatEq", 0x08A2, 1, 1),
+            ("LessEq", 0x08A3, 1, 1),
+            ("Great", 0x08A4, 0, 1),
+            ("Less", 0x08A5, 2, 1),
+            ("Different", 0x08A6, 0, 1),
+            ("OrOp", 0x08AE, 2, 3),
+            ("AndOp", 0x08AF, 1, 1),
+            ("XorOp", 0x08B0, 2, 3)
+        };
+        foreach ((string operationName, ushort operationKey, int rightOperand, int expectedValue)
+            in constantOperations)
+        {
+            var expressionFunction = new PcSerializedAiFunction(0,
+            [
+                Node(0, 24, 0x21, 0x14, "Global variable"),
+                Node(1, 0, 0x1F51, 0x03, "Function", "WORLoaded"),
+                Node(2, rightOperand, 0x21, 0x01, "Type"),
+                Node(3, 0, operationKey, 0x02, "Keyword", operationName),
+                Node(4, 0, 0x0898, 0x02, "Keyword", "Affect"),
+                Node(5, 0, 0, 0, "End")
+            ], [], [], [], []);
+            PcAiFunctionCallBinding expressionBinding = PcAiFunctionCallBindingAnalyzer.Analyze(
+                expressionFunction, _ => "result").Single();
+            Require(expressionBinding.Status == "ResolvedConstantExpression"
+                    && expressionBinding.ResolvedIntegerValue == expectedValue,
+                $"Source-confirmed integer operation {operationName} did not fold its constant operands.");
+        }
+
         var readinessCheck = new PcSerializedAiFunction(0,
         [
             Node(0, 0, 0x1F51, 0x03, "Function", "WORLoaded"),
@@ -121,7 +152,7 @@ internal static class PcAiFunctionCallBindingChecks
         Require(bypassableActivation.ResolvedArgumentValue == null,
             "A branch that can jump around the constant assignment must prevent argument propagation.");
 
-        Console.WriteLine("PASS: source-backed AI call binding resolves integer arguments, constant world-slot expression, and activation operand without evaluating execution");
+        Console.WriteLine("PASS: source-backed AI call binding resolves integer arguments, arithmetic/comparison/bitwise constants, and activation operands without evaluating execution");
     }
 
     private static PcAiInstruction Node(int index, int value, ushort value2, byte category,

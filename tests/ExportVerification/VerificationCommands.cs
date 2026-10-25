@@ -17,6 +17,37 @@ internal static class VerificationCommands
                 CinematicOwnerStartLifecycleChecks.Verify();
                 CinematicStartGateEvaluatorChecks.Verify();
                 break;
+            case ["--engine-function-selector-checks"]:
+                CinematicEngineFunctionCatalogChecks.Verify();
+                Console.WriteLine("PASS: source-aware engine selector catalog and operation descriptions");
+                break;
+            case ["--cinematic-script-material-constant-checks"]:
+                CinematicScriptMaterialConstantChecks.Verify();
+                break;
+            case ["--cinematic-script-local-alpha-checks"]:
+                CinematicScriptLocalAlphaChecks.Verify();
+                break;
+            case ["--cinematic-script-rli-display-callback-checks"]:
+                CinematicScriptRliDisplayCallbackChecks.Verify();
+                break;
+            case ["--cinematic-script-callback-window-checks"]:
+                CinematicScriptCallbackWindowChecks.Verify();
+                break;
+            case ["--cinematic-script-material-constant-audit", var archive, var container,
+                var clipKey, var materialKey, var start, var end, var step, .. var optional]:
+                if (optional.Length % 2 != 0)
+                    throw new ArgumentException("Optional material audit arguments are saved-flag index/value pairs.");
+                var materialSavedFlags = new Dictionary<int, bool?>();
+                for (int index = 0; index < optional.Length; index += 2)
+                    materialSavedFlags[int.Parse(optional[index], System.Globalization.CultureInfo.InvariantCulture)] =
+                        bool.Parse(optional[index + 1]);
+                CinematicScriptMaterialConstantAudit.Write(archive, container,
+                    Convert.ToUInt32(clipKey, 16), Convert.ToUInt32(materialKey, 16),
+                    float.Parse(start, System.Globalization.CultureInfo.InvariantCulture),
+                    float.Parse(end, System.Globalization.CultureInfo.InvariantCulture),
+                    float.Parse(step, System.Globalization.CultureInfo.InvariantCulture),
+                    output, materialSavedFlags);
+                break;
             case ["--archive-startup-script-audit", var archive]:
                 ArchiveStartupScriptAudit.Write(archive, output);
                 break;
@@ -49,6 +80,12 @@ internal static class VerificationCommands
                 break;
             case ["--script-model-variable-audit", var archive, var container]:
                 ScriptModelVariableAudit.Write(archive, container, output);
+                break;
+            case ["--archive-zone-trigger-census", var archive]:
+                ArchiveZoneTriggerCensus.Write(archive, output);
+                break;
+            case ["--archive-ai-dependency-census", var archive]:
+                ArchiveAiDependencyCensus.Write(archive, output);
                 break;
             case ["--assets-ui-performance-audit", var archive, var container, var worldName, var focusName, var profile]:
                 AssetsUiPerformanceAudit.Write(archive, container, worldName, focusName, output, profile);
@@ -200,6 +237,37 @@ internal static class VerificationCommands
                 break;
             case ["--object-audit", var archive, var objectName, ..]:
                 ObjectMaterialAudit.Run(archive, objectName, output, OptionalArgument(arguments, 3));
+                break;
+            case ["--pc-morph-channel-audit", var archive, var container, var objectKey]:
+                PcMorphChannelAudit.Write(archive, container, Convert.ToUInt32(objectKey, 16), output);
+                break;
+            case ["--cinematic-morph-channel-audit", var archive, var container, var clipKey,
+                var objectKey, var start, var end, var step, .. var optional]:
+                if (optional.Length is 1 or > 2)
+                    throw new ArgumentException("Optional cinematic morph audit arguments are a saved-flag index and value pair.");
+                CinematicMorphChannelAudit.Write(archive, container,
+                    Convert.ToUInt32(clipKey, 16), Convert.ToUInt32(objectKey, 16),
+                    float.Parse(start, System.Globalization.CultureInfo.InvariantCulture),
+                    float.Parse(end, System.Globalization.CultureInfo.InvariantCulture),
+                    float.Parse(step, System.Globalization.CultureInfo.InvariantCulture), output,
+                    optional.Length > 0 ? int.Parse(optional[0], System.Globalization.CultureInfo.InvariantCulture) : null,
+                    optional.Length > 1 ? bool.Parse(optional[1]) : null);
+                break;
+            case ["--cinematic-rli-callback-audit", var archive, var container, var clipKey,
+                var ownerKey, var targetKey, var start, var end, var step, .. var optional]:
+                if (optional.Length % 2 != 0)
+                    throw new ArgumentException("Optional cinematic RLI audit arguments are saved-flag index/value pairs.");
+                var savedFlagAssumptions = new Dictionary<int, bool?>();
+                for (int index = 0; index < optional.Length; index += 2)
+                    savedFlagAssumptions[int.Parse(optional[index], System.Globalization.CultureInfo.InvariantCulture)] =
+                        bool.Parse(optional[index + 1]);
+                CinematicRliCallbackAudit.Write(archive, container,
+                    Convert.ToUInt32(clipKey, 16), Convert.ToUInt32(ownerKey, 16),
+                    Convert.ToUInt32(targetKey, 16),
+                    float.Parse(start, System.Globalization.CultureInfo.InvariantCulture),
+                    float.Parse(end, System.Globalization.CultureInfo.InvariantCulture),
+                    float.Parse(step, System.Globalization.CultureInfo.InvariantCulture), output,
+                    savedFlagAssumptions);
                 break;
             case ["--actor-audit", var archive, var actorName, ..]:
                 ActorAssetAudit.Run(archive, actorName, output);

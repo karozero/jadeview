@@ -393,6 +393,8 @@ public sealed partial class EditorShell
         _cinematicPlayers = CinematicPlayback.Discover(Document, _cinematicWorld, Resolver, Archive?.Entries,
             _disabledCinematicCallbackOwners, _previewedCinematicSceneEventOwners,
             _previewedCinematicSceneEventStartTimes);
+        foreach (CinematicPlayback player in _cinematicPlayers)
+            player.BindSavedFlagAssumptions(GetCinematicSavedFlagStates());
         _cinematicPlayback = _cinematicPlayers.FirstOrDefault(candidate => candidate.Key == clipKey)
             ?? _cinematicPlayers.FirstOrDefault();
         if (_cinematicPlayback == null) return;
@@ -501,6 +503,15 @@ public sealed partial class EditorShell
             ImGui.TextWrapped(diagnostic);
         foreach (string diagnostic in _cinematicPlayback.TransformDiagnostics)
             ImGui.TextWrapped(diagnostic);
+        string[] scriptCallbackDiagnostics = _cinematicPlayback.ScriptCallbackPlaybackDiagnostics;
+        if (ImGui.CollapsingHeader($"Script-driven visual state ({scriptCallbackDiagnostics.Length})"))
+        {
+            if (scriptCallbackDiagnostics.Length == 0)
+                ImGui.TextDisabled("No uniquely resolved callback-driven visual state is previewed for this cinematic.");
+            else
+                foreach (string diagnostic in scriptCallbackDiagnostics)
+                    ImGui.TextWrapped(diagnostic);
+        }
         ImGui.TextWrapped("Actors, camera, video and effects follow the application playback clock. Audio is streamed from the same source timeline; device-buffer timing is not used to drive scene updates. Mouth forms use authored controls; phoneme-level lip sync and the full script VM are not reconstructed.");
     }
 

@@ -3,14 +3,15 @@ namespace JadeView;
 public sealed partial class CinematicPlayback
 {
     internal IEnumerable<string> FacialDiagnostics => facialPlaybacks.Select(playback =>
-    {
-        int mouthCommands = playback.Events.Count(item => item.Mouth?.AutomaticMouth != null);
-        int blinkCommands = playback.Events.Count(item => item.Mouth?.BlinkRequested == true);
-        bool missingController = playback.Events.Any(item => item.Mouth?.AutomaticMouth == true)
-            && !playback.Previews.Any(snapshot => snapshot.Preview.MouthCycleDefinition != null);
-        return $"{playback.Actor.Root.Name}: {playback.Signals.Length} animated facial signals, {mouthCommands} mouth start/stop commands, {blinkCommands} explicit blink triggers"
-            + (missingController ? "; mouth controller binding unavailable" : "");
-    });
+        {
+            int mouthCommands = playback.Events.Count(item => item.Mouth?.AutomaticMouth != null);
+            int blinkCommands = playback.Events.Count(item => item.Mouth?.BlinkRequested == true);
+            bool missingController = playback.Events.Any(item => item.Mouth?.AutomaticMouth == true)
+                && !playback.Previews.Any(snapshot => snapshot.Preview.MouthCycleDefinition != null);
+            return $"{playback.Actor.Root.Name}: {playback.Signals.Length} animated facial signals, {mouthCommands} mouth start/stop commands, {blinkCommands} explicit blink triggers"
+                + (missingController ? "; mouth controller binding unavailable" : "");
+        })
+        .Concat(objectMorphPlayback?.Diagnostics ?? []);
 
     private static PreviewSnapshot[] CreatePreviewSnapshots(SceneActor actor, ResourceResolver resolver)
     {
@@ -34,6 +35,8 @@ public sealed partial class CinematicPlayback
     {
         var result = facialPlaybacks.SelectMany(playback => playback.Previews)
             .ToDictionary(snapshot => snapshot.Target, _ => new List<FaceMorphKeyframe>());
+        foreach (SceneObject target in objectMorphPlayback?.Targets ?? [])
+            result.TryAdd(target, []);
         if (result.Count == 0 || Duration <= 0)
             return result.ToDictionary(pair => pair.Key, pair => pair.Value.ToArray());
 
@@ -49,9 +52,14 @@ public sealed partial class CinematicPlayback
             float sampleTime = Math.Min(frame / FacialSampleRate, Duration);
             Time = sampleTime;
             AdvanceFacialPlayback(sampleTime);
+            objectMorphPlayback?.Advance(sampleTime);
             foreach (var playback in facialPlaybacks)
                 foreach (var snapshot in playback.Previews)
                     result[snapshot.Target].Add(new(sampleTime, snapshot.Preview.CopyWeights()));
+            if (objectMorphPlayback != null)
+                foreach (SceneObject target in objectMorphPlayback.Targets)
+                    if (target.MorphPreview is { } preview)
+                        result[target].Add(new(sampleTime, preview.CopyWeights()));
         }
 
         Seek(restoreTime);
@@ -61,6 +69,7 @@ public sealed partial class CinematicPlayback
 
     private void ResetFacialPlayback()
     {
+        objectMorphPlayback?.Reset();
         foreach (var playback in facialPlaybacks)
         {
             playback.NextEvent = 0;

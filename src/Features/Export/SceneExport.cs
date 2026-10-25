@@ -34,6 +34,7 @@ public sealed partial class SceneExporter
     private readonly Dictionary<(WorldData World, uint ClipKey), CinematicLocalRotationTimeline> cinematicRotationCache = [];
     private readonly Dictionary<(WorldData World, uint ClipKey), CinematicGameScriptMoveTimeline> cinematicMoveCache = [];
     private readonly Dictionary<(WorldData World, uint ClipKey), CinematicVideoPlaybackTimeline> cinematicVideoCache = [];
+    private readonly Dictionary<(WorldData World, uint ClipKey), CinematicPlayback?> cinematicPlaybackCache = [];
     private readonly HashSet<(SceneActor Actor, uint ClipKey)> cinematicActorOrientationsWritten = [];
     private HashSet<SceneObject> animatedCinematicObjects = [];
     private HashSet<SceneObject> cinematicVisibilityObjects = [];
@@ -71,6 +72,7 @@ public sealed partial class SceneExporter
         exporter.cinematicVisibilityObjects = exporter.FindCinematicVisibilityObjects(world);
         exporter.SetOrigin(objects, selected);
         exporter.ExportObjects(objects);
+        if (options.Animations) exporter.WriteMorphAnimations();
         exporter.WriteRoutedCameras(world, objects);
         if (exporter.cameras.Count > 0)
             exporter.warnings.Add("Cinematic camera motion uses the source camera transform; lens and projection are approximated for Blender export.");
@@ -92,8 +94,9 @@ public sealed partial class SceneExporter
         var targetKeys = clips
             .SelectMany(clip => CinematicTracks(clip, world))
             .Where(track => track.Bone < 0).Select(track => track.Target).ToHashSet();
-        var visibilityTargets = clips.SelectMany(clip => CreateCinematicObjectState(clip, world)
-            .VisibilityTargets).ToHashSet();
+        var visibilityTargets = clips.SelectMany(clip => CinematicPlaybackFor(clip, world) is { } playback
+            ? playback.VisibilityTargets
+            : CreateCinematicObjectState(clip, world).VisibilityTargets).ToHashSet();
         var orientTargets = clips.SelectMany(clip => CinematicOrientTo(clip, world).OrientedObjects).ToHashSet();
         var sightSetTargets = clips.SelectMany(clip => CinematicSightSets(clip, world).Participants).ToHashSet();
         var rotationTargets = clips.SelectMany(clip => CinematicLocalRotations(clip, world).Targets).ToHashSet();
@@ -113,7 +116,9 @@ public sealed partial class SceneExporter
 
     private HashSet<SceneObject> FindCinematicVisibilityObjects(WorldData world) =>
         SelectedCinematicClips(world, options)
-            .SelectMany(clip => CreateCinematicObjectState(clip, world).VisibilityTargets)
+            .SelectMany(clip => CinematicPlaybackFor(clip, world) is { } playback
+                ? playback.VisibilityTargets
+                : CreateCinematicObjectState(clip, world).VisibilityTargets)
             .ToHashSet();
 
     private IEnumerable<CinematicScriptHierarchyCommand> ScriptHierarchyCommands(
@@ -193,8 +198,13 @@ public sealed partial class SceneExporter
             bool selectedActorRoot = selected.Actor is { } && selected == selected.Actor.Root;
             return selectedActorRoot ? selected.Actor!.Members.ToList() : [selected];
         }
-        return options.Actors ? world.Objects.ToList()
+        var selectedObjects = options.Actors ? world.Objects.ToList()
             : world.Objects.Where(sceneObject => sceneObject.Actor == null && (sceneObject.Flags & 2) == 0).ToList();
+        if (options.Animations && options.CinematicMorphTimelines is { Count: > 0 } morphTimelines)
+            selectedObjects.AddRange(morphTimelines.Keys.Where(sceneObject => sceneObject.Actor == null
+                && world.Objects.Contains(sceneObject)
+                && !selectedObjects.Contains(sceneObject)));
+        return selectedObjects;
     }
 
     private void SetOrigin(List<SceneObject> objects, SceneObject? selected)

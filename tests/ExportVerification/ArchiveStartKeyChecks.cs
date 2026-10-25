@@ -48,7 +48,9 @@ internal static class ArchiveStartKeyChecks
         ]);
     }
 
-    private static void WriteStartupChainFixture(string path)
+    internal static void WriteStartupChainFixture(string path) => WriteStartupChainFixture(path, []);
+
+    internal static void WriteStartupChainFixture(string path, byte[] modelVariablesPayload)
     {
         byte[] instancePayload = new byte[sizeof(uint) * 2];
         BinaryPrimitives.WriteUInt32LittleEndian(instancePayload, 0x71003FF3);
@@ -66,7 +68,7 @@ internal static class ArchiveStartKeyChecks
             new(0x71003FF9, "univers.oin", instancePayload),
             new(0x71003FF3, "univers.omd", modelStream.ToArray()),
             new(0x71003FF8, "univers.ova", []),
-            new(0x71003FF2, "univars.ova", []),
+            new(0x71003FF2, "univars.ova", modelVariablesPayload),
             new(0x71003FF1, "univ_init.ofc", []),
         ]);
     }
@@ -77,7 +79,7 @@ internal static class ArchiveStartKeyChecks
         WriteFixedString(writer, typeTag, 4);
     }
 
-    private static void WriteArchive(string path, uint startKey, (uint Key, string Name, byte[] Payload)[] entries)
+    internal static void WriteArchive(string path, uint startKey, (uint Key, string Name, byte[] Payload)[] entries)
     {
         int capacity = entries.Length;
         const int fatOffset = 68;

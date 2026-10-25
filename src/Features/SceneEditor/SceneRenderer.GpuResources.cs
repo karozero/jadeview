@@ -352,12 +352,7 @@ public sealed partial class SceneRenderer
                     ? Resolver?.Materials.GetValueOrDefault(root.SubMaterialKeys[Math.Min(id, root.SubMaterialKeys.Count - 1)]) : null;
             var layers = JadeMaterialLayer.Read(effective?.SourceBytes);
             if (layers.Count == 0 && effective == null) layers.Add(new(0, 7, 0, 0, 0));
-            Vector4 constant = Vector4.One;
-            if (effective?.SourceBytes is { Length: >= 16 } raw)
-            {
-                uint color = Preview.U32(raw, 12); // RGBA, not the header's ambient word.
-                constant = new((color & 255) / 255f, (color >> 8 & 255) / 255f, (color >> 16 & 255) / 255f, 1);
-            }
+            Vector4 constant = MaterialLayerTint.ReadConstant(effective);
             var passes = new List<GpuMaterialPass>();
             for (int layerIndex = 0; layerIndex < layers.Count; layerIndex++)
             {

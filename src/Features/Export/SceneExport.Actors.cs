@@ -39,7 +39,6 @@ public sealed partial class SceneExporter
         WriteAnimations(actor, animated);
         WriteCinematicActorOrientAnimations(actor, animated);
         WriteActorVisibilityAnimations(actor, objects, visualNodes);
-        WriteMorphAnimations(actor);
     }
 
     private int ActorVisibilityNode(SceneObject actorRoot)

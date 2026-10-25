@@ -20,6 +20,7 @@ internal static class ArchiveStartupScriptAudit
         string? Diagnostic)
     {
         public object[] InitializationCallbacks { get; init; } = [];
+        public PcAiGlobalSaveLayout? SaveLayout { get; init; }
     }
     private sealed record InstanceVariableSnapshot(string? Key, string Status,
         object[] Values, string? Diagnostic);
@@ -337,7 +338,8 @@ internal static class ArchiveStartupScriptAudit
                     return new VariableSummary(resource.Key.ToString("X8"), entries[0].Name,
                         "Parsed", defaultsStatus, descriptors, defaults, null)
                     {
-                        InitializationCallbacks = initializationCallbacks
+                        InitializationCallbacks = initializationCallbacks,
+                        SaveLayout = PcAiGlobalSaveLayoutReader.Read(parsed)
                     };
                 }
                 catch (Exception exception) when (exception is InvalidDataException or OverflowException

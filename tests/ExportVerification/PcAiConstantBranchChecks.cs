@@ -35,6 +35,22 @@ internal static class PcAiConstantBranchChecks
                 && trueBranch.ChosenEdge == "branch target",
             "A nonzero source-confirmed return must take JumpTrueSP's relative branch.");
 
+        var comparisonBranchFunction = new PcSerializedAiFunction(0,
+        [
+            Node(0, 0, 0x1F51, 0x03, "Function", "WORLoaded"),
+            Node(1, 1, 0x21, 0x01, "Type"),
+            Node(2, 0, 0x08A1, 0x02, "Keyword", "Equal"),
+            new(3, 5, 0x0901, 0, 0x02, "Keyword", "JumpTrueSP", 5,
+                "true branch -> node 5; false branch -> node 4"),
+            Node(4, 0, 0, 0, "End"),
+            Node(5, 0, 0, 0, "End")
+        ], [], [], [], []);
+        PcAiConstantBranch comparisonBranch = PcAiConstantBranchAnalyzer.Analyze(
+            comparisonBranchFunction).Single();
+        Require(comparisonBranch.ConditionDescription == "WORLoaded() = 1; 1 == 1 = 1"
+                && comparisonBranch.ConditionIsTrue && comparisonBranch.ChosenNodeIndex == 5,
+            "A source-confirmed integer comparison must resolve before a conditional branch.");
+
         var dynamicBranchFunction = falseBranchFunction with
         {
             Nodes = falseBranchFunction.Nodes.Select(node => node.Index == 0
@@ -51,7 +67,7 @@ internal static class PcAiConstantBranchChecks
         Require(PcAiConstantBranchAnalyzer.Analyze(malformedTargetFunction).Length == 0,
             "An out-of-range branch target must remain unresolved.");
 
-        Console.WriteLine("PASS: source-backed constant AI return, logical Not, JumpFalseSP/JumpTrueSP edges, and unresolved fallbacks");
+        Console.WriteLine("PASS: source-backed constant AI return, integer-comparison branches, logical Not, conditional jump edges, and unresolved fallbacks");
     }
 
     private static PcAiInstruction Node(int index, int value, ushort value2, byte category,

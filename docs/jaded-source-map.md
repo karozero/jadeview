@@ -13,6 +13,27 @@ JadeView hypothesis or symptom. Ask for the call chain and exact source ranges,
 then compare the retail Iris implementation and label archive facts separately
 from runtime assumptions.
 
+## Script runtime cross-check
+
+Jaded confirms that the archive does not store a flat list of commands to play
+as a cutscene. AI model descriptors seed five mutable callback slots; the
+per-frame AI scheduler handles those slots and their wait state, while EVE has
+its own event-track state and dispatch path. An EVE AI-function event can enter
+the AI interpreter using a resolved owner context, and ordinary messages are
+queued on an object's bounded message list for a callback to consume. Jaded's
+`SCR_tt_Trigger` record resolves a script/procedure reference plus a message
+payload and invokes that procedure through AI execution; this establishes a
+script-call mechanism, but does not establish which collision zones call it.
+
+Useful Jaded entry points are `AIload.c:1788-1802,1999-2037,2082-2103`,
+`AIengine.c:712-738,964-1053,1444-1488`, `ENGcall.c:230-270`,
+`EVEload.c:46-132`, `EVEplay.c:768-920,1389-1538,1600-1650`,
+`EVEnt_aifunc.c:119-148,216-280`, `AIstruct.h:360-370`, and
+`AIkeywords.c:1153-1205`. Compare retail-PC behavior against Iris before
+implementing it: Iris uses different world AI/EOT eligibility gates and
+runtime ordering, so Jaded is architectural corroboration rather than a source
+of retail constants.
+
 ## Standing reference agent
 
 `/root/jaded_reference` is the dedicated Jaded source specialist for this task.

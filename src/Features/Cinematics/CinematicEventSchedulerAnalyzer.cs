@@ -22,7 +22,7 @@ internal static class CinematicEventSchedulerAnalyzer
             $"Linked SceneEvents EVE list: {owner.SceneEventsKey:X8}. Events {FormatKey(owner.EventsKey)} is an actor action/animation link and is not treated as a world EVE list here.",
             flagFinding,
             DescribeInitialActivation(activationForecast),
-            $"EVE_MainCall advances the attached list only for a valid world-table entry with an EVE component, runtime flags2 0x{PendingInactiveFlag:X8} clear, and nonzero distance when extraFlag 0x{DistanceCullExtraFlag:X} is set. World activation, table membership, distance, and actual track execution are not proven by this BF snapshot."
+            $"Retail Iris EVE_MainCall advances the attached list only for a valid world-table entry with an EVE component, runtime flags2 0x{PendingInactiveFlag:X8} clear, and nonzero distance when extraFlag 0x{DistanceCullExtraFlag:X} is set. Jaded's comparison path uses different owner gates: EVEplay skips ForceInactive and OptimCulled owners with no LOD visibility; do not transfer Iris flags2/distance conditions to Jaded. World activation, table membership, distance, and actual track execution are not proven by this BF snapshot."
         ];
     }
 

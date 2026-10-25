@@ -6,7 +6,9 @@ param(
     [string]$FunctionNamesPath,
 
     [Parameter(Mandatory = $true)]
-    [string]$OutputPath
+    [string]$OutputPath,
+
+    [switch]$MergeExistingIndex
 )
 
 $resolvedSource = (Resolve-Path -LiteralPath $SourcePath).Path
@@ -19,6 +21,15 @@ function Get-LineNumberAtIndex([int[]]$lineStarts, [int]$index) {
     $lineIndex = [Array]::BinarySearch($lineStarts, $index)
     if ($lineIndex -lt 0) { $lineIndex = -$lineIndex - 2 }
     return $lineIndex + 1
+}
+
+function Get-RelativePath([string]$basePath, [string]$targetPath) {
+    $separator = [System.IO.Path]::DirectorySeparatorChar
+    $baseFullPath = [System.IO.Path]::GetFullPath($basePath).TrimEnd($separator) + $separator
+    $targetFullPath = [System.IO.Path]::GetFullPath($targetPath)
+    $baseUri = [Uri]::new($baseFullPath)
+    $targetUri = [Uri]::new($targetFullPath)
+    return [Uri]::UnescapeDataString($baseUri.MakeRelativeUri($targetUri).ToString())
 }
 
 function Get-MatchingBrace([string]$text, [int]$openIndex) {
@@ -181,6 +192,7 @@ function Test-CIdentifier([string]$text, [string]$identifier) {
 
 $definitionPattern = [regex]'(?m)^[ \t]*(?:int|void)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\([^;{}]*\)\s*\{'
 $callPattern = [regex]'\bAI_EvalFunc_(?<api>[A-Za-z0-9_]+?)_C(?<variant>_(?:CURRENT|CURGLOB|C))?\s*\(|\bACTKitMerge(?<mergeMode>NoOver|Over)\s*\('
+$callAssignmentPattern = [regex]'(?<variable>[A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)\s*$'
 $calls = [System.Collections.Generic.List[object]]::new()
 foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Filter 'ai_compiledscripts_*.c' -File -Recurse) {
     $text = [System.IO.File]::ReadAllText($file.FullName)
@@ -222,6 +234,42 @@ foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Filter 'ai_compile
                     Field = $distinctFields[0].Name
                     Line = $distinctFields[0].Group[0].Line
                 }
+            }
+        }
+        # Compiled callbacks frequently pass the instance-data pointer through
+        # one or more locals before reading/writing OVA fields (v34 = v6, etc.).
+        # Propagate only a unique member-field identity so those writes are not
+        # silently dropped from the source index.
+        $aliasChanged = $true
+        while ($aliasChanged) {
+            $aliasChanged = $false
+            foreach ($assignmentGroup in ($allAssignments | Group-Object { $_.Groups['variable'].Value })) {
+                $fieldCandidates = [System.Collections.Generic.List[object]]::new()
+                foreach ($assignment in $assignmentGroup.Group) {
+                    foreach ($fieldMatch in $memberFieldPattern.Matches($assignment.Groups['expression'].Value)) {
+                        $fieldCandidates.Add([pscustomobject]@{
+                            Field = $fieldMatch.Groups['field'].Value
+                            Line = Get-LineNumberAtIndex $lineStarts ($bodyStart + $assignment.Index)
+                        })
+                    }
+                    $expressionIdentifiers = [regex]::Matches($assignment.Groups['expression'].Value,
+                        '\b[A-Za-z_][A-Za-z0-9_]*\b') | ForEach-Object { $_.Value } | Sort-Object -Unique
+                    foreach ($identifier in $expressionIdentifiers) {
+                        if ($memberAliases.ContainsKey($identifier)) {
+                            $fieldCandidates.Add($memberAliases[$identifier])
+                        }
+                    }
+                }
+                $distinctFields = @($fieldCandidates | Group-Object Field)
+                if ($distinctFields.Count -ne 1) { continue }
+                $variable = $assignmentGroup.Name
+                $field = $distinctFields[0].Name
+                if ($memberAliases.ContainsKey($variable) -and $memberAliases[$variable].Field -eq $field) { continue }
+                $memberAliases[$variable] = [pscustomobject]@{
+                    Field = $field
+                    Line = $distinctFields[0].Group[0].Line
+                }
+                $aliasChanged = $true
             }
         }
         $ifConditions = [System.Collections.Generic.List[object]]::new()
@@ -369,6 +417,15 @@ foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Filter 'ai_compile
                     Line = Get-LineNumberAtIndex $lineStarts ($bodyStart + $assignment.Index)
                     Depth = $pending.Depth
                     IsUnique = $assignments.Count -eq 1
+                    BranchConditions = [object[]]@($ifConditions | Where-Object {
+                        $_.Start -le $assignment.Index -and $_.End -gt $assignment.Index
+                    } | Sort-Object Start | ForEach-Object {
+                        [ordered]@{
+                            Kind = $_.Kind
+                            Expression = $_.Expression
+                            Line = $_.Line
+                        }
+                    })
                 })
                 if ($pending.Depth -ge 3) { continue }
                 $expressionIdentifiers = [regex]::Matches($assignment.Groups['expression'].Value,
@@ -385,17 +442,32 @@ foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Filter 'ai_compile
             }
             $assignmentAlternatives = [System.Collections.Generic.List[object]]::new()
             $ovaFieldWrites = [System.Collections.Generic.List[object]]::new()
-            if ($apiName -eq 'ACTKitMerge') {
-            $instanceDataAliases = @($memberAliases.GetEnumerator() | Where-Object {
-                $_.Value.Field -eq 'instanceVarDataCurrent'
-            } | ForEach-Object { $_.Key })
-            $ownerFieldWritePattern = [regex]'(?<receiver>[A-Za-z_][A-Za-z0-9_]*)\s*->\s*(?<field>[A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)\s*(?<value>[^;]+);'
-            $ownerFieldWriteMatches = @($ownerFieldWritePattern.Matches($body.Substring(0, $call.Index)) |
-                Where-Object { $_.Groups['receiver'].Value -in $instanceDataAliases })
             $pendingAlternatives = [System.Collections.Generic.Queue[object]]::new()
             $visitedAlternatives = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+            $assignmentAlternativesComplete = $true
+            # Keep path-dependent reaching definitions for values passed through a
+            # call, not only variables used by the call site's own branch test.
+            # Calls after an if/else often consume a local assigned in both arms
+            # (for example a COLORBlend result); the selected expression must be
+            # resolved from the arm predicates at preview time.
+            $assignmentAlternativeRoots = [System.Collections.Generic.List[string]]::new()
             foreach ($identifier in $localIdentifiers) {
-                if ($assignmentsByVariable.ContainsKey($identifier)) {
+                if (-not $assignmentAlternativeRoots.Contains($identifier)) {
+                    $assignmentAlternativeRoots.Add($identifier)
+                }
+            }
+            foreach ($assignment in $argumentAssignments) {
+                if ($assignment.IsUnique -or $assignmentAlternativeRoots.Contains($assignment.Variable)) {
+                    continue
+                }
+                $assignmentAlternativeRoots.Add($assignment.Variable)
+            }
+            foreach ($identifier in $assignmentAlternativeRoots) {
+                if (-not $assignmentsByVariable.ContainsKey($identifier)) { continue }
+                $reachingAssignments = @($assignmentsByVariable[$identifier] | Where-Object {
+                    $_.Index -lt $call.Index
+                })
+                if ($reachingAssignments.Count -gt 1) {
                     $pendingAlternatives.Enqueue([pscustomobject]@{
                         Variable = $identifier
                         BeforeIndex = $call.Index
@@ -403,21 +475,16 @@ foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Filter 'ai_compile
                     })
                 }
             }
-            foreach ($write in $ownerFieldWriteMatches) {
-                $writeIndex = $write.Index
-                foreach ($condition in ($ifConditions | Where-Object {
-                    $_.Start -le $writeIndex -and $_.End -gt $writeIndex
-                })) {
-                    $conditionVariables = [regex]::Matches($condition.Expression,
-                        '\b[A-Za-z_][A-Za-z0-9_]*\b') | ForEach-Object { $_.Value } | Sort-Object -Unique
-                    foreach ($conditionVariable in $conditionVariables) {
-                        if ($assignmentsByVariable.ContainsKey($conditionVariable)) {
-                            $pendingAlternatives.Enqueue([pscustomobject]@{
-                                Variable = $conditionVariable
-                                BeforeIndex = $writeIndex
-                                Depth = 0
-                            })
-                        }
+            foreach ($condition in $branchConditions) {
+                $conditionVariables = [regex]::Matches($condition.Expression,
+                    '\b[A-Za-z_][A-Za-z0-9_]*\b') | ForEach-Object { $_.Value } | Sort-Object -Unique
+                foreach ($conditionVariable in $conditionVariables) {
+                    if ($assignmentsByVariable.ContainsKey($conditionVariable)) {
+                        $pendingAlternatives.Enqueue([pscustomobject]@{
+                            Variable = $conditionVariable
+                            BeforeIndex = $call.Index
+                            Depth = 0
+                        })
                     }
                 }
             }
@@ -426,6 +493,10 @@ foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Filter 'ai_compile
                 $assignments = @($assignmentsByVariable[$pending.Variable] | Where-Object {
                     $_.Index -lt $pending.BeforeIndex
                 } | Sort-Object Index -Descending)
+                if ($assignments.Count -gt 16) {
+                    $assignmentAlternativesComplete = $false
+                    $assignments = @($assignments | Select-Object -First 16)
+                }
                 foreach ($assignment in $assignments) {
                     $assignmentIdentity = "$($pending.Variable)|$($assignment.Index)"
                     if (-not $visitedAlternatives.Add($assignmentIdentity)) { continue }
@@ -470,8 +541,97 @@ foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Filter 'ai_compile
                     }
                 }
             }
+            if ($pendingAlternatives.Count -gt 0) { $assignmentAlternativesComplete = $false }
+            $instanceDataAliases = @($memberAliases.GetEnumerator() | Where-Object {
+                $_.Value.Field -eq 'instanceVarDataCurrent'
+            } | ForEach-Object { $_.Key })
+            $ownerFieldWritePattern = [regex]'(?<receiver>[A-Za-z_][A-Za-z0-9_]*)\s*->\s*(?<field>[A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)\s*(?<value>[^;]+);'
+            $ownerFieldWriteMatches = @($ownerFieldWritePattern.Matches($body.Substring(0, $call.Index)) |
+                Where-Object { $_.Groups['receiver'].Value -in $instanceDataAliases })
             foreach ($write in $ownerFieldWriteMatches) {
                 $writeIndex = $write.Index
+                foreach ($condition in ($ifConditions | Where-Object {
+                    $_.Start -le $writeIndex -and $_.End -gt $writeIndex
+                })) {
+                    $conditionVariables = [regex]::Matches($condition.Expression,
+                        '\b[A-Za-z_][A-Za-z0-9_]*\b') | ForEach-Object { $_.Value } | Sort-Object -Unique
+                    foreach ($conditionVariable in $conditionVariables) {
+                        if ($assignmentsByVariable.ContainsKey($conditionVariable)) {
+                            $pendingAlternatives.Enqueue([pscustomobject]@{
+                                Variable = $conditionVariable
+                                BeforeIndex = $writeIndex
+                                Depth = 0
+                            })
+                        }
+                    }
+                }
+            }
+            foreach ($write in $ownerFieldWriteMatches) {
+                $writeIndex = $write.Index
+                $valueAlternatives = [System.Collections.Generic.List[object]]::new()
+                $pendingValueAlternatives = [System.Collections.Generic.Queue[object]]::new()
+                $visitedValueAlternatives = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+                $valueIdentifiers = [regex]::Matches($write.Groups['value'].Value,
+                    '\b[A-Za-z_][A-Za-z0-9_]*\b') | ForEach-Object { $_.Value } | Sort-Object -Unique
+                foreach ($identifier in $valueIdentifiers) {
+                    if ($assignmentsByVariable.ContainsKey($identifier)) {
+                        $pendingValueAlternatives.Enqueue([pscustomobject]@{
+                            Variable = $identifier
+                            BeforeIndex = $writeIndex
+                            Depth = 0
+                        })
+                    }
+                }
+                while ($pendingValueAlternatives.Count -gt 0 -and $valueAlternatives.Count -lt 64) {
+                    $pending = $pendingValueAlternatives.Dequeue()
+                    $reachingAssignments = @($assignmentsByVariable[$pending.Variable] | Where-Object {
+                        $_.Index -lt $pending.BeforeIndex
+                    } | Sort-Object Index -Descending)
+                    foreach ($assignment in $reachingAssignments | Select-Object -First 16) {
+                        $identity = "$($pending.Variable)|$($assignment.Index)"
+                        if (-not $visitedValueAlternatives.Add($identity)) { continue }
+                        $assignmentIndex = $assignment.Index
+                        $expression = ($assignment.Groups['expression'].Value -replace '\s+', ' ').Trim()
+                        $assignmentBranches = @($ifConditions | Where-Object {
+                            $_.Start -le $assignmentIndex -and $_.End -gt $assignmentIndex
+                        } | Sort-Object Start | ForEach-Object {
+                            [ordered]@{ Kind = $_.Kind; Expression = $_.Expression; Line = $_.Line }
+                        })
+                        $valueAlternatives.Add([ordered]@{
+                            Variable = $pending.Variable
+                            Expression = $expression
+                            Line = Get-LineNumberAtIndex $lineStarts ($bodyStart + $assignmentIndex)
+                            BranchConditions = [object[]]$assignmentBranches
+                        })
+                        if ($pending.Depth -ge 3) { continue }
+                        $nestedIdentifiers = [regex]::Matches($assignment.Groups['expression'].Value,
+                            '\b[A-Za-z_][A-Za-z0-9_]*\b') | ForEach-Object { $_.Value } | Sort-Object -Unique
+                        foreach ($nestedIdentifier in $nestedIdentifiers) {
+                            if ($assignmentsByVariable.ContainsKey($nestedIdentifier)) {
+                                $pendingValueAlternatives.Enqueue([pscustomobject]@{
+                                    Variable = $nestedIdentifier
+                                    BeforeIndex = $assignmentIndex
+                                    Depth = $pending.Depth + 1
+                                })
+                            }
+                        }
+                        foreach ($branch in ($ifConditions | Where-Object {
+                            $_.Start -le $assignmentIndex -and $_.End -gt $assignmentIndex
+                        })) {
+                            $branchIdentifiers = [regex]::Matches($branch.Expression,
+                                '\b[A-Za-z_][A-Za-z0-9_]*\b') | ForEach-Object { $_.Value } | Sort-Object -Unique
+                            foreach ($branchIdentifier in $branchIdentifiers) {
+                                if ($assignmentsByVariable.ContainsKey($branchIdentifier)) {
+                                    $pendingValueAlternatives.Enqueue([pscustomobject]@{
+                                        Variable = $branchIdentifier
+                                        BeforeIndex = $assignmentIndex
+                                        Depth = $pending.Depth + 1
+                                    })
+                                }
+                            }
+                        }
+                    }
+                }
                 $ovaFieldWrites.Add([ordered]@{
                     VariableName = $write.Groups['field'].Value
                     Expression = ($write.Groups['value'].Value -replace '\s+', ' ').Trim()
@@ -481,8 +641,8 @@ foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Filter 'ai_compile
                     } | Sort-Object Start | ForEach-Object {
                         [ordered]@{ Kind = $_.Kind; Expression = $_.Expression; Line = $_.Line }
                     })
+                    ValueAssignmentAlternatives = [object[]]@($valueAlternatives.ToArray())
                 })
-            }
             }
             $uniqueArgumentFields = @($argumentFields | Group-Object {
                 "$($_.Name)|$($_.AliasVariable)|$($_.AssignmentLine)"
@@ -522,16 +682,28 @@ foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Filter 'ai_compile
                 }
             }
             $line = Get-LineNumberAtIndex $lineStarts ($bodyStart + $call.Index)
-            $sourceFile = [System.IO.Path]::GetRelativePath($resolvedSource, $file.FullName).Replace('\', '/')
+            $sourceFile = Get-RelativePath $resolvedSource $file.FullName
+            if ([System.IO.Path]::GetFileName($resolvedSource) -ieq 'ai') {
+                $sourceFile = "ai/$sourceFile"
+            }
             $enclosingLoops = @($loopContexts | Where-Object {
                 $_.Start -le $call.Index -and $_.End -gt $call.Index
             } | ForEach-Object {
                 [ordered]@{ Kind = $_.Kind; Expression = $_.Expression; Line = $_.Line }
             })
+            $statementStart = $body.LastIndexOf(';', $call.Index)
+            $assignmentPrefixStart = if ($statementStart -lt 0) { 0 } else { $statementStart + 1 }
+            $assignmentPrefix = $body.Substring($assignmentPrefixStart,
+                $call.Index - $assignmentPrefixStart)
+            $resultAssignment = $callAssignmentPattern.Match($assignmentPrefix)
+            $resultVariable = if ($resultAssignment.Success) {
+                $resultAssignment.Groups['variable'].Value
+            } else { $null }
             $calls.Add([ordered]@{
                 FunctionName = $functionName
                 Api = $apiName
                 Variant = $apiVariant
+                ResultVariable = $resultVariable
                 Arguments = [string[]]@($arguments)
                 ArgumentAssignments = [object[]]@($argumentAssignments.ToArray())
                 ArgumentAssignmentAlternatives = [object[]]@($assignmentAlternatives.ToArray())
@@ -558,6 +730,7 @@ foreach ($call in $uniqueCalls) {
     $byFunction[$call.FunctionName].Add([ordered]@{
         Api = $call.Api
         Variant = $call.Variant
+        ResultVariable = $call.ResultVariable
         Arguments = [string[]]@($call.Arguments)
         ArgumentAssignments = [object[]]@($call.ArgumentAssignments)
         ArgumentAssignmentAlternatives = [object[]]@($call.ArgumentAssignmentAlternatives)
@@ -578,6 +751,31 @@ if ($byFunction.Count -eq 0) {
 
 $resolvedOutput = [System.IO.Path]::GetFullPath($OutputPath)
 [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($resolvedOutput)) | Out-Null
+if ($MergeExistingIndex -and [System.IO.File]::Exists($resolvedOutput)) {
+    $existingFile = [System.IO.File]::OpenRead($resolvedOutput)
+    try {
+        $existingGzip = [System.IO.Compression.GZipStream]::new($existingFile,
+            [System.IO.Compression.CompressionMode]::Decompress, $false)
+        try {
+            $existingReader = [System.IO.StreamReader]::new($existingGzip)
+            try { $existingIndex = $existingReader.ReadToEnd() | ConvertFrom-Json }
+            finally { $existingReader.Dispose() }
+        }
+        finally { $existingGzip.Dispose() }
+    }
+    finally { $existingFile.Dispose() }
+
+    $mergedIndex = [ordered]@{}
+    foreach ($property in $existingIndex.PSObject.Properties) {
+        if (-not $byFunction.Contains($property.Name)) {
+            $mergedIndex[$property.Name] = $property.Value
+        }
+    }
+    foreach ($functionName in $byFunction.Keys) {
+        $mergedIndex[$functionName] = $byFunction[$functionName]
+    }
+    $byFunction = $mergedIndex
+}
 $json = ConvertTo-Json -InputObject $byFunction -Depth 8 -Compress
 $serialized = [System.Text.UTF8Encoding]::new($false).GetBytes($json)
 $fileStream = [System.IO.File]::Create($resolvedOutput)

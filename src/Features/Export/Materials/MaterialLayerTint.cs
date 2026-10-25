@@ -35,10 +35,9 @@ internal static class MaterialLayerTint
 
     internal static Vector4 ReadConstant(ResolvedMaterial? material)
     {
-        if (material?.SourceBytes is not { Length: >= 16 } bytes) return Vector4.One;
-        uint packed = Preview.U32(bytes, 12);
-        // The renderer reads only the packed RGB and explicitly supplies W=1.
-        // Palette constants and shockwave snapshots may later override alpha.
+        if (material?.Specular is not uint packed) return Vector4.One;
+        // Jade's ColorOp_Disable path uses ul_Specular as its constant RGB.
+        // This is independent of ul_Diffuse, and the packed alpha byte is ignored.
         return new Vector4(packed & 255, packed >> 8 & 255, packed >> 16 & 255, 255) / 255f;
     }
 }

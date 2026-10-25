@@ -17,8 +17,9 @@ public sealed partial class SceneExporter
         bool visibleInPreview = !sceneObject.PreviewHidden && !sceneObject.IsControlHidden
             && sceneObject.Actor?.Root.IsControlHidden != true
             && (sceneObject.EffectiveDrawFlags & SceneObject.DrawVisibilityMask) != 0;
+        bool hasCinematicMorph = options.CinematicMorphTimelines?.ContainsKey(sceneObject) == true;
         return options.GameHidden || visibleInPreview
-            || options.Animations && cinematicVisibilityObjects.Contains(sceneObject);
+            || options.Animations && (cinematicVisibilityObjects.Contains(sceneObject) || hasCinematicMorph);
     }
     private int Node(SceneObject sceneObject, Matrix4x4 matrix, bool trs = false)
     {
@@ -82,6 +83,7 @@ public sealed partial class SceneExporter
         if (exportGeometry.Billboards.Count > 0) warnings.Add("SPG vegetation exports as fixed-facing quads; camera billboarding and wind are viewport effects.");
         var posed = sceneObject.Actor?.Skin(sceneObject, exportGeometry) ?? exportGeometry.Positions;
         nodes[node]["mesh"] = Mesh(sceneObject, exportGeometry, posed, null);
+        CaptureStaticMorphTimeline(sceneObject, node);
     }
 
     private static bool TryCreateParticleSnapshot(SceneObject sceneObject, Geometry source, out Geometry snapshot)

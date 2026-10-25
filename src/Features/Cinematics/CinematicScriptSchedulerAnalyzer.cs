@@ -22,6 +22,16 @@ internal static class CinematicScriptSchedulerAnalyzer
                 : "Serialized GAO flag 0x20 is clear; Iris does not add this object to AICallbacksTablePF when building the world's EOT tables."
         };
 
+        CinematicScriptCallbackSlot[] configuredTracks = owner.CallbackSlots?
+            .Where(slot => slot.FunctionKey != 0)
+            .OrderBy(slot => slot.Index)
+            .ToArray() ?? [];
+        if (configuredTracks.Length > 0)
+        {
+            string trackList = string.Join(", ", configuredTracks.Select(slot => slot.Index));
+            findings.Add($"On a fresh non-universe AI_ReinitInstance, Iris copies the model callback slots, resets their jump cursors, and initializes each callback timer to 0. Configured slots {trackList} are therefore due on the first eligible AI_RunInstance pass in ascending track order, provided their function references resolve. This is readiness after reinitialization, not proof of world-table admission or dispatch.");
+        }
+
         findings.Add(serializedActivationGateBitSet
             ? $"The serialized state flags set source-mapped runtime flags2 0x{DisabledAiRunInstanceBit:X8}, which blocks ordinary world activation while ENG_gf_SpecialTime is zero because WOR_ActivateObjectIfFlagsAllow rejects flags2 intersecting 0x{OrdinaryActivationBlockMask:X8}; this owner therefore has a source-confirmed ordinary-activation blocker at load unless runtime state changes."
             : $"Serialized state bit 0x40000000 is clear, so runtime flags2 0x{DisabledAiRunInstanceBit:X8} is not set by that source mapping. The raw 0x00400000 bit {(rawRuntimeMaskBitSurvivesIrisLoad ? "survives" : "is discarded by")} Iris's initial state mask 0x{IrisInitialStateMask:X8}; other runtime activation gates remain.");

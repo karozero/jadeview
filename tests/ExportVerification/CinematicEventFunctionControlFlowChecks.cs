@@ -28,7 +28,9 @@ internal static class CinematicEventFunctionControlFlowChecks
             && flow[0] is { KeyIndex: 0, WaitMode: CinematicEventFunctionWaitMode.None }
             && flow[1] is { KeyIndex: 1, WaitMode: CinematicEventFunctionWaitMode.WaitWhileTrue }
             && flow[2] is { KeyIndex: 2, WaitMode: CinematicEventFunctionWaitMode.WaitWhileFalse }
-            && flow[3] is { KeyIndex: 3, WaitMode: CinematicEventFunctionWaitMode.WaitWhileTrue },
+            && flow[3] is { KeyIndex: 3, WaitMode: CinematicEventFunctionWaitMode.WaitWhileTrue }
+            && flow[1] is { DownstreamKeyCount: 3, FirstDownstreamKeyTime: 2, LastDownstreamKeyTime: 4 }
+            && flow[3] is { DownstreamKeyCount: 1, FirstDownstreamKeyTime: 4, LastDownstreamKeyTime: 4 },
             "EVE AI-function event type or Iris wait/retry flags were decoded incorrectly.");
 
         track.Keys =

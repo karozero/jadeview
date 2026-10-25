@@ -64,6 +64,23 @@ internal static class CinematicScriptGraphAudit
                 SerializedOvaValues = owner.Variables,
                 CallbackDrivenSceneEvents = GetCallbackDrivenSceneEventCalls(owner, document),
                 CallbackRegistrationAnalysis = GetCallbackRegistrationAnalysis(owner),
+                RliDisplayCallbackAnalysis = CinematicScriptRliDisplayCallbackAnalyzer.Analyze(owner)
+                    .Select(callback => new
+                    {
+                        callback.ContextKey,
+                        TargetKey = callback.TargetKey?.ToString("X8"),
+                        callback.CallbackType,
+                        callback.FunctionName,
+                        callback.FactorExpression,
+                        callback.DestinationColorExpression,
+                        callback.FactorIsUsed,
+                        callback.HasPairedCallback,
+                        callback.Source,
+                        callback.Line,
+                        callback.BranchConditions,
+                        callback.CallbackPath
+                    }).ToArray(),
+                RliDisplayOvaFieldAccesses = GetRliDisplayOvaFieldAccesses(owner),
                 AiTrackMutationAnalysis = GetAiTrackMutationAnalysis(owner),
                 CallbackStateEffectCandidates = CinematicScriptCallbackStateEffectAnalyzer.Analyze(owner)
                     .Select(effect => new
@@ -79,12 +96,43 @@ internal static class CinematicScriptGraphAudit
                         effect.CallbackPath,
                         effect.ExecutionStatus,
                         ReceiverKey = effect.ReceiverKey?.ToString("X8"),
-                        effect.ReceiverEvidence
+                        effect.ReceiverEvidence,
+                        effect.ReceiverGuardAliases
                     }).ToArray(),
                 UnresolvedSceneEventCalls = GetUnresolvedSceneEventCalls(owner, document),
                 CallbackActionRequests = GetCallbackActionRequests(owner, document),
                 CallbackActionKitMerges = GetCallbackActionKitMerges(owner, document),
                 SourceReferencedObjectCalls = CinematicScriptReferencedObjectCallResolver.Resolve(owner),
+                SourceChannelTransfers = CinematicScriptChannelTransferAnalyzer.Analyze(owner)
+                    .Select(transfer => new
+                    {
+                        transfer.OwnerKey,
+                        TargetKey = transfer.TargetKey.ToString("X8"),
+                        transfer.TargetName,
+                        transfer.OvaField,
+                        transfer.SourceChannel,
+                        transfer.TargetChannel,
+                        transfer.FunctionName,
+                        transfer.Source,
+                        transfer.GetterLine,
+                        transfer.SetterLine,
+                        transfer.CallbackPath,
+                        transfer.SourcePathResolved,
+                        transfer.BranchConditions,
+                        transfer.ClearsInvisibleFlag,
+                        transfer.InvisibleFlagLine,
+                        transfer.ReceiverGuardAliases,
+                        CallbackPathSteps = transfer.CallbackPathSteps.Select(step => new
+                        {
+                            step.FromFunction,
+                            step.ToFunction,
+                            step.Dispatch,
+                            step.TrackIndex,
+                            step.ReferenceVariable,
+                            step.BranchConditions,
+                            step.DispatchConditionsResolved
+                        }).ToArray()
+                    }).ToArray(),
                 SourceOvaArgumentBindings = GetSourceOvaArgumentBindings(owner),
                 SourceSavedFlagAccesses = CinematicScriptFlagFlowAnalyzer.GetAccesses(owner),
                 CallbackSlots = owner.CallbackSlots?.Select(slot => new
@@ -648,6 +696,8 @@ internal static class CinematicScriptGraphAudit
             clip.Duration,
             LoadedWorlds = document.Worlds.Select(world => new { Key = world.Key.ToString("X8"), world.Name }),
             CinematicParticipants = participants,
+            BoundedCallbackPlaybackProbe = ProbeBoundedCallbackPlayback(archive, entry, document,
+                assembledWorld, clip),
             ScriptOwners = owners,
             ParticipantScriptOwners = participantScripts,
             ReferencedActorLibraries = referencedActorLibraries,
@@ -773,9 +823,132 @@ internal static class CinematicScriptGraphAudit
                 Unresolved = embeddedIndexProbes.Count(probe => !probe.Resolved),
                 Note = "Each probe applies synthetic TRAPlay(0) to an actual serialized owner/list to verify the index join; it does not claim that this call exists or runs in the archive."
             },
-            Limits = "Serialized references, literal track commands and bounded 19-row messages only; conditional VM state and message delivery are not executed."
+            Limits = "The graph is static source/archive evidence. BoundedCallbackPlaybackProbe samples source-linked callback state effects at relevant event times with unknown save flags left unresolved; it does not run arbitrary AI, EVE scheduling, message queues, timers, collision tests, or the full VM."
         }, new JsonSerializerOptions { WriteIndented = true }));
         Console.WriteLine($"CINEMATIC SCRIPT GRAPH: {owners.Length} script owners, {calls.Length} decoded calls");
+    }
+
+    private static object ProbeBoundedCallbackPlayback(Archive archive, Entry entry,
+        SceneDocument document, WorldData world, AnimationClip clip)
+    {
+        var resolver = new ResourceResolver();
+        resolver.LoadFixContainer(archive);
+        resolver.LoadSceneContainer(archive, entry);
+        resolver.ResolveSceneDocument(document);
+        CinematicPlayback[] playbacks = CinematicPlayback.Discover(document, world, resolver,
+                archive.Entries)
+            .Where(candidate => candidate.Key == clip.Key).ToArray();
+        if (playbacks.Length == 0)
+            return new { Status = "no cinematic playback", Candidates = Array.Empty<object>() };
+        if (playbacks.Length > 1)
+            return new
+            {
+                Status = "ambiguous cinematic playback",
+                CandidateCount = playbacks.Length,
+                Candidates = Array.Empty<object>()
+            };
+
+        CinematicPlayback playback = playbacks[0];
+        SceneObject[] sceneObjects = world.Objects.Concat(world.Actors.SelectMany(actor => actor.Members))
+            .Distinct().ToArray();
+        var objectGroups = sceneObjects.GroupBy(sceneObject => sceneObject.GaoKey)
+            .ToDictionary(group => group.Key, group => group.ToArray());
+        CinematicScriptOwner[] scopedOwners = CinematicScriptScope.ForClip(
+            document.CinematicScriptOwners.Values, clip.CinematicWorldKey,
+            world.Actors.Select(actor => actor.Root.GaoKey),
+            clip.Tracks.Select(track => track.Target),
+            CinematicTimelineMessage.ReadTimeline(clip).Select(item => item.Message),
+            ownerEventTracks: document.CinematicScriptEventTracks.Values.SelectMany(tracks => tracks));
+        var candidates = scopedOwners
+            .Where(owner => objectGroups.TryGetValue(owner.OwnerKey, out SceneObject[]? ownerMatches)
+                && ownerMatches.Length == 1)
+            .SelectMany(owner => CinematicScriptCallbackStateEffectAnalyzer.Analyze(owner)
+                .Where(effect => effect.ReceiverKey is { } receiverKey
+                    && objectGroups.TryGetValue(receiverKey, out SceneObject[]? targetMatches)
+                    && targetMatches.Length == 1)
+                .Select(effect => new
+                {
+                    Owner = owner,
+                    OwnerObject = objectGroups[owner.OwnerKey][0],
+                    Target = objectGroups[effect.ReceiverKey!.Value][0],
+                    Effect = effect
+                }))
+            .ToArray();
+        if (candidates.Length == 0)
+            return new
+            {
+                Status = "no uniquely bound callback state-effect candidates",
+                CandidateCount = 0,
+                Samples = Array.Empty<object>()
+            };
+
+        var relevantOwnerKeys = candidates.Select(candidate => candidate.Owner.OwnerKey).ToHashSet();
+        float[] eventTimes = playback.ScriptStateCalls
+            .Where(item => relevantOwnerKeys.Contains(item.Call.Target))
+            .Select(item => item.Time)
+            .Append(0)
+            .Append(playback.Duration)
+            .Where(time => float.IsFinite(time) && time >= 0 && time <= playback.Duration)
+            .Distinct().Order().ToArray();
+        const int maximumSamples = 16;
+        float[] sampleTimes = eventTimes.Length <= maximumSamples
+            ? eventTimes
+            : Enumerable.Range(0, maximumSamples)
+                .Select(index => eventTimes[(int)Math.Round(index * (eventTimes.Length - 1d)
+                    / (maximumSamples - 1))])
+                .Distinct().ToArray();
+        object[] candidateSummary = candidates.Select(candidate => new
+        {
+            Owner = candidate.Owner.Name,
+            OwnerKey = candidate.Owner.OwnerKey.ToString("X8"),
+            Target = candidate.Target.Name,
+            TargetKey = candidate.Target.GaoKey.ToString("X8"),
+            candidate.Effect.Api,
+            candidate.Effect.Variant,
+            candidate.Effect.FunctionName,
+            candidate.Effect.Line,
+            candidate.Effect.ExecutionStatus,
+            SupportedByBoundedPreview = candidate.Effect.Api is "OBJ_FlagInvisibleSet"
+                or "OBJ_FlagInactiveSet" or "OBJDestroy" or "OBJ_CapaSet"
+                or "OBJDrawMaskSet" or "COLSetActivationSet",
+            candidate.Effect.BranchConditions
+        }).Cast<object>().ToArray();
+        SceneObject[] observedTargets = candidates.Select(candidate => candidate.Target)
+            .Distinct().ToArray();
+        playback.BindSavedFlagAssumptions(new Dictionary<int, bool?>());
+        playback.Activate();
+        try
+        {
+            object[] samples = sampleTimes.Select(time =>
+            {
+                playback.Seek(time);
+                return (object)new
+                {
+                    Time = time,
+                    Targets = observedTargets.Select(target => new
+                    {
+                        Key = target.GaoKey.ToString("X8"),
+                        target.Name,
+                        ControlFlags = (target.PreviewControlFlags ?? target.ControlFlags).ToString("X8"),
+                        Capabilities = target.PreviewCapabilities ?? target.InitialCapabilities,
+                        DrawMask = target.PreviewDrawFlags ?? target.DrawFlags,
+                        CollisionActivationMask = target.PreviewCollisionActivationMask
+                    }).ToArray()
+                };
+            }).ToArray();
+            return new
+            {
+                Status = "bounded source-linked callback preview",
+                Note = "Candidate calls are source evidence. Samples show only effects applied by JadeView's bounded callback preview with unknown saved flags left unresolved; this is not a retail runtime trace.",
+                CandidateCount = candidates.Length,
+                Candidates = candidateSummary,
+                Samples = samples
+            };
+        }
+        finally
+        {
+            playback.Deactivate();
+        }
     }
 
     private static object[] GetSourceObjectArgumentBindings(CinematicScriptOwner owner,
@@ -839,6 +1012,34 @@ internal static class CinematicScriptGraphAudit
                 candidate.BranchConditions
             }).ToArray();
         return new { Registrations = registrations, PotentialResetSites = resets };
+    }
+
+    private static object[] GetRliDisplayOvaFieldAccesses(CinematicScriptOwner owner)
+    {
+        CinematicScriptRliDisplayCallbackCandidate[] callbacks =
+            CinematicScriptRliDisplayCallbackAnalyzer.Analyze(owner);
+        string[] referencedFields = callbacks.SelectMany(callback => owner.Variables
+                .Select(variable => variable.Name)
+                .Where(fieldName => callback.FactorExpression.Contains(fieldName,
+                    StringComparison.OrdinalIgnoreCase)))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return CinematicScriptReader.ReachableOvaFieldAccesses(owner)
+            .Where(access => referencedFields.Contains(access.VariableName,
+                StringComparer.OrdinalIgnoreCase))
+            .Select(access => (object)new
+            {
+                access.VariableName,
+                access.Access,
+                access.Source,
+                access.Receiver,
+                access.Expression,
+                access.BranchConditions,
+                access.SourceFile,
+                access.Line,
+                access.FunctionName,
+                access.CallbackPath
+            }).ToArray();
     }
 
     private static object[] GetAiTrackMutationAnalysis(CinematicScriptOwner owner)

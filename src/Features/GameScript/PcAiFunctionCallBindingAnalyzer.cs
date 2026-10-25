@@ -9,7 +9,6 @@ internal static class PcAiFunctionCallBindingAnalyzer
     private const byte LocalScalarVariableCategory = 0x05;
     private const byte GlobalScalarVariableCategory = 0x14;
     private const byte TypedValueCategory = 0x01;
-    private const ushort IntegerLiteralType = 0x21;
     private const string AffectKeyword = "Affect";
 
     internal static PcAiFunctionCallBinding[] Analyze(PcSerializedAiFunction function,
@@ -142,44 +141,20 @@ internal static class PcAiFunctionCallBindingAnalyzer
 
     private static bool TryReadInteger(PcSerializedAiFunction function, int nodeIndex, out int value)
     {
-        if (nodeIndex >= 0 && nodeIndex < function.Nodes.Length
-            && IsIntegerLiteral(function.Nodes[nodeIndex])
-            && function.Nodes[nodeIndex] is { } integerNode)
-        {
-            value = integerNode.Value;
-            return true;
-        }
-
         value = 0;
-        return false;
+        return nodeIndex >= 0 && nodeIndex < function.Nodes.Length
+            && PcAiConstantIntegerEvaluator.TryReadLiteral(function.Nodes[nodeIndex], out value);
     }
 
     private static bool IsIntegerLiteral(PcAiInstruction? node) =>
-        node is { EncodedCategory: TypedValueCategory, EncodedValue2: IntegerLiteralType };
+        PcAiConstantIntegerEvaluator.TryReadLiteral(node, out _);
 
     private static bool TryResolveIntegerOperator(PcSerializedAiFunction function, int operatorNodeIndex,
         int leftOperand, int rightOperand, out int result)
     {
         string? operation = operatorNodeIndex >= 0 && operatorNodeIndex < function.Nodes.Length
             ? function.Nodes[operatorNodeIndex].SymbolName : null;
-        switch (operation)
-        {
-            case "Plus":
-                result = unchecked(leftOperand + rightOperand);
-                return true;
-            case "Minus":
-                result = unchecked(leftOperand - rightOperand);
-                return true;
-            case "Mul":
-                result = unchecked(leftOperand * rightOperand);
-                return true;
-            case "Div" when rightOperand != 0
-                && !(leftOperand == int.MinValue && rightOperand == -1):
-                result = leftOperand / rightOperand;
-                return true;
-            default:
-                result = 0;
-                return false;
-        }
+        return PcAiConstantIntegerEvaluator.TryEvaluate(operation, leftOperand, rightOperand,
+            out result, out _);
     }
 }

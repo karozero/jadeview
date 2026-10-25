@@ -92,6 +92,7 @@ foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Filter 'ai_compile
 
 $fieldBindings = @{}
 $functionReferenceBindings = @{}
+$ambiguousFunctionReferences = @{}
 $fieldAssignmentPattern = [regex]'(?m)(?<variable>[A-Za-z_][A-Za-z0-9_]*)\s*->\s*(?<field>[A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)\s*(?<expression>[^;{}]+);'
 $resolvedFunctionAssignmentPattern = [regex]'(?m)(?<variable>fctr?_[A-Za-z_][A-Za-z0-9_]*)\s*=\s*\(int\)\s*AI_ul_RealResolveOneRefFunction\s*\(\s*(?<key>0x[0-9A-Fa-f]+)u?\s*\)\s*;'
 foreach ($functionName in $definitions.Keys) {
@@ -99,15 +100,23 @@ foreach ($functionName in $definitions.Keys) {
     $referencePattern = [regex]('\bfctr?_' + [regex]::Escape($functionName) + '_([A-Za-z_][A-Za-z0-9_]*)\b')
     foreach ($assignment in $resolvedFunctionAssignmentPattern.Matches($definition.Body)) {
         $variable = $assignment.Groups['variable'].Value
-        $reference = $referencePattern.Match($variable)
-        if (-not $reference.Success) { continue }
-        $targetFunction = $reference.Groups[1].Value
         $resolvedName = $knownFunctionNamesByKey[$assignment.Groups['key'].Value.Substring(2).ToUpperInvariant()]
-        if ($resolvedName -ne $targetFunction) { continue }
-        $functionReferenceBindings["$($definition.Source)|$variable"] = [pscustomobject]@{
-            Target = $targetFunction
+        if (($null -eq $resolvedName) -or -not $knownFunctions.ContainsKey($resolvedName)) { continue }
+        $bindingKey = "$functionName|$($definition.Source)|$variable"
+        $resolvedKey = $assignment.Groups['key'].Value.Substring(2).ToUpperInvariant()
+        if ($ambiguousFunctionReferences.ContainsKey($bindingKey)) { continue }
+        if ($functionReferenceBindings.ContainsKey($bindingKey)) {
+            $existingBinding = $functionReferenceBindings[$bindingKey]
+            if (($existingBinding.Target -ne $resolvedName) -or ($existingBinding.Key -ne $resolvedKey)) {
+                $functionReferenceBindings.Remove($bindingKey)
+                $ambiguousFunctionReferences[$bindingKey] = $true
+            }
+            continue
+        }
+        $functionReferenceBindings[$bindingKey] = [pscustomobject]@{
+            Target = $resolvedName
             Variable = $variable
-            Key = $assignment.Groups['key'].Value.Substring(2).ToUpperInvariant()
+            Key = $resolvedKey
             AssignmentFunction = $functionName
             Source = $definition.Source
             Line = Get-LineNumberAtIndex $definition.LineStarts ($definition.BodyStart + $assignment.Index)
@@ -148,15 +157,13 @@ foreach ($functionName in $definitions.Keys) {
         $argumentsStart = $openParenthesis + 1
         $arguments = $body.Substring($argumentsStart, $closeParenthesis - $argumentsStart)
         $callTargets = [System.Collections.Generic.List[object]]::new()
-        foreach ($reference in $referencePattern.Matches($arguments)) {
-            $targetFunction = $reference.Groups[1].Value
-            $binding = $null
-            $isResolvedFunctionReference = $reference.Value.StartsWith('fct_', [StringComparison]::Ordinal) -or $reference.Value.StartsWith('fctr_', [StringComparison]::Ordinal)
-            if ($isResolvedFunctionReference) {
-                $binding = $functionReferenceBindings["$($definition.Source)|$($reference.Value)"]
-                if ($binding -eq $null -or $binding.Target -ne $targetFunction) { continue }
-            }
-            $callTargets.Add([pscustomobject]@{ Target = $targetFunction; Binding = $binding })
+        $functionPointerPattern = [regex]'\bfctr?_[A-Za-z_][A-Za-z0-9_]*\b'
+        foreach ($reference in $functionPointerPattern.Matches($arguments)) {
+            $bindingKey = "$functionName|$($definition.Source)|$($reference.Value)"
+            if ($ambiguousFunctionReferences.ContainsKey($bindingKey)) { continue }
+            $binding = $functionReferenceBindings[$bindingKey]
+            if ($binding -eq $null) { continue }
+            $callTargets.Add([pscustomobject]@{ Target = $binding.Target; Binding = $binding })
         }
         if ($callTargets.Count -eq 0) {
             $indirectField = [regex]::Match($arguments,

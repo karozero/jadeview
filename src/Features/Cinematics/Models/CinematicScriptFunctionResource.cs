@@ -7,4 +7,7 @@ internal sealed record CinematicScriptFunctionResource(
     int PayloadSize,
     string Status,
     PcCompiledScriptFunction? Metadata,
-    string? Diagnostic);
+    string? Diagnostic)
+{
+    internal PcSerializedAiFunction? SerializedFunction { get; init; }
+}

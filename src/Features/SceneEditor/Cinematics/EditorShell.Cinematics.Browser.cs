@@ -100,6 +100,8 @@ public sealed partial class EditorShell
         _cinematicPlayers = CinematicPlayback.Discover(Document, _cinematicWorld, Resolver, Archive?.Entries,
             _disabledCinematicCallbackOwners, _previewedCinematicSceneEventOwners,
             _previewedCinematicSceneEventStartTimes);
+        foreach (CinematicPlayback player in _cinematicPlayers)
+            player.BindSavedFlagAssumptions(GetCinematicSavedFlagStates());
         _cinematicPlayback = _cinematicPlayers.FirstOrDefault();
         _cinematicPlayback?.Activate();
         Renderer.ShowGameHidden = false;

@@ -35,7 +35,9 @@ internal static class CinematicMaterialChecks
              CinematicTestEvents.Call(3, 7, 15010, materialKey, 1, 255),
              CinematicTestEvents.Call(4, 7, 15006, materialKey, 1, 0),
              CinematicTestEvents.Call(5, 7, 15013, rootKey, 1, 1, 1),
-             CinematicTestEvents.Call(6, 7, 15013, rootKey, 1, 1, 0)] }]
+             CinematicTestEvents.Call(6, 7, 15013, rootKey, 1, 1, 0),
+             CinematicTestEvents.Call(7, 7, 15000, 0xff112233, 1),
+             CinematicTestEvents.Call(8, 7, 15000, 0xffaabbcc, materialKey)] }]
         };
         var state = new CinematicMaterialState(clip, world, materials);
         var original = JadeMaterialLayer.Read(bytes)[1];
@@ -55,9 +57,20 @@ internal static class CinematicMaterialChecks
         state.Evaluate(6.5f);
         Require(state.Apply(secondMaterialKey, 1, secondOriginal).Disabled,
             "MATEnableMltxtLvlMT with enable=0 must set the native inactive bit on the selected level.");
+        state.Evaluate(7.5f);
+        Require(state.ApplyConstant(secondMaterialKey, 7, 1, Vector4.One) == PackedColor(0xff112233)
+            && state.ApplyConstant(materialKey, 7, 0, Vector4.One) == Vector4.One,
+            "MATSetConstant must resolve a low selector through the target object's multi-material without changing siblings.");
+        state.Evaluate(8.5f);
+        Require(state.ApplyConstant(materialKey, 7, 0, Vector4.One) == PackedColor(0xffaabbcc)
+            && state.ApplyConstant(secondMaterialKey, 7, 1, Vector4.One) == PackedColor(0xff112233),
+            "MATSetConstant must resolve a global material key and retain independent material overrides.");
         state.Evaluate(5.5f);
         Require(!state.Apply(secondMaterialKey, 1, secondOriginal).Disabled,
             "Rewinding must remove MATEnableMltxtLvlMT changes after the playhead.");
+        Require(state.ApplyConstant(materialKey, 7, 0, Vector4.One) == Vector4.One
+            && state.ApplyConstant(secondMaterialKey, 7, 1, Vector4.One) == Vector4.One,
+            "Rewinding must remove later script-driven constant-color changes.");
         state.Evaluate(.5f);
         Require(state.Apply(materialKey, 1, original) == original && JadeMaterialLayer.Read(bytes)[1] == original,
             "Material reverse seek or immutable source state was lost.");
@@ -67,7 +80,27 @@ internal static class CinematicMaterialChecks
         VerifyWorldLightingHeader();
         VerifySimpleMaterialOpacity();
         VerifySpriteAlpha();
-        Console.WriteLine("PASS: timed material activation, explicit multi-material routing, packed alpha/threshold, layer isolation and reverse seek");
+        VerifyRliAlphaPolicy();
+        Console.WriteLine("PASS: timed material activation/constant colors, multi-material routing, packed alpha/threshold, layer isolation and reverse seek");
+    }
+
+    private static void VerifyRliAlphaPolicy()
+    {
+        static JadeMaterialLayer Layer(int blend, uint flags = 0) =>
+            new(0, ((uint)blend << 16) | flags, 0, 0, 0);
+
+        Require(MaterialRliAlphaPolicy.UsesRliAlpha(Layer(1), null)
+            && MaterialRliAlphaPolicy.UsesRliAlpha(Layer(2), null),
+            "Alpha and premultiplied-alpha layers must consume RLI alpha when local alpha is not authored.");
+        Require(!MaterialRliAlphaPolicy.UsesRliAlpha(Layer(1, JadeMaterialFlags.OverrideAlpha), null)
+            && !MaterialRliAlphaPolicy.UsesRliAlpha(Layer(5), null),
+            "Local-alpha and additive layers must not consume RLI alpha as source transparency.");
+        Require(MaterialRliAlphaPolicy.UsesRliAlpha(Layer(0), Layer(3))
+            && MaterialRliAlphaPolicy.UsesRliAlpha(Layer(7), Layer(4))
+            && !MaterialRliAlphaPolicy.UsesRliAlpha(Layer(0), Layer(1)),
+            "Copy/glow layers consume RLI alpha only when the following pass uses destination alpha.");
+        Require(MaterialRliAlphaPolicy.UsesRliAlpha(Layer(5, JadeMaterialFlags.AlphaTest), null),
+            "An alpha-tested layer must consume RLI alpha even when its color blend is additive.");
     }
 
     private static void VerifyNestedMaterialCommands(WorldData world,

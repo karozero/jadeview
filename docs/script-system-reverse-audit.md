@@ -120,6 +120,10 @@ That context is semantically important. Engine functions often act on
 contain GAO and GAO2 references. The event's execution owner is therefore not
 automatically the actor named inside a message.
 
+For the EVE AI-function wait flags, return-value handling, and why a waiting
+inline function is retried rather than treated as a normal owner callback, see
+[`game-script-eve-inline-functions.md`](game-script-eve-inline-functions.md).
+
 The EVE update keeps per-track running, paused, done, current-key and local
 time state. Jaded's `EVE_RunOneTrack` (`EVEplay.c:768` onward) advances time
 using event durations measured in frames at 60 frames per second, executes
@@ -155,6 +159,27 @@ found a typed bytecode interpreter, multiple dispatch namespaces and a native
 callback path, while leaving several opcode semantics and the exact mapping
 from parsed function records to scheduled slots unresolved. See the verified
 `2003\scripting.md` and `2003\reports\runtime-bytecode-execution.md`.
+
+### Callback branch expression coverage (2026-10-25)
+
+The embedded Iris engine-call index contains 107,098 recorded enclosing branch
+conditions. A syntax census found numeric comparisons in 58,569 records,
+arithmetic operators in 11,966, bitwise operators in 17,546, logical operators
+in 12,748, engine calls in 17,611, and assignment expressions in 4,141. These
+counts overlap: one condition can use multiple syntax groups, and they
+describe indexed source conditions rather than unique runtime branches.
+
+JadeView's bounded predicate evaluator now handles resolved scalar arithmetic,
+numeric comparisons, 32-bit bitwise masks/shifts, logical operators, literal
+capability tests, known current-queue message state, explicitly assumed saved
+flags, and `TIMEElapsed_C` when the timer field has a uniquely source-proven
+relative clock origin. The water-fade `CV_aircraft` callback exercises this
+grammar with pose-derived `OBJGetPos_C_CURRENT`, ratio arithmetic, and clamped
+comparisons. Unsupported pointer dereferences, collision and world queries,
+opaque engine calls, and timers with unknown clock origins stay unknown. These
+source guards improve callback preview only where all operands are known; they
+do not make the index a general C interpreter or prove that a callback was
+scheduled.
 
 ## Owner lifecycle and cinematic scheduling
 
@@ -1842,6 +1867,28 @@ The selector catalog resolves names/descriptions for event calls
 `Data/engine-function-selectors.json`), which is not a substitute for the Iris
 `AI_gast_Functions` evaluator table or the key-to-native registry.
 
+`tools/Compare-EngineFunctionSelectors.ps1` now compares the JadeView EVE
+catalog with Iris `ai_functions.c` and Jaded `Functions/AIdeffct.h`. Its generated
+`Data/engine-function-selector-evidence.json` keeps each raw selector ID,
+catalog label, Iris name, Jaded name, and a normalized name-comparison status.
+The current scan finds 837 Iris IDs, 1,107 Jaded IDs, and 847 JadeView catalog
+IDs. Of 747 IDs present in both source registries, 521 names match after
+underscore normalization and 226 still diverge; those differences are leads,
+not automatically semantic conflicts. Ten JadeView catalog entries lack an
+Iris row, mostly Jaded networking names plus one placeholder. The catalog now
+chooses a unique Iris name for the PC preview when sources disagree, while
+retaining Jaded's label in provenance. For example, `0x1FFB` is `OBJSetPos` in
+Iris but `OBJ_PosSet_Teleport` in Jaded; `0x1F7D` is `MSGSendAllOwner` in Iris
+but `MSG_SetNull` in Jaded. This avoids presenting the Jaded alias as confirmed
+retail-PC behavior. Re-run the comparison after source or catalog changes; use
+`-OutputPath` for the full audit and `-EvidenceOutputPath` to regenerate the
+embedded provenance resource. Run the focused runtime/catalog regression with
+`dotnet run --project tests/ExportVerification -- --engine-function-selector-checks`.
+Four additional exact-name cross-checks include
+`OBJ_FlagInvisibleSet`, `SND_RequestPlay`, `ACT_ActionSet`, and
+`MAT_ConstantSet`. Even an exact source match does not prove the 2003 retail
+executable's runtime path.
+
 An implementation should proceed in bounded layers:
 
 1. Decode each OFC function into raw node records, resource key, node availability,
@@ -2418,20 +2465,25 @@ result; the forecast therefore cannot claim retail runtime parity.
 
 ### Absolute position setters in serialized EVE
 
-Iris and Jaded define two distinct literal vector calls that can be evaluated
-as time-stamped world-space position changes. Jaded registers `OBJ_PosSet` as
-function 8102 and `OBJ_PosSet_Teleport` as 8187, both with a vector argument
+The EVE selector table maps both `0x1FA6` and `0x1FFB` to the same Iris
+`OBJSetPos` evaluator, which reads three floats, calls
+`OBJ_SetAbsolutePosition`, preserves orientation/scale, and recomputes local
+position when the target is hierarchy-bound
+(`external/irisEng/ai/ai_functions.c:208-209`,
+`external/irisEng/ai/ai_gameobjectfunctions.c:933-963`). Jaded instead
+registers `OBJ_PosSet` as function 8102 and `OBJ_PosSet_Teleport` as 8187, both
+with a vector argument
 (`external/jaded/src/libraries/AIinterp/Sources/Functions/AIdeffct.h:265-266`).
-The Iris counterparts decode three floats, call `OBJ_SetAbsolutePosition`,
-preserve orientation/scale, and recompute local position when the target is
-hierarchy-bound (`external/irisEng/ai/ai_gameobjectfunctions.c:933-963`). Jaded
-has the same absolute-position operation; the ordinary setter also refreshes
+Jaded has the same absolute-position operation; the ordinary setter also refreshes
 flash animation matrices and marks DYN collision optimization state, while
 the teleport form has an additional teleport hook
 (`external/jaded/src/libraries/AIinterp/Sources/Functions/AIfunctions_obj.c:2210-2310`).
 These setters change position once; they do not encode interpolated travel or
-velocity. The selector alias `0x1FFB` was incorrectly cataloged as the regular
-setter and is now named `OBJSetPos_Teleport`.
+velocity. The selector name is source-version-specific: Iris maps `0x1FFB` to
+`OBJSetPos` (the same evaluator as `0x1FA6`), while Jaded maps the same ID to
+`OBJ_PosSet_Teleport`. JadeView's PC cinematic preview now uses the Iris name
+and preserves the Jaded label as explicit source divergence; it does not infer
+that the retail-PC call performs Jaded's additional teleport hook.
 
 JadeView now decodes serialized clip calls `0x1FA6` and `0x1FFB` into
 position-only transform tracks (`src/Features/Cinematics/CinematicScriptTransformTracks.cs`),
@@ -2641,3 +2693,197 @@ would erase animation motion when mode 3 is requested but cannot add the
 missing AI/DYN displacement; applying such a partial result would make
 character paths less reliable. The separate panel is diagnostic evidence only
 until DYN/AI movement and the retail PC mode-setter bit behavior are known.
+
+#### Cross-source scheduler and message-queue comparison
+
+The BF-to-JadeView path is a static reconstruction: `PcSceneLoader` follows
+archive dependencies and reads GAO brain and `SceneEvents` links;
+`CinematicScriptReader` then builds owner, function-key and event-channel
+records. It does not instantiate the engine's live world. Iris's runtime path
+is more stateful: world load resolves/attaches GAOs, activation filters them,
+and `EOT_SetOfEOT_Build` snapshots activated objects into separate AI,
+animation and event tables (`world.c:44-76,174-199,671-760,1060-1108,1283-1370`).
+An archive flag can make an object eligible for a table, but the BF alone does
+not show that the live object was activated or remained in that table.
+
+Iris and Jaded also disagree on message-queue implementation details, so those
+details must be tagged by source rather than generalized as universal Jade
+Engine behavior:
+
+| Behavior | Iris source model | Jaded source model |
+| --- | --- | --- |
+| `MSGSendAll` payload | Pops message ID, object refs, two vectors, two floats and two integers into one message, then appends to the current object's fixed queue (`ai_messagefunctions.c:193-231`; queue storage in `gameobject.h:85-102`). | The inspected message API sends a prepared message to a destination object (`AIfunctions_msg.c:88-115`); the registry does not expose Iris's `MSGSendAll` selector 8056 (`AIdeffct.h:232-250`). |
+| `All` semantics | One queue on the current object; it is not a broadcast over world objects. `MSGSendAllOwner` is a separate API targeting `MSG_gpo_Owner` (`ai_messagefunctions.c:356-410`). | `MSG_Send` appends to the destination object's queue; it does not invoke the consumer synchronously. |
+| Capacity and read order | Fixed capacity 5; overflow is silently ignored. `MSGGet` removes the newest message; `MSGGetByID` searches and removes a match (`ai_messagefunctions.c:42-70,143-188,193-231`; `gameobject.h:98-102`). | Capacity 1000 (`AImsg.h:23`); linked-list append with newest-at-tail; `MSG_Get` removes the tail (`AIfunctions_msg.c:88-115,175-208`), so that API is LIFO too. |
+
+The shared-looking function names therefore hide a material version/API
+difference. JadeView should preserve raw selector IDs and source-version
+provenance, represent the recipient queue separately from `message.gao` and
+`message.gao2`, and avoid applying a single queue limit across Iris and Jaded.
+For retail PC BGE, Iris is the closer reverse-engineered source model, but the
+queue layout and capacity still require validation against the captured retail
+runtime before being called confirmed.
+
+Jaded's engine frame source orders generic modifiers, EVE, actor animation,
+and AI (`external/jaded/src/libraries/ENGine/Sources/ENGcall.c:224-270`).
+Iris likewise calls EVE before ANI and AI and later runs engine callbacks
+(`external/irisEng/engine.c:180-219,274-293`). This gives a useful scheduling
+constraint: an EVE send may be visible to a later AI pass in the same frame if
+the recipient is eligible and its callback consumes the queue; an AI send
+cannot be polled by the already-finished EVE pass until a subsequent update.
+That is a phase-order inference, not proof of delivery: callback eligibility,
+per-object table order, queue capacity, and consumer behavior still decide the
+outcome. Jaded's event scheduler walks each object's event table and then its
+tracks in array order, advancing them using frame delta and potentially
+crossing several event boundaries in one tick (`EVEplay.c:1280-1358,1600-1650,
+831-935,969-1067`). This is not a single global timestamp queue. JadeView's
+timeline remains a deterministic preview clock; it does not currently model
+these live table walks or cross-object arbitration.
+
+An EVE AI-function key also carries more context than its visible owner name.
+Jaded's interpreter resets and restores the AI stacks/current-function state,
+then uses the track target when the gizmo marker is `0xFFFF`, falls back to
+the event-list owner when there is no explicit target, or resolves a skeleton
+bone object for a bone-addressed gizmo (`EVEnt_aifunc.c:216-305`). Keep the
+event-list owner, track target, and gizmo/bone selector as separate edges in
+the execution graph; otherwise a callback that mutates `CurrentUltra` can be
+attributed to the wrong object. Iris has corresponding EVE context setup in
+`events.c:168-215`, though Jaded's later-engine implementation is comparative
+evidence rather than retail-PC proof.
+
+AI function execution can also change its own control flow immediately.
+Jaded `AIExecute` invokes a nested function with a separate local stack and
+restores the caller's function/jump context afterward
+(`AIfunctions_ai.c:35-71`). `AITrackCurChangeNow` replaces the current
+function-track node; the scheduler sees its return sentinel and repeats that
+track during the same `AI_RunInstance` pass (`AIengine.c:1004-1052`). A
+callsite graph that only lists source order cannot express this state change.
+The eventual interpreter model needs explicit call frames, track cursor and
+return/yield outcomes, alongside the already identified EVE cursors and
+message queue state.
+
+#### Nested `AIExecute` is synchronous; graph reachability is still static
+
+Iris `AIExecute` consumes a function reference, creates a fresh child jump
+cursor from the target function's root, saves the caller's current-function
+and jump-cursor pointers, then calls `AI_pst_RunFunction` synchronously. It
+passes the caller function's `stackOffsetNum` so child locals use a nested
+region of the shared local stack; the function and cursor pointers are restored
+after return (`external/irisEng/ai/ai_aifunctions.c:49-84`). The runner selects
+the native `funcPtr` when compiled-AI mode is active; otherwise it interprets
+nodes and brackets execution with the local-stack offset
+(`external/irisEng/ai_common.c:688-700`). The global typed operand stacks,
+current object/instance, callback slot, and actual nested cursor values are
+mutable runtime state; they are not serialized as a call-edge record.
+
+Jaded follows the same synchronous shape: `AI_EvalFunc_AIExecute_C` saves and
+restores the current function and jump-cursor pointers and runs the target with
+the caller's `i_SizeLocalStack` (`external/jaded/src/libraries/AIinterp/Sources/Functions/AIfunctions_ai.c:35-67`).
+Its `AI_pst_RunFunction` likewise adjusts the shared local-stack base for the
+callee (`external/jaded/src/libraries/AIinterp/Sources/AIengine.c:712-774,
+948-949`). There is a source-visible return difference: Jaded forwards the
+`Destroy` sentinel along with stop/track-change sentinels, whereas Iris's
+`AIExecute_C` maps only values 1, 3, 4 and 5 and converts other low pointer-like
+results to normal continuation (`ai_aifunctions.c:72-84`). Treat this as a
+version/source discrepancy, not a claim about a retail executable trace.
+
+A serialized `.ofc` can establish a candidate nested target when an
+`AIExecute` node is immediately preceded by a typed pointer-reference constant
+that resolves uniquely to a function resource linked by that model. JadeView's
+`PcAiDirectFunctionCallAnalyzer` checks exactly that local node pattern and
+labels indirect, ambiguous, or unlinked operands unresolved
+(`src/Features/GameScript/PcAiDirectFunctionCallAnalyzer.cs:3-30`). Its graph
+walk follows every such linked `AIExecute` edge and literal
+`AITrackCurChangeNow` transfer from a selected root; it does not decode branch
+outcomes or prove that the VM stack contains that reference when execution
+reaches the node (`PcAiFunctionCallGraphAnalyzer.cs:15-84`). The cinematic
+source graph similarly derives may-reach paths from configured callback roots
+and source call edges, not executed paths
+(`src/Features/Cinematics/CinematicScriptReader.cs:58-94`).
+
+Therefore JadeView is not executing or claiming to execute these paths: its
+global inspector explicitly says arguments and branches are unresolved, and
+the cinematic inspector calls them static. The label “Reachable AI function
+flows” can still be read as runtime reachability; prefer “Static linked AI
+call/transfer paths” in a later UI wording pass. Keep evidence levels separate:
+serialized target reference, source-linked candidate edge, branch/stack-validated
+symbolic call, preview-executed call, and retail-runtime-observed call.
+
+For a reproducible check, run
+`dotnet run --project tests/ExportVerification -- --pc-ai-call-graph-checks`
+and then inspect a known archive root with
+`dotnet run --project tests/ExportVerification -- --pc-ai-call-graph-audit <archive> 71003FF1`.
+The existing check should continue to distinguish `AIExecute` from
+`AITrackCurChangeNow`, preserve cycle/depth limits, and leave indirect operands
+unresolved; a useful extension is a synthetic conditional call fixture whose
+target appears in the static graph but whose status never says “executed.”
+
+#### Runtime eligibility is evaluated separately from serialized tracks
+
+Jaded's `EVE_MainCall` walks the event-object table and skips entries that are
+invalid, optimized-culled, invisible at the current LOD, force-inactive, or
+without a usable EVE instance before it calls the per-owner track loop
+(`external/jaded/src/libraries/AIinterp/Sources/Events/EVEplay.c:1600-1650`).
+The AI scheduler has a related but separate filter: it walks AI EOT members,
+deduplicates hierarchy-processed objects, applies optimized-visibility,
+force-inactive and sector-inactive checks, and only then runs the AI instance
+(`AIengine.c:1074-1170`). Some AI instances with the deferred flag are queued
+for a later callback phase after record/blend rather than run in the normal
+AI pass (`AIengine.c:1150-1159,1249-1316`; `ENGcall.c:375-382,465-473`).
+Engine callbacks also reject inactive or paused objects (`AIengine.c:1368-1379`).
+
+This yields a general diagnostic distinction for missing movement/effects:
+the EVE record may exist and resolve, while its owner is outside the event
+table or fails the event-pass filter; independently, an AI callback may be
+present in the model but fail AI table membership, runtime eligibility, or
+the deferred-phase condition. These states should be surfaced separately in
+JadeView rather than inferred from whether the track has keys. The Iris source
+contains corresponding event/AI table walks, but the specific culling and
+deferred-bucket conditions above are documented here as Jaded source behavior
+until they are matched against the retail PC runtime.
+
+The next runtime-level model should therefore separate: archive dependency
+resolution; live-world activation; EOT/table membership; per-object EVE track
+cursor; per-instance AI callback timer/cursor; message enqueue/overflow;
+consumer dequeue; and resulting state mutations. Preserve unknown lifecycle
+and dispatch facts as unknown rather than treating a reachable source path as
+an executed event. A useful test corpus should include queue overflow and
+LIFO reads, the Iris-only `MSGSendAll` payload mapping, an EVE event that
+crosses multiple event boundaries in one tick, and phase-order cases with
+separate sender/recipient objects. None of these tests would by themselves
+establish retail-game parity without a runtime trace.
+
+The source-call index now retains branch-specific reaching values for API
+arguments and OVA field writes across indirect aliases of
+`instanceVarDataCurrent`. For example, `sfx_bouclier_phare_sbp_disparition`
+passes its instance-data pointer through locals before assigning
+`f_transparency_coef`; the indexed `MATSetConstant` site now records the
+time-derived/clamped value path and both `i_cine` branches for its color
+argument. A regression check reads the packaged index and verifies these
+relations in `CinematicScriptEngineCallIndexChecks.cs`. This improves source
+inspection; it does not execute the callback, evaluate its live clock, or make
+the shield preview match the game by itself.
+
+#### Runtime entry-path checklist (2026-10-25)
+
+The source traces above reduce to separate runtime entry paths; an archive
+reference alone does not activate any of them:
+
+| Entry path | Confirmed source lifecycle | State that gates the effect |
+| --- | --- | --- |
+| World AI update | Iris `WOR_Universe_Open` loads an AI instance and its model/OVA/OFC links (`world.c:2511-2518`; `ai_common.c:1441-1454`). The universe callback is advanced only while `AIUnivIsRunning` (`engine.c:528-535`). Ordinary owners are reached through `AI_MainCall` and `AI_RunInstance` (`ai_common.c:711-809`). | World-table membership, enabled instance/model, slot function and cursor, and per-slot timer. A callback slot is a resumable update function, not a timestamped one-shot. |
+| EVE event AI function | Iris advances EVE before ANI and the ordinary AI pass (`engine.c:184-215`). At an event boundary, `EVE_RunOneTrack` invokes its AI node unless `EVE_gb_PlayOnlyAnimTracks` is set (`events.c:1730-1802`). | EVE owner/track target/bone context, event cursor and flags, current frame delta, and the play-only-animation guard. EVE calls are not the ordinary AI slot loop. |
+| Phase callback | `AI_ExecCallback(owner, phase)` runs the matching fixed model callback and registered `AICBAdd` callbacks; callback-all traverses its own world table (`ai_common.c:812-915`). Phase 2 is requested later in the outer pass after hierarchy update (`engine.c:279-289`). | A live AI instance/model, phase match, inactive/pause/block flags, callback context, caller-specific visibility or lifecycle gates, and (for callback-all) table membership. A phase ID names a lifecycle dispatch point, not a gameplay trigger. |
+| Trigger/message path | The BGE `Detect_o_Zone` owner polls a configured BV or ZDE predicate and writes capability/saved-flag state on enter/exit; this does not itself insert the target into an AI/EVE table (`gameplay-script-system-findings.md:302-328`). Iris `MSGSend` appends to the call-context object's five-entry queue; a later script read consumes it (`ai_messagefunctions.c:3-16,34-45,143-173`). | Trigger owner scheduling, actor/predicate inputs, saved flags and timer; separately, queue capacity/order and whether a later callback polls it. No source evidence makes message send a synchronous callback invocation. |
+
+These paths are source-confirmed for the checked-in Iris/Jaded code, not a
+complete observation of the 2003 retail executable. In particular, static BF
+data cannot establish live EOT membership, whether a condition passed, which
+callback branch ran, or whether a message was consumed. JadeView currently
+joins serialized owners, callback references, EVE literal calls and message
+definitions for inspection, but does not execute the AI VM or maintain these
+live cursors/timers/queues. A useful next verification is a deterministic
+fixture that records one owner across load, due AI update, EVE event, callback
+phase and queued-message consumption, with each path kept separately labeled;
+retail-PC parity still needs a runtime trace before these source models can be
+called exact.

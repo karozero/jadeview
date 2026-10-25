@@ -6,7 +6,10 @@ param(
     [string]$FunctionNamesPath,
 
     [Parameter(Mandatory = $true)]
-    [string]$OutputPath
+    [string]$OutputPath,
+
+    [Parameter(Mandatory = $false)]
+    [string]$ValueFlowOutputPath
 )
 
 $resolvedSource = (Resolve-Path -LiteralPath $SourcePath).Path
@@ -121,6 +124,33 @@ function Get-AssignmentAliases([string]$body) {
 $definitionPattern = [regex]'(?m)^[ \t]*(?:int|void)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\([^;{}]*\)\s*\{'
 $accessPattern = [regex]'(?<receiver>[A-Za-z_][A-Za-z0-9_]*)\s*->\s*(?<field>[A-Za-z_][A-Za-z0-9_]*)'
 $accesses = [System.Collections.Generic.List[object]]::new()
+$valueFlowAssignments = [System.Collections.Generic.List[object]]::new()
+$rliFields = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+$rliApiPattern = [regex]'AI_EvalFunc_Light(?:Get|Set)RLIFactor_C|AI_EvalFunc_Light(?:Get|Set)RLIDestColor_C|AI_EvalFunc_LightRLIFactorUsed_C'
+
+if ($ValueFlowOutputPath) {
+    foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Filter 'ai_compiledscripts_*.c' -File -Recurse) {
+        $text = [System.IO.File]::ReadAllText($file.FullName)
+        foreach ($definition in $definitionPattern.Matches($text)) {
+            $functionName = $definition.Groups[1].Value
+            if (-not $knownFunctions.ContainsKey($functionName)) { continue }
+            $openBrace = $definition.Index + $definition.Length - 1
+            $closeBrace = Get-MatchingDelimiter $text $openBrace '{' '}'
+            if ($closeBrace -lt 0) { continue }
+            $body = $text.Substring($openBrace + 1, $closeBrace - $openBrace - 1)
+            if (-not $rliApiPattern.IsMatch($body)) { continue }
+
+            $aliases = (Get-AssignmentAliases $body).Aliases
+            foreach ($match in $accessPattern.Matches($body)) {
+                $receiver = $match.Groups['receiver'].Value
+                if ($aliases.ContainsKey($receiver) -and $aliases[$receiver] -eq 'instance') {
+                    [void]$rliFields.Add($match.Groups['field'].Value)
+                }
+            }
+        }
+    }
+}
+
 foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Filter 'ai_compiledscripts_*.c' -File -Recurse) {
     $text = [System.IO.File]::ReadAllText($file.FullName)
     $lineStartList = [System.Collections.Generic.List[int]]::new()
@@ -145,14 +175,39 @@ foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Filter 'ai_compile
             if ($conditionClose -lt 0) { continue }
             $thenEnd = Get-ControlStatementEnd $body ($conditionClose + 1)
             if ($thenEnd -lt 0) { continue }
+            $branchExpression = ($body.Substring($conditionOpen + 1, $conditionClose - $conditionOpen - 1) -replace '\s+', ' ').Trim()
+            $branchLine = Get-LineNumberAtIndex $lineStarts ($bodyStart + $ifMatch.Index)
             $conditions.Add([pscustomobject]@{
                 Start = $ifMatch.Index
-                End = $thenEnd
+                End = $thenEnd + 1
                 Kind = 'if'
-                Expression = ($body.Substring($conditionOpen + 1, $conditionClose - $conditionOpen - 1) -replace '\s+', ' ').Trim()
-                Line = Get-LineNumberAtIndex $lineStarts ($bodyStart + $ifMatch.Index)
+                Expression = $branchExpression
+                Line = $branchLine
+            })
+
+            $elseStart = $thenEnd + 1
+            while ($elseStart -lt $body.Length -and [char]::IsWhiteSpace($body[$elseStart])) { $elseStart++ }
+            $hasElseKeyword = $elseStart + 4 -le $body.Length -and `
+                $body.Substring($elseStart, 4) -eq 'else' -and `
+                ($elseStart + 4 -eq $body.Length -or `
+                    -not [char]::IsLetterOrDigit($body[$elseStart + 4]))
+            if (-not $hasElseKeyword) { continue }
+
+            $elseBodyStart = $elseStart + 4
+            while ($elseBodyStart -lt $body.Length -and [char]::IsWhiteSpace($body[$elseBodyStart])) { $elseBodyStart++ }
+            $elseEnd = Get-ControlStatementEnd $body $elseBodyStart
+            if ($elseEnd -lt 0) { continue }
+            $conditions.Add([pscustomobject]@{
+                Start = $elseBodyStart
+                End = $elseEnd + 1
+                Kind = 'else'
+                Expression = $branchExpression
+                Line = $branchLine
             })
         }
+
+        $isRliHookFunction = $ValueFlowOutputPath -and $rliApiPattern.IsMatch($body)
+        $hasRliFieldWrite = $false
 
         foreach ($match in $accessPattern.Matches($body)) {
             $receiver = $match.Groups['receiver'].Value
@@ -193,6 +248,28 @@ foreach ($file in Get-ChildItem -LiteralPath $resolvedSource -Filter 'ai_compile
                 SourceFile = [System.IO.Path]::GetRelativePath($resolvedSource, $file.FullName).Replace('\', '/')
                 Line = $line
             })
+            if ($ValueFlowOutputPath -and $field -in $rliFields -and $access -in @('write', 'read/write')) {
+                $hasRliFieldWrite = $true
+            }
+        }
+
+        if ($isRliHookFunction -or $hasRliFieldWrite) {
+            foreach ($assignment in $aliasData.Assignments) {
+                $assignmentLine = Get-LineNumberAtIndex $lineStarts ($bodyStart + $assignment.Index)
+                $branchConditions = @($conditions | Where-Object {
+                    $_.Start -le $assignment.Index -and $_.End -gt $assignment.Index
+                } | Sort-Object Start | ForEach-Object {
+                    [ordered]@{ Kind = $_.Kind; Expression = $_.Expression; Line = $_.Line }
+                })
+                $valueFlowAssignments.Add([ordered]@{
+                    FunctionName = $functionName
+                    Variable = $assignment.Groups['variable'].Value
+                    Expression = ($assignment.Groups['expression'].Value -replace '\s+', ' ').Trim()
+                    BranchConditions = [object[]]$branchConditions
+                    SourceFile = [System.IO.Path]::GetRelativePath($resolvedSource, $file.FullName).Replace('\\', '/')
+                    Line = $assignmentLine
+                })
+            }
         }
     }
 }
@@ -218,3 +295,25 @@ if ($OutputPath.EndsWith('.gz', [System.StringComparison]::OrdinalIgnoreCase)) {
     [System.IO.File]::WriteAllText($OutputPath, $json, [System.Text.UTF8Encoding]::new($false))
 }
 Write-Output "OVA source access index: $($index.Count) functions, $($accesses.Count) accesses -> $OutputPath"
+if ($ValueFlowOutputPath) {
+    $valueFlowIndex = [ordered]@{}
+    foreach ($group in ($valueFlowAssignments | Group-Object { $_['FunctionName'] })) {
+        $valueFlowIndex[$group.Name] = @($group.Group | Sort-Object Line)
+    }
+    $valueFlowJson = $valueFlowIndex | ConvertTo-Json -Depth 16 -Compress
+    $valueFlowDirectory = Split-Path -Parent $ValueFlowOutputPath
+    if ($valueFlowDirectory) { New-Item -ItemType Directory -Path $valueFlowDirectory -Force | Out-Null }
+    if ($ValueFlowOutputPath.EndsWith('.gz', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $valueFlowFileStream = [System.IO.File]::Create($ValueFlowOutputPath)
+        try {
+            $valueFlowGzipStream = [System.IO.Compression.GZipStream]::new($valueFlowFileStream, [System.IO.Compression.CompressionLevel]::Optimal)
+            try {
+                $valueFlowBytes = [System.Text.Encoding]::UTF8.GetBytes($valueFlowJson)
+                $valueFlowGzipStream.Write($valueFlowBytes, 0, $valueFlowBytes.Length)
+            } finally { $valueFlowGzipStream.Dispose() }
+        } finally { $valueFlowFileStream.Dispose() }
+    } else {
+        [System.IO.File]::WriteAllText($ValueFlowOutputPath, $valueFlowJson, [System.Text.UTF8Encoding]::new($false))
+    }
+    Write-Output "RLI script value-flow index: $($valueFlowIndex.Count) functions, $($valueFlowAssignments.Count) assignments -> $ValueFlowOutputPath"
+}

@@ -290,6 +290,54 @@ and collision activation distinct, inspectable state from render visibility.
 Jaded is an earlier engine source tree, so this corroborates the API mechanics
 but is not by itself proof that every retail BGE script follows the same path.
 
+The cinematic callback preview now applies `COLSetActivationSet` to the
+resolved object's collision-instance activation mask when all of these inputs
+are known: a unique callback receiver, a uniquely recovered callback window,
+supported branch predicates, literal set/clear masks, and a resolved PC
+collision instance. The inspector labels this as a cinematic script preview
+and leaves the serialized source mask intact. It does not simulate collision
+tests, zone overlap, or the resulting gameplay. Callback mutations whose
+receiver is explicit in source remove that resolved receiver argument before
+applying `OBJ_CapaSet`, `OBJDrawMaskSet`, and collision-mask set/clear
+operands; implicit CURRENT calls retain their complete operand list. Map
+activation is still a separate API and is not projected by this callback
+path.
+
+The `FF0045A2 / 3500B8EA` archive graph contains 83 clip-scoped script owners
+and 655 serialized calls. Its reachable `PNJ_Spectre_sp_init` source includes
+`COLSetActivationSet(AI_gpst_CurrentGameObject, -1, 0)` with an empty API
+variant label. This confirms why operand selection must follow the resolved
+receiver evidence, not a hard-coded variant name. The audit exposes 1,377
+reachable state-effect call sites in the scoped owner set; these are candidates,
+not evidence that every callback starts during playback.
+
+A fresh `FF0045A2` collision-resource audit resolves 70 scene objects, including
+53 collision instances, 47 maps, and 17 sets. `_PJ_Camera.gao` (`71003F56`) and
+`_PJ_Sally.gao` (`71003F5A`) both have resolved collision instances with source
+activation mask `0xFFFF`. However, the current bounded playback probe still
+reports `CollisionActivationMask: null` for every sampled object. The Iris
+source callback `camera_cam_1_init` contains
+`COLSetActivationSet(AI_gpst_CurrentGameObject, 0, 1)`, which would clear bit 0
+from that starting mask, but no callback execution is inferred from the static
+candidate alone. This narrows the remaining gap: callback source and target
+resources resolve, while startup callback admission/dispatch is not yet modeled
+as a deterministic clip-time event. The fresh `FF0045A2 / 3500B8EA` graph
+audit confirms the participant row for `_PJ_Camera.gao` (`71003F56`): identity
+flags `0x0009FE20`, serialized state flags `0x030000AB`, and callback slot 1
+`350008E4` (`camera_cam_1_init`). This is a stronger link than a source-index
+candidate by itself. Iris initializes that slot's remaining timer to zero,
+and the callback immediately calls
+`AITrackCurChangeNow(camera_cam_1_mainloop)` after changing collision state
+(`ai_common.c:375-420, 711-760`; `ai_compiledscripts_camera.c:7867-7905`). A
+successful first AI dispatch therefore clears bit 0 and replaces the current
+callback with the main loop in the same AI-instance pass. Its projected initial
+`flags2` (`0x03000080`) passes the ordinary-time activation masks, while the
+special-time activation path lacks required bit `0x04000000`; actual mode,
+world-table admission, hierarchy/distance gates, and allocated live instance
+remain unobserved. Keep the collision mask unknown until those owner-level
+runtime gates are reconstructed; do not apply the source call at clip time 0
+merely because its serialized callback slot is configured.
+
 IrisEngine's PC implementation provides the retail-side details for cinematic
 event preview: `OBJ_CapaSet` applies add/remove masks to `uw_Capacities`, while
 `OBJ_CapaNot` XORs its argument into that field. The serialized capacity field
@@ -327,6 +375,81 @@ callback bodies (`ai_compiledscripts_detectors.c:1166-1365` and
 generic collision and AI mechanisms, so those BGE field meanings must not be
 inferred from Jaded alone.
 
+#### Admission and message transport are separate paths
+
+In Iris, `Detect_o_Zone_doz_init` is the admission point for the zone poller:
+it resolves the two detector functions, clears the owner's `0x100` capability,
+resolves the configured actor (including the two main-actor aliases), and only
+replaces the current AI track with the BV or ZDE detector when that actor is
+non-null (`external/irisEng/ai/ai_bge/ai_compiledscripts_detectors.c:1166-1201`).
+Iris's compiled callback table maps model/function keys `0x35008312`,
+`0x35008313`, and `0x35008314` to the zone init, BV detector, and ZDE
+detector respectively (`external/irisEng/ai/ai_compiledscripts.c:2477-2479`).
+`AI_ReinitInstance` seeds each instance's callback slots from its AI model's
+callback slots (`external/irisEng/ai_common.c:385-420`); a BF owner therefore
+needs the relevant model callback binding before this zone-specific init can
+run. The selected detector reads its per-owner state from
+`CurrentInstance->instanceVarDataCurrent` and polls collision each execution.
+`AITrackCurChange_C` writes the function and its resume node into the current
+instance/current-track slot (`external/irisEng/ai/ai_aifunctions.c:200-212`);
+`AI_RunInstance` skips missing/disabled models, decrements the slot timer, and
+runs admitted callbacks whose timer has expired
+(`external/irisEng/ai_common.c:711-745`). The detector's enter/exit and timer
+branches mutate capability and shared saved flags directly; the recovered
+zone callbacks do not enqueue a generic message.
+
+Iris messages are a distinct, explicitly consumed transport. `MSGSend_C`
+copies a message into the chosen recipient GAO's bounded five-entry queue, and
+the bytecode wrapper chooses the current `Ultra` object as recipient
+(`external/irisEng/ai/ai_messagefunctions.c:3-31`). `MSGGet_C_CURRENT` pops
+the newest queued message (`:34-50`); `MSGGetByID_C` searches by ID, removes a
+match, and returns an empty-ID sentinel when absent (`:143-173`). A concrete
+owner callback demonstrates the lifecycle: `action_reaction_ar_init` admits
+`ar_check`, then `ar_check` consumes a message, branches on IDs 10/37, and may
+send a modified message to its configured activator or transfer target
+(`external/irisEng/ai/ai_bge/ai_compiledscripts_action_reaction.c:82-83,
+86-168`). Queueing alone does not dispatch that recipient's callback; its own
+AI instance and track must run and consume the message.
+
+Jaded exposes a different, source-version-specific trigger path. Serialized
+`TYPE_TRIGGER` owner variables contain an engine key, a procedure reference,
+name, and an embedded `AI_tdst_Message` payload
+(`external/jaded/src/libraries/AIinterp/Sources/AIstruct.h:360-370`). During
+variable-reference resolution, the loader walks those trigger variables and
+calls `AI_ResolveTrigger` (`external/jaded/src/libraries/AIinterp/Sources/AIload.c:523-557`). In the non-dynamic resolver,
+the trigger key file and normalized trigger name are matched against the
+registered AI2C trigger table first; otherwise the referenced file's procedure
+list is scanned for a matching `@` procedure (`external/jaded/src/libraries/AIinterp/Sources/AI2C.cpp:457-531`). The loader
+also reads each serialized trigger's procedure/name, sender, GAO arguments, vectors, integers,
+and ID (`external/jaded/src/libraries/AIinterp/Sources/AIload.c:1749-1777`). The `call_trigger` keyword then validates the
+procedure pointer, pushes the trigger's stored message as a `TYPE_MESSAGE`
+argument, and immediately invokes `AI_EvalFunc_AIExecute_C`
+(`external/jaded/src/libraries/AIinterp/Sources/Keywords/AIkeywords.c:1153-1205`; keyword ID 2109 is registered in
+`external/jaded/src/libraries/AIinterp/Sources/Keywords/AIdefkey.h:37`). This is a direct procedure call, not a spatial
+zone test and not a queue insertion. Separate Jaded message APIs use a
+per-object queue: `MSGSend_C` appends to the supplied object's queue and
+`MSGGet_C` removes the newest item (`external/jaded/src/libraries/AIinterp/Sources/Functions/AIfunctions_msg.c:88-128,
+175-220`; capacity is 1000 in `external/jaded/src/libraries/AIinterp/Sources/AImsg.h:23`).
+
+Do not merge these abstractions in JadeView: Iris's BGE `Detect_o_Zone` is a
+polling callback with collision and owner state; Jaded's `call_trigger` is a
+serialized procedure reference plus payload invoked synchronously by AI bytecode;
+ordinary messages are separately queued in both source trees, with different
+capacity and wrapper/context details. Jaded is the Rayman 4-era source tree,
+so its trigger layout and keyword behavior are comparison evidence, not proof
+that retail BGE PC uses the same serialized trigger path. The repository does
+not yet establish which retail BGE AI owner/callback load hooks admit each
+zone model, whether a BF instance has its callback active before sector
+visibility, or what runtime conditions gate `call_trigger` data on retail PC.
+
+For the next implementation slice, make the inspector show the distinction
+without simulating it: per owner, expose a resolved zone callback admission
+record (owner/model, configured actor resolution, selected BV/ZDE branch,
+current-track replacement evidence) separately from message edges (sender,
+recipient, message ID/payload fields, and consumer callback candidates). Mark
+runtime overlap, queue contents, visibility admission, and callback execution
+as unknown until a source-backed runtime gate or observed trace resolves them.
+
 JadeView's shared script-owner analyzer now reports that static behavior from
 the callback catalog and effective OVA values. It describes the BV/ZDE
 selector from the owner's serialized identity flags (bit `0x400` set selects
@@ -353,6 +476,153 @@ a broad gameplay-tools roadmap: inspect trigger bounds and collision sets,
 show configured participants and state transitions, and eventually simulate
 them with a source-time/event queue. It does not justify executing arbitrary
 game scripts in the editor.
+
+### A serialized zone-to-gameplay chain through saved flag 1007
+
+The installed retail archive contains an unusually traceable cross-world
+example. In cinematic world `01_04_entrepot_liberation_mili_cine`
+(`3500B8D5`), `CINE_Ouverture_Porte_2_3.gao` (`10000473`, model
+`35008316`) has an unambiguous typed OVA binding for saved flag 1007, actor
+reference 1, and the BV-overlap route. Iris's zone callback sets flag 1007 on
+entry and clears it on exit when the configured timer is zero; `invert` here
+is asymmetric set/clear behavior, not a toggle. The zone links
+`SceneEvents=10000474`; EVE track 10 targets it and changes the owner's
+inactive state and capability bit `0x100` at 0.00, 0.93, 4.40, and 19.80 s.
+Those EVE commands do not themselves write flag 1007.
+
+The archive-wide source/OVA join finds exactly two gameplay owners of the same
+flag in `01_04_entrepot_liberation_mili` (`E6001FA7`).
+`OBJ_porte_prisomili01.gao` (`1600272A`) reads the effective flag during
+`porte_po_init` and selects its open path when set; its open/close callbacks
+write/clear the configured flag. `WP_Kick_Porte.gao` (`10000D58`) reads it
+during initialization and its threshold action can write it while changing
+collision activation. This establishes a configured data-and-source chain
+between the cinematic zone and gameplay consumers, but not a runtime causal
+trace: it does not establish EVE dispatch order, whether zone callbacks run
+while the owner is inactive, the live contents of actor slot 1, actual BV
+collision, or which writer last changed the saved flag. The gameplay door's
+configured child-activation values are not exposed by the current index, so
+no specific spawned/hidden child is inferred here.
+
+The all-container transition audit found no reachable transition API callsite
+in those three owners. That does not prove there is no transition: another
+owner, an indirect engine dispatch, or an opaque OFC body may cause one. The
+archive establishes configured links and values; Iris establishes callback
+semantics; neither establishes execution in a play session. See the
+[reproducible flag-1007 report](gameplay-saved-flag-1007-chain.md) for exact
+commands, source locations, event payloads, and audit scope.
+
+The same archive shows a second reusable pattern in gameplay world
+`01_02_entrepot_salle_fusibles` (`FF006BFC`): persisted object state can feed a
+generic event gate. `OBJ_Fusible_2.gao` and `OBJ_Fusible_3.gao` share the
+`get_object_go` model but instance-override their `des_SF_active_on_destroy`
+and `des_SF_destroy_on_load` values to flags 2012 and 2013 respectively.
+`get_object_go_get_i_bit` reads the configured load flag, while the present and
+absent callbacks test and update the configured active-on-destroy bit
+(`ai_compiledscripts_objects.c:406,1456-1478,1892-1914`). The neighboring
+`EVT_cable.gao` (`C10011E9`, model `350091C3`) overrides
+`des_i_specialFlag_test2=2013`; the `Cine_Events` test callback consumes this
+flag as one part of its start predicate. This is a data-backed link from a
+generic pickup's persistence state to a separately authored event owner, not
+proof that pickup execution started the EVE track in a particular session:
+the event also has capability/test-mask conditions, and the current report
+does not recover live dispatch timing. In this same world,
+`OBJ_porte1.gao` writes and reads flag 1003 through the generic door callbacks,
+while `SND_AmbianceC_01_02.gao` reads 1003 in its sound play/stop callbacks.
+That is evidence that persistent flags can coordinate object and audio
+behavior; the join does not by itself establish which interaction changed the
+flag at runtime. Together these examples support a general flag-centric
+inspection view that groups writers, readers, and event/audio gates by the
+effective instance value, while keeping runtime execution explicitly unknown.
+
+A separate cross-container example illustrates why that index must be
+archive-wide. The installed BF index returns four unique owner instances that
+access flag 2035. In `FF001814 / 01_06_entrepot_defile_cercueils`,
+`CINE_ENLEVEMENT_PEYJ_01_EVENTS.gao` (`35009FD6`) has SceneEvents track 8
+setting global flag 2035 at 1.75 s. In `FF00791B / 01_00_entrepot_sas_entree`,
+`EVT_TEMP_Porte_Fermer_SF2035aVRAI.gao` (`20007993`) overrides
+`des_i_SPFlag_associe_vrai=2035`; its `Cine_Events_Cine_exec_EndOfEvents`
+callback therefore sets 2035 on completion. The same owner has
+`des_i_ripley=2`, however, and the source's startup/replay test for the
+associated flag is guarded by `!des_i_ripley`; that particular 2035 read is
+disabled for this configured instance. Its separate phase gate is configured
+with `des_i_specialFlag_test1=2007` and `des_i_specialFlag_test2=3853`.
+`Cine_Events_cine_tests_depart` checks these when capability `0x100` is
+absent: test1 requires its flag set, while test2 requires its flag clear
+(`ai_compiledscripts_global_managers.c:4175-4215,4331-4333,4557-4607`).
+`HLP_mili_porte_fermee.gao` reads flag 2035 with a set-required condition, and
+the linked `CINE_OUVRE_SAS_EVENTS.gao` track 12 clears 2035 on
+`GST_Global.gao` (`710047BC`) at 42.05 s. The other container's track 8 also
+targets `GST_Global.gao` and sets 2035 at 1.75 s. These are confirmed archive
+write/read/configuration edges across container/world records, but not proof
+they execute as one linear sequence. Neither does this establish a direct
+door-state edge: the same index contains no 2035-reading door owner in
+`FF001814`, and `LD_OBJ_porte_code.gao` in `FF00791B` uses flag 2040, while
+the 2035 reader there is the helper text owner. The shared number alone does
+not establish that the earlier event caused later door behavior; the archive
+contains no runtime trace establishing which event ran first or the saved
+flag value at the helper's test. The system-level finding remains that
+saved-flag identity is global and must be joined across containers, while
+effective per-instance guards must be applied before calling an owner a live
+reader.
+
+Reproduce the serialized EVE payload and the 01_00 owner/track joins with:
+
+```powershell
+dotnet run --project tests/ExportVerification -- --event-track-payload-audit "<path-to-sally_clean.bf>" FF001814 35009FD6 35009FD9 8
+dotnet run --project tests/ExportVerification -- --world-script-graph-audit "<path-to-sally_clean.bf>" FF00791B 3500A7C6
+```
+
+### Jaded sector callbacks are not established for the PC Iris runtime
+
+Jaded has explicit sector-driven lifecycle callbacks in
+`external/jaded/src/libraries/ENGine/Sources/WORld/WORmain.c`. During
+`WOR_ActivateObjectIfFlagsAllow`, `WOR_SectoObjActive` controls membership in
+the active-object table. When the sector test becomes false and the owner was
+not already marked sector-inactive, Jaded marks it inactive and dispatches
+callback ID 6 (`SectoActOn`). When the test becomes true for a previously
+sector-inactive owner, it may call `ENG_ReinitOneObject` when both
+sector-inactive and sector-reinit control flags are set, dispatches ID 7
+(`SectoActOff`), clears the inactive state, and adds the object to the active
+table. The callbacks are edge-triggered by the stored sector state; they are
+not dispatched on every table rebuild.
+
+Visibility is a separate pass. `WOR_MakeObjectVisibleIfFlagsAllow` evaluates
+`WOR_SectoObjVisible`; when the test becomes false and the owner was not
+already sector-invisible, it dispatches ID 8 (`SectoVisOn`) before marking it
+sector-invisible and culled. When the test becomes true for a previously
+sector-invisible owner, it dispatches ID 9 (`SectoVisOff`) before clearing
+that state and adding the object to the visible table. The IDs
+are named in `external/jaded/src/libraries/AIinterp/Sources/AIstruct.h:50-59`.
+Thus Jaded's activation callback pair and visibility callback pair have
+different state, tables, and dispatch moments.
+
+The bundled Iris source defines the same callback names in metadata, but the
+Iris dispatch-site inventory contains no direct call sites for IDs 6–9. Its
+`WOR_World_ActivateObjects` rebuilds activation from `flags2` and its
+`WOR_MakeObjectVisibleIfFlagsAllow` applies visibility flags without Jaded's
+sector callbacks (`external/irisEng/world.c:44-62,153-190`). In this
+source tree, Jaded therefore documents a possible Jade Engine mechanism, not a
+confirmed retail BGE PC mechanism. JadeView should not simulate these callbacks
+or infer sector-triggered object visibility for PC archives unless retail
+evidence establishes that path.
+
+An archive-wide join strengthens that boundary: all 15,950 script owners in
+the installed BF resolved, but none has a nonzero model engine-hook assignment
+for IDs 3–9; IDs 6–9 are absent from the configured callback census entirely.
+The complete counts and generation command are in
+[`game-script-engine-callbacks.md`](game-script-engine-callbacks.md). This
+rules out only those configured callback IDs in the audited archive, not other
+sector logic or callback-free activation paths.
+
+This difference is relevant when diagnosing an object that is present in the
+archive but appears only after entering a region: sector-gated loading or
+activation is an architectural hypothesis, not a proven explanation for any
+reported BGE actor. The current BF preview has no live sector-membership trace,
+and the Iris source currently provides no direct ID 6–9 dispatch path to join
+to an owner assignment. The next evidence needed is a retail runtime trace or
+an Iris/retail call path that demonstrates sector state updates and callback
+dispatch; asset presence and Jaded's implementation alone are insufficient.
 
 The related `Detect_o_Capa` family is another generic activation gate. Iris
 source shows `Detect_o_Capa_doc_init` selecting an all/any true/false test from
@@ -816,6 +1086,143 @@ static findings in the existing script inspector. It does not evaluate live
 collision lists, flags2, callback scheduling, or target activity.
 
 ### World transitions and companion event routing
+
+#### World changes are a request protocol, not a single loader call
+
+**Confirmed in the supplied PC Iris source:** the world API has separate
+operations with materially different effects. `WORUniverseAdd(key)` loads one
+world and adds it to the universe; `WORActive(slot)` changes the active-world
+handle to an already loaded world; `WORDesactive(slot)` clears that world-table
+active bit; and `WORLoadList(key)` deletes the existing universe worlds and
+replaces them from a world-list resource
+(`external/irisEng/ai/ai_worldfunctions.c:24-63,100-120`; the function IDs are
+registered in `ai/ai_functions.c:169-178`). These are confirmed Iris API
+semantics, not proof that retail BGE's ordinary door/exit scripts call
+`WORLoadList` directly.
+
+The compiled BGE gameplay scripts instead expose a shared-state handoff. The
+ground-map exit path writes `load_world=1`, a target map number, and an entrance
+number to the shared `univers.ova` variables, then yields for a delay; the
+space exit path writes the same request fields from its destination object
+(`external/irisEng/ai/ai_bge/ai_compiledscripts_es_au_sol.c:5416-5421`;
+`ai_compiledscripts_es_ciel.c:283-286`). The Mdisk return branch also writes
+`load_world`, its selected map ID, and entrance before stopping its current AI
+track (`ai_compiledscripts_es_au_sol.c:5498-5508`). Those are script-side
+requests, not themselves evidence that a world has loaded.
+
+The global map manager resolves gameplay map numbers through its
+`WORLD_Key_Map_ID` / `WORLD_Key_Map_Key` table, writes the corresponding world
+key, and chooses either its special-load or editor/setup path. It also copies
+the target map/entrance into the E3 transition fields on its initialization
+branch (`external/irisEng/ai/ai_bge/ai_compiledscripts_global_mapmanager.c`,
+`map_manager_mm_exec_TM`, especially the `WORLD_Key_Map` resolution and
+`AIExecute(SpecialLoad/Editeur)` tail). Destination entry selection is a
+separate step: `ES_au_sol_esas_enter_the_map` matches each authored entrance's
+`des_numero_de_l_entree` against the shared `world_entrance_ID`
+(`ai_compiledscripts_es_au_sol.c:195-205,984`). Therefore a map ID, BF world
+key, and entrance ID are three different values and should not be collapsed
+into one “scene key.”
+
+`WORReinit` is a distinct engine-wide reset request: Iris sets
+`ENG_gb_NeedToReinit`, and the next outer engine frame reinitializes the AI
+universe and each loaded world before clearing the request
+(`ai/ai_worldfunctions.c:142-150`; `external/irisEng/engine.c:655-668`). The
+source shows it resets runtime state; it does not by itself identify or load a
+destination world. This distinction matters when following scripts that set
+the world request fields and later invoke `WORReinit`.
+
+**Confirmed chain boundary:** source code proves the script writes, map-ID to
+archive-key lookup, entrance matching, and the separate Iris world APIs. The
+examined transition functions do not establish the exact runtime owner or
+engine callback that consumes `load_world` and performs the retail transition;
+the `WORLoadList` body is not directly called by the cited exit routines. A
+static BF can expose configured destination values and object references, but
+cannot show the live request value, which global-manager callback ran, load
+success, arrival actor placement, or subsequent world activation. Treat any
+claim that this complete handoff is already reconstructed as **unverified**.
+
+#### Source-wide consumer search: the request flag still has no proven reader
+
+The source search separates the three shared fields instead of treating them
+as one transition call. In the supplied compiled Iris BGE scripts,
+`univers.ova` `load_world` occurrences resolve the field at offset 0 and write
+`1` (request) or, in the reset path, `0`; the source-wide search found no
+conditional read of this field. The request producers include the ground and
+sky exit scripts, E3/load-map setup scripts, global message handling, and the
+Mdisk return path. For example, `Global_glob_reflex` writes `load_world=1`,
+`world_ID=message.Int1`, and `world_entrance_ID=rounded(message.f2)` for its
+message cases 12/13 (`ai_compiledscripts_global.c`, `Global_glob_reflex`;
+the buffer offsets are 0, 4, and 8).
+
+Reproducible census: `rg -n "load_world" external/irisEng` returns 58
+matches across 10 source files; these include 15 buffer-resolution lines, 21
+write-to-1 lines, and one write-to-0 reset line. A comparison/branch search
+over those matches returns no read-like use. A separate search for direct
+`WORLoadList`, `WOR_pst_Universe_AddWorldList`, `WORUniverseAdd`, or `WORActive`
+callsites under `external/irisEng/ai/ai_bge/ai_compiledscripts_*.c` returns
+zero matches. These are source-text census results, not runtime dispatch
+coverage.
+
+The nearest apparent downstream consumer is
+`map_manager_mm_exec_TM` (`ai_compiledscripts_global_mapmanager.c`). Its init
+path copies `world_ID` and `world_entrance_ID` into the E3 handoff fields
+(offsets 18208 and 18212), and its transition tail maps `world_ID` to a BF
+world key through `WORLD_Key_Map_ID/Key`, chooses `SpecialLoad` or `Editeur`,
+and may replace the entrance with the current authored entrance. However, the
+function resolves and reads `i_special_init`, `i_engine_mode`, `world_ID`, and
+`world_entrance_ID`; it does not resolve or read `load_world`. No source
+callsite from the exit writers into this map-manager function was recovered.
+Thus this is a confirmed consumer of the destination fields in its own
+execution path, but not a confirmed consumer of the request latch or proof
+that it runs because one of those exits set the latch.
+
+The API route is also distinct in the recovered source. Iris registers
+`WORUniverseAdd`, `WORActive`, and `WORLoadList` in
+`ai/ai_functions.c:169-178`; the wrappers in `ai/ai_worldfunctions.c:24-63`
+and `:100-120` call `WOR_pst_Universe_AddWorld` or
+`WOR_pst_Universe_AddWorldList` directly. Iris's `WORLoadList` implementation
+does not inspect `univers.ova`; `world.c:2705` performs the world-list load
+(including deletion of current universe worlds in the shown implementation).
+The generated BGE script corpus has no direct callsite to these three APIs,
+according to a search of `ai/ai_bge/ai_compiledscripts_*.c`. `WORReinit` is
+another independent path: its wrapper sets `ENG_gb_NeedToReinit`, and the
+engine frame loop calls `AI_ReinitUniverse` and `ENG_ReinitOneWorld`; it does
+not select a world from the shared request fields
+(`ai/ai_worldfunctions.c:142-150`, `engine.c:655-668`).
+
+**Exact edge map supported by source:**
+
+```text
+exit / E3 / message / Mdisk script
+  └─ writes univers.ova.{load_world, world_ID, world_entrance_ID}
+       ├─ no matching load_world reader found in supplied Iris source
+       ├─ map_manager_mm_exec_TM reads world_ID + entrance on its own path
+       │    └─ map number → BF world key → SpecialLoad or Editeur
+       └─ WORLoadList(key) → WOR_pst_Universe_AddWorldList(key)
+            [separate API path; no script callsite linked to the writers]
+
+WORReinit() → ENG_gb_NeedToReinit → AI_ReinitUniverse / reinit loaded worlds
+             [runtime reset; no destination selection]
+```
+
+This negative result is scoped to the supplied Iris C/source corpus and its
+recovered compiled-script callsites. It does not rule out an offset-based read
+with no `load_world` symbol, a native executable path omitted from Iris, or a
+runtime callback whose call edge is not represented in these files. A live
+trace or retail PC executable analysis is still needed to close that edge.
+
+**Jaded corroboration only:** Jaded has analogous world/universe and
+transition-facing APIs, but it is a separate desktop/engine lineage. Its
+behavior can guide where to look for a consumer; it cannot fill the missing
+retail PC runtime edge without a PC Iris callsite or live trace.
+
+In Jaded, `AI_EvalFunc_WORLoadList_C` likewise receives a world key directly
+and calls `WOR_pst_Universe_AddWorldList`; before that it resolves Jaded's
+fixed-world preload requests (`external/jaded/src/libraries/AIinterp/Sources/Functions/AIfunctions_wor.c:560-630`).
+The engine implementation is in `WORuniverse.c:188`. A source-wide search of
+the Jaded paths found no `univers.ova`/`load_world`/`world_entrance_ID`
+consumer, so this corroborates the existence of a direct world-list API but
+does not establish that the Iris shared-field protocol reaches it.
 
 ### Message IDs are receiver-local, not a global event enum
 
@@ -1548,3 +1955,63 @@ available to the global AI, but not for reconstructing save-dependent values
 or claiming that an initialization callback ran. A future JadeView runtime
 would need an explicit initial-state source and callback scheduler state before
 it could safely emulate these global effects during cinematic preview.
+
+For the confirmed distinction between BF OVA defaults and packed saved values,
+see [Retail PC AI save-state inputs](gameplay-save-state-format.md). The save
+layout is source-derived but has not yet been validated against a matching
+retail slot file.
+
+### Dynamic callback-list lifetime and repeatable EVE side effects
+
+The dynamic `AICBAdd`/`AICBDel` list is runtime state, not a serialized BF
+snapshot. Iris and Jaded both clear registrations when an AI instance is
+reinitialized; duplicated AI instances start with an empty dynamic list, and
+destruction frees it. BF inspection can therefore enumerate candidate Add/Del
+sites and their statically resolvable operands, but cannot report the current
+registration count without a runtime trace.
+
+An EVE AI-function wait can call its node repeatedly before the key advances.
+The wait path returns before the `EventDone` marker, so the node's DoOnce guard
+does not suppress a retry. Since Add appends without duplicate suppression and
+Del removes one exact registration at a time, a registration inside such a
+node can be duplicated on each retry. This is a source-proven mechanism, not
+proof that a particular BF script contains this pattern. JadeView should model
+the callback collection as an ordered multiset and mark wait-reachable Add
+sites as potentially repeatable; it should not promote candidate sites to
+confirmed active registrations without resolved runtime branches and dispatch.
+
+Evidence: Iris `events.c:1768-1785`, `ai_common.c:375-420, 947-963`;
+Jaded `EVEplay.c:891-933`, `AIfunctions_ai.c:551-579, 607-635`,
+`AIengine.c:1444-1497, 1705-1728`.
+
+### AI callback return values also control scheduler flow
+
+An AI function's result is also a command to the scheduler. Jaded names the
+relevant sentinels in `AIengine.h:173-178`: `StopInstance=1`, `StopAI=3`,
+`CurChangeNow=5`, and `Destroy=6`. In `AI_RunInstance` (`AIengine.c:1012-1053`)
+the per-track wait timer is reduced by the frame delta before a due function
+runs. Afterward, `StopInstance` and `Destroy` end this instance pass;
+`StopAI` returns false, which makes the world-level AI table loop stop at that
+owner (`AIengine.c:1165-1171`). `CurChangeNow` decrements the loop index before
+the normal increment, so the replacement callback on that same track runs
+immediately in the same instance pass. That is a same-frame handoff, not a
+next-frame transition.
+
+Retail Iris has matching numeric-result handling in `ai_common.c:729-760` and
+the same consequence for `StopAI` in `AI_MainCall` (`ai_common.c:803-805`).
+Its `AITrackCurChangeNow` replaces the current function and jump cursor, then
+returns 5 (`ai_aifunctions.c:252-280`); Jaded does the corresponding update
+and returns `AI_CR_CurChangeNow` (`AIfunctions_ai.c:290-329`). Iris also
+continues normally when the requested function is already current, avoiding a
+spurious repeat (`ai_aifunctions.c:252-255`). This explains why two
+source-reachable callbacks can execute back-to-back before another AI owner is
+visited, and why a stop result can affect unrelated later owners in the same
+world pass.
+
+JadeView can show the static replacement path, but its preview does not
+execute the per-instance result protocol or model how a result changes the
+remaining world-table iteration. A generic runtime model needs the callback
+result, per-track timer/cursor, track order, and world-pass continuation as
+separate state. The source establishes these semantics for Iris and is
+corroborated by Jaded; a static BF path still cannot establish that a retail
+callback returned a particular result in a given session.

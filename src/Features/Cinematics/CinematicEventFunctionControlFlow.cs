@@ -12,7 +12,10 @@ internal sealed record CinematicEventFunctionControlFlow(
     float Time,
     int KeyFlags,
     CinematicEventFunctionWaitMode WaitMode,
-    uint? TestedGlobalFlag);
+    uint? TestedGlobalFlag,
+    int DownstreamKeyCount,
+    float? FirstDownstreamKeyTime,
+    float? LastDownstreamKeyTime);
 
 /// <summary>
 /// Reads the control flags used by Iris when an EVE key invokes an AI-function node.
@@ -35,9 +38,16 @@ internal static class CinematicEventFunctionControlFlowReader
         return sourceTrack.Keys
             .Select((key, index) => (Key: key, Index: index))
             .Where(item => (item.Key.Flags & EventKindMask) == AiFunctionEventKind)
-            .Select(item => new CinematicEventFunctionControlFlow(item.Index, item.Key.Time,
-                item.Key.Flags, WaitModeFor(item.Key.Flags),
-                ResolveTestedGlobalFlag(eventList, sourceTrack, item.Key)))
+            .Select(item =>
+            {
+                AnimationKey[] downstreamKeys = sourceTrack.Keys.Skip(item.Index + 1).ToArray();
+                return new CinematicEventFunctionControlFlow(item.Index, item.Key.Time,
+                    item.Key.Flags, WaitModeFor(item.Key.Flags),
+                    ResolveTestedGlobalFlag(eventList, sourceTrack, item.Key),
+                    downstreamKeys.Length,
+                    downstreamKeys.FirstOrDefault()?.Time,
+                    downstreamKeys.LastOrDefault()?.Time);
+            })
             .ToArray();
     }
 

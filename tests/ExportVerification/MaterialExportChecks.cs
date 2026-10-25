@@ -6,12 +6,14 @@ internal static class MaterialExportChecks
 {
     internal static void VerifyMaterials(string output)
     {
+        VerifySpecularSourceColor();
         var resolver = new ResourceResolver();
         var geometry = new Geometry { Key = 701, Positions = [Vector3.Zero, Vector3.UnitX, Vector3.UnitZ],
             Parts = [new(0, [0, 1, 2], [])] };
         var bytes = new byte[56];
         BitConverter.GetBytes(5).CopyTo(bytes, 0);
-        BitConverter.GetBytes(0xFF204080u).CopyTo(bytes, 12);
+        BitConverter.GetBytes(0xFFAACCEE).CopyTo(bytes, 12); // ul_Diffuse must not drive constant-color mode.
+        BitConverter.GetBytes(0xFF204080u).CopyTo(bytes, 16);
         BitConverter.GetBytes((ushort)0xF8D0).CopyTo(bytes, 38);
         BitConverter.GetBytes(0x00612404u).CopyTo(bytes, 40);
         BitConverter.GetBytes(703u).CopyTo(bytes, 52);
@@ -40,6 +42,25 @@ internal static class MaterialExportChecks
         Console.WriteLine("PASS: bone-projected UV, material tint and independent alpha override");
         VerifyProceduralTextureMetadata(output);
         VerifyVertexColors(world, resolver, geometry, bytes, output);
+    }
+
+    private static void VerifySpecularSourceColor()
+    {
+        byte[] materialBytes = new byte[20];
+        BitConverter.GetBytes(0xFFAACCEEu).CopyTo(materialBytes, 12);
+        BitConverter.GetBytes(0x80402010u).CopyTo(materialBytes, 16);
+        var singleMaterial = new ResolvedMaterial { Type = 3, SourceBytes = materialBytes };
+        var multiTextureMaterial = new ResolvedMaterial { Type = 5, SourceBytes = materialBytes };
+        Check(singleMaterial.Specular == 0x80402010u && multiTextureMaterial.Specular == 0x80402010u,
+            "Single and multi-texture materials must expose ul_Specular from the native material header.");
+        Vector4 expectedConstant = new(0x10 / 255f, 0x20 / 255f, 0x40 / 255f, 1);
+        Check(MaterialLayerTint.ReadConstant(singleMaterial) == expectedConstant
+            && MaterialLayerTint.ReadConstant(multiTextureMaterial) == expectedConstant,
+            "Constant-color mode must use ul_Specular RGB, ignore ul_Diffuse, and force alpha to one.");
+        Check(new ResolvedMaterial { Type = 4, SourceBytes = materialBytes }.Specular == null
+            && new ResolvedMaterial { Type = 5, SourceBytes = materialBytes[..19] }.Specular == null,
+            "Multi-material containers and truncated records must not be interpreted as single-material specular colors.");
+        Console.WriteLine("PASS: single and multi-texture source specular color offsets and invalid-layout handling");
     }
 
     private static void VerifyProceduralTextureMetadata(string output)

@@ -16,7 +16,11 @@ internal static class CinematicSceneExportAudit
         SelectClip(world, clipKey);
 
         var resolver = LoadResources(archive, entry, document);
-        var facialTimelines = SampleFacialTimelines(document, world, resolver, clipKey);
+        var playback = CinematicPlayback.Discover(document, world, resolver)
+            .SingleOrDefault(candidate => candidate.Key == clipKey)
+            ?? throw new InvalidDataException($"No synchronized playback was resolved for {clipKey:X8}.");
+        playback.Activate();
+        var facialTimelines = playback.SampleFacialMorphTimelines();
         var bodyBindings = world.Actors.Where(actor => actor.Clip?.CinematicBody != null).Select(actor => new
         {
             Actor = actor.Root.Name,
@@ -28,14 +32,12 @@ internal static class CinematicSceneExportAudit
         var morphBindings = CollectMorphBindings(world, resolver);
         string exportPath = Path.Combine(outputDirectory, $"{entry.Id}-cinematic-synchronized.glb");
 
-        ExportCutscene(document, world, resolver, facialTimelines, exportPath, clipKey);
+        ExportCutscene(document, world, resolver, facialTimelines, exportPath, clipKey, playback);
         var exportedClip = document.CinematicClips[clipKey];
         var nestedEventTimeline = CinematicNestedEventTransformTracks.ReadTimeline(exportedClip, world, document);
         VerifyExportContainsNestedEventTracks(exportPath, exportedClip, world,
             nestedEventTimeline.TransformTracks);
-        var objectState = new CinematicObjectState(exportedClip, world, world.Actors,
-            nestedEventTimeline.Commands);
-        VerifyExportContainsVisibilityTransitions(exportPath, exportedClip, objectState);
+        VerifyExportContainsVisibilityTransitions(exportPath, exportedClip, playback);
         if (HasCameraAnimationSource(world, clipKey))
             VerifyExportContainsCameraTrack(exportPath, clipKey);
 
@@ -74,9 +76,9 @@ internal static class CinematicSceneExportAudit
     }
 
     private static void VerifyExportContainsVisibilityTransitions(string path, AnimationClip clip,
-        CinematicObjectState state)
+        CinematicPlayback playback)
     {
-        SceneObject[] targets = state.VisibilityTargets
+        SceneObject[] targets = playback.VisibilityTargets
             .Where(target => !SceneRenderer.IsCollision(target))
             .Distinct().ToArray();
         if (targets.Length == 0) return;
@@ -104,27 +106,32 @@ internal static class CinematicSceneExportAudit
         int animationIndex = Enumerable.Range(0, glb.Root.GetProperty("animations").GetArrayLength())
             .Single(index => glb.Root.GetProperty("animations")[index]
                 .GetProperty("name").GetString() == clip.Name);
-        var sampleTimes = state.VisibilityChangeTimes.Append(0)
+        float restoreTime = playback.Time;
+        var sampleTimes = playback.VisibilityChangeTimes.Append(0)
             .Where(time => time >= 0 && time <= clip.Duration).Distinct().Order().ToArray();
-        foreach (float time in sampleTimes)
+        try
         {
-            state.Evaluate(time);
-            foreach (var target in targets)
+            foreach (float time in sampleTimes)
             {
-                Matrix4x4 exportedPose = glb.World(targetNodesByObject[target], animationIndex, time);
-                bool exportedHidden = MathF.Abs(exportedPose.M11) + MathF.Abs(exportedPose.M12)
-                    + MathF.Abs(exportedPose.M13) + MathF.Abs(exportedPose.M21)
-                    + MathF.Abs(exportedPose.M22) + MathF.Abs(exportedPose.M23)
-                    + MathF.Abs(exportedPose.M31) + MathF.Abs(exportedPose.M32)
-                    + MathF.Abs(exportedPose.M33) < .0001f;
-                bool previewHidden = target.IsControlHidden
-                    || (target.EffectiveDrawFlags & SceneObject.DrawVisibilityMask) == 0;
-                if (exportedHidden != previewHidden)
-                    throw new InvalidDataException(
-                        $"GLB export for {clip.Key:X8} has incorrect visibility for {target.Name} "
-                        + $"({target.GaoKey:X8}) at {time:F3}s.");
+                playback.Seek(time);
+                foreach (var target in targets)
+                {
+                    Matrix4x4 exportedPose = glb.World(targetNodesByObject[target], animationIndex, time);
+                    bool exportedHidden = MathF.Abs(exportedPose.M11) + MathF.Abs(exportedPose.M12)
+                        + MathF.Abs(exportedPose.M13) + MathF.Abs(exportedPose.M21)
+                        + MathF.Abs(exportedPose.M22) + MathF.Abs(exportedPose.M23)
+                        + MathF.Abs(exportedPose.M31) + MathF.Abs(exportedPose.M32)
+                        + MathF.Abs(exportedPose.M33) < .0001f;
+                    bool previewHidden = target.IsControlHidden
+                        || (target.EffectiveDrawFlags & SceneObject.DrawVisibilityMask) == 0;
+                    if (exportedHidden != previewHidden)
+                        throw new InvalidDataException(
+                            $"GLB export for {clip.Key:X8} has incorrect visibility for {target.Name} "
+                            + $"({target.GaoKey:X8}) at {time:F3}s.");
+                }
             }
         }
+        finally { playback.Seek(restoreTime); }
     }
 
     private static bool ExportVisibilityNodeMatches(System.Text.Json.JsonElement node, SceneObject target)
@@ -288,7 +295,8 @@ internal static class CinematicSceneExportAudit
         && timeline.Value.Any(frame => frame.Weights.Any(weight => MathF.Abs(weight) > 1e-5f));
 
     private static void ExportCutscene(SceneDocument document, WorldData world, ResourceResolver resolver,
-        IReadOnlyDictionary<SceneObject, FaceMorphKeyframe[]> facialTimelines, string path, uint clipKey)
+        IReadOnlyDictionary<SceneObject, FaceMorphKeyframe[]> facialTimelines, string path, uint clipKey,
+        CinematicPlayback playback)
     {
         SceneExporter.Export(path, world, resolver, new()
         {
@@ -300,6 +308,7 @@ internal static class CinematicSceneExportAudit
             AllClips = false,
             CinematicClipKey = clipKey,
             CinematicDocument = document,
+            CinematicPlayback = playback,
             MorphAnimations = true,
             CinematicMorphTimelines = facialTimelines
         });

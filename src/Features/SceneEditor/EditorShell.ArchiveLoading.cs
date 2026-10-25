@@ -45,6 +45,8 @@ public sealed partial class EditorShell
             return () =>
             {
                 Archive = arch;
+                _cinematicSavedFlagSnapshot = null;
+                _cinematicSavedFlagAssumptions.Clear();
                 _archiveScenes = archiveScenes;
                 _cutsceneMode = false;
                 _cinematicPlayback?.Deactivate();

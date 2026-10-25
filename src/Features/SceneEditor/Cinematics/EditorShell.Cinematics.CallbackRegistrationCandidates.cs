@@ -15,9 +15,40 @@ public sealed partial class EditorShell
         CinematicScriptCallbackResetCandidate[] resetCandidates =
             CinematicScriptCallbackRegistrationAnalyzer.AnalyzeResetSites(
                 owner, reachableCalls);
-        if (candidates.Length == 0 && resetCandidates.Length == 0) return;
+        CinematicScriptRliDisplayCallbackCandidate[] rliCallbacks =
+            CinematicScriptRliDisplayCallbackAnalyzer.Analyze(owner,
+                reachableCalls, sourceReferences);
+        if (candidates.Length == 0 && resetCandidates.Length == 0
+            && rliCallbacks.Length == 0) return;
 
         ImGui.Separator();
+        if (rliCallbacks.Length > 0
+            && ImGui.CollapsingHeader($"Per-object display RLI callbacks ({rliCallbacks.Length})"))
+        {
+            ImGui.TextDisabled("Callback IDs 0/1 are Before/After Display hooks. Unique, paired, unconditional callbacks with literal RLI values are applied per draw; dynamic fields, gated registrations, and hooks with removal sites remain analysis-only.");
+            foreach (CinematicScriptRliDisplayCallbackCandidate callback in rliCallbacks.Take(32))
+            {
+                string phase = callback.CallbackType == 0 ? "Before Display" : "After Display";
+                string target = callback.TargetKey is { } targetKey
+                    ? $"target {targetKey:X8}" : "target unresolved";
+                string context = callback.ContextKey is { } contextKey
+                    ? $"context {contextKey:X8}" : "context unresolved";
+                string pair = callback.HasPairedCallback
+                    ? "paired hook registration found" : "matching opposite-phase hook not found";
+                ImGui.BulletText($"{phase} · {callback.FunctionName} · {target}");
+                ImGui.TextDisabled($"{context} · RLI factor: {callback.FactorExpression} · destination color: {callback.DestinationColorExpression} · factor enabled: {callback.FactorIsUsed?.ToString() ?? "unknown"}");
+                ImGui.TextDisabled($"{pair} · {callback.Source}:{callback.Line} · {callback.CallbackPath}");
+                string[] guards = callback.BranchConditions
+                    .Concat(callback.EffectBranchConditions)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                if (guards.Length > 0)
+                    ImGui.TextWrapped($"Registration / effect guards: {string.Join("; ", guards)}");
+            }
+            if (rliCallbacks.Length > 32)
+                ImGui.TextDisabled($"Showing 32 of {rliCallbacks.Length} per-object RLI callbacks.");
+        }
+
         if (candidates.Length > 0
             && ImGui.CollapsingHeader($"Dynamic AI callback registration candidates ({candidates.Length})"))
         {

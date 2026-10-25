@@ -21,6 +21,8 @@ public sealed partial class EditorShell
     private int _cinematicFlagFlowOwnerCount = -1;
     private int _cinematicFlagFlowTrackCount = -1;
     private Dictionary<CinematicScriptOwnerId, CinematicScriptFlagLink[]> _cinematicFlagFlowLinks = [];
+    private readonly Dictionary<int, bool?> _cinematicSavedFlagAssumptions = [];
+    private PcAiSavedFlagSnapshot? _cinematicSavedFlagSnapshot;
 
     private void ExitCinematicMode()
     {

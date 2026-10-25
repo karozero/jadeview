@@ -2,8 +2,8 @@ namespace JadeView;
 
 /// <summary>
 /// Resolves only .ofc references explicitly serialized by a script model,
-/// using that model's world scope. It records payload metadata and never
-/// treats the function resource as executable code.
+/// using that model's world scope. It decodes known serialized layouts but
+/// never treats the function resource as executable code.
 /// </summary>
 internal static class PcScriptFunctionResourceReader
 {
@@ -47,6 +47,16 @@ internal static class PcScriptFunctionResourceReader
             }
 
             ReadOnlySpan<byte> payload = origin.AsSpan(functionRecord.Offset, functionRecord.Size);
+            if (PcSerializedAiFunctionReader.TryRead(payload,
+                    out PcSerializedAiFunction? serializedFunction, out _))
+            {
+                return new(functionKey, functionRecord.LoadWorldKey, functionRecord.Name,
+                    functionRecord.Size, "SerializedBody", null, null)
+                {
+                    SerializedFunction = serializedFunction
+                };
+            }
+
             if (!PcCompiledScriptFunctionReader.TryRead(payload, out var metadata, out string error))
             {
                 return new(functionKey, functionRecord.LoadWorldKey, functionRecord.Name,

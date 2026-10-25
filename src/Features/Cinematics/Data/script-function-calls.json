@@ -242,6 +242,28 @@
       "AssignmentLine": 2871,
       "ReferenceVariable": "fct_aircraft_air_exec_afterrec_aircraft_air_exec_zone_set",
       "ResolvedFunctionKey": "720019DB"
+    },
+    {
+      "To": "sc_dummy",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "aircraft_air_exec_afterrec",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_aircraft.c",
+      "AssignmentLine": 2856,
+      "ReferenceVariable": "fct_aircraft_air_exec_afterrec_aircraft_air_exec_super_shield",
+      "ResolvedFunctionKey": "72001C82"
+    },
+    {
+      "To": "sc_dummy",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "aircraft_air_exec_afterrec",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_aircraft.c",
+      "AssignmentLine": 2863,
+      "ReferenceVariable": "fct_aircraft_air_exec_afterrec_aircraft_air_exec_GFX_Pumping",
+      "ResolvedFunctionKey": "72004A0A"
     }
   ],
   "aircraft_air_exec_dont_sink": [
@@ -630,6 +652,52 @@
       "ResolvedFunctionKey": "7200085B"
     }
   ],
+  "aircraft_air_init": [
+    {
+      "To": "aircraft_air_init_select_mode",
+      "Dispatch": "replace-current-track",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "aircraft_air_init",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_aircraft.c",
+      "AssignmentLine": 741,
+      "ReferenceVariable": "fct_ircraft_air_init_aircraft_air_init_select_mode",
+      "ResolvedFunctionKey": "7100C4EE"
+    },
+    {
+      "To": "aircraft_air_mode_deplacement_init",
+      "Dispatch": "replace-current-track",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "aircraft_air_init",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_aircraft.c",
+      "AssignmentLine": 739,
+      "ReferenceVariable": "fct_ircraft_air_init_aircraft_air_mode_deplacement_init",
+      "ResolvedFunctionKey": "7100BBCB"
+    },
+    {
+      "To": "aircraft_air_mode_dock_out_init",
+      "Dispatch": "replace-current-track",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "aircraft_air_init",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_aircraft.c",
+      "AssignmentLine": 740,
+      "ReferenceVariable": "fct_ircraft_air_init_aircraft_air_mode_dock_out_init",
+      "ResolvedFunctionKey": "72000DB5"
+    },
+    {
+      "To": "aircraft_air_reflex",
+      "Dispatch": "track-change",
+      "TrackIndex": 1,
+      "IndirectField": null,
+      "AssignmentFunction": "aircraft_air_init",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_aircraft.c",
+      "AssignmentLine": 735,
+      "ReferenceVariable": "fct_ircraft_air_init_aircraft_air_reflex",
+      "ResolvedFunctionKey": "7100C4ED"
+    }
+  ],
   "aircraft_air_mode_a_quai_init": [
     {
       "To": "aircraft_air_exec_set_afterrec_mode",
@@ -1007,6 +1075,41 @@
       "AssignmentLine": 12276,
       "ReferenceVariable": "fct_aircraft_air_mode_deplacement_aircraft_air_exec_waterforce",
       "ResolvedFunctionKey": "7100BBEA"
+    },
+    {
+      "To": "sc_dummy",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "aircraft_air_mode_deplacement",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_aircraft.c",
+      "AssignmentLine": 12274,
+      "ReferenceVariable": "fct_aircraft_air_mode_deplacement_aircraft_air_exec_cheatmode",
+      "ResolvedFunctionKey": "7100F314"
+    }
+  ],
+  "aircraft_air_mode_dock_in_init": [
+    {
+      "To": "aircraft_air_exec_set_afterrec_mode",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "aircraft_air_mode_dock_in_init",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_aircraft.c",
+      "AssignmentLine": 20946,
+      "ReferenceVariable": "fct_aircraft_air_mode_dock_in_aircraft_air_exec_set_afterrec_mode",
+      "ResolvedFunctionKey": "72003B76"
+    },
+    {
+      "To": "aircraft_air_mode_dock_out_init",
+      "Dispatch": "replace-current-track",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "aircraft_air_mode_dock_in_init",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_aircraft.c",
+      "AssignmentLine": 20965,
+      "ReferenceVariable": "fct_aircraft_air_mode_dock_in_aircraft_air_mode_dock_out_init",
+      "ResolvedFunctionKey": "72000DB5"
     }
   ],
   "aircraft_air_mode_dock_in": [
@@ -1031,6 +1134,17 @@
       "AssignmentLine": 23441,
       "ReferenceVariable": "fct_aircraft_air_mode_dock_in_aircraft_air_mode_docked_init",
       "ResolvedFunctionKey": "72004566"
+    },
+    {
+      "To": "sc_dummy",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "aircraft_air_mode_dock_in",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_aircraft.c",
+      "AssignmentLine": 23419,
+      "ReferenceVariable": "fct_aircraft_air_mode_dock_in_aircraft_air_exec_cheatmode",
+      "ResolvedFunctionKey": "7100F314"
     }
   ],
   "aircraft_air_mode_dock_out_init": [
@@ -1195,6 +1309,63 @@
       "AssignmentLine": 9868,
       "ReferenceVariable": "fct_aircraft_air_mode_embarquement_init_aircraft_air_mode_debarquement_init",
       "ResolvedFunctionKey": "7100D956"
+    }
+  ],
+  "aircraft_air_mode_embarquement": [
+    {
+      "To": "aircraft_air_exec_afterrec",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "aircraft_air_mode_embarquement",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_aircraft.c",
+      "AssignmentLine": 23802,
+      "ReferenceVariable": "fct_aircraft_air_mode_dock_out_aircraft_air_mode_embarquement_aircraft_air_exec_afterrec",
+      "ResolvedFunctionKey": "72000907"
+    },
+    {
+      "To": "aircraft_air_exec_anti_traversing",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "aircraft_air_mode_embarquement",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_aircraft.c",
+      "AssignmentLine": 23748,
+      "ReferenceVariable": "fct_aircraft_air_mode_dock_out_aircraft_air_mode_embarquement_aircraft_air_exec_anti_traversing",
+      "ResolvedFunctionKey": "72004D0B"
+    },
+    {
+      "To": "aircraft_air_exec_dont_sink",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "aircraft_air_mode_embarquement",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_aircraft.c",
+      "AssignmentLine": 23743,
+      "ReferenceVariable": "fct_aircraft_air_mode_dock_out_aircraft_air_mode_embarquement_aircraft_air_exec_dont_sink",
+      "ResolvedFunctionKey": "72005F36"
+    },
+    {
+      "To": "aircraft_air_exec_embarquement_autres",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "aircraft_air_mode_embarquement",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_aircraft.c",
+      "AssignmentLine": 23747,
+      "ReferenceVariable": "fct_aircraft_air_mode_dock_out_aircraft_air_mode_embarquement_aircraft_air_exec_embarquement_autres",
+      "ResolvedFunctionKey": "7200459E"
+    },
+    {
+      "To": "aircraft_air_exec_landing_effect",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "aircraft_air_mode_embarquement",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_aircraft.c",
+      "AssignmentLine": 23801,
+      "ReferenceVariable": "fct_aircraft_air_mode_dock_out_aircraft_air_mode_embarquement_aircraft_air_exec_landing_effect",
+      "ResolvedFunctionKey": "7100D954"
     }
   ],
   "aircraft_air_mode_mort_init": [
@@ -2362,6 +2533,17 @@
       "ResolvedFunctionKey": "9E000037"
     },
     {
+      "To": "board_panel_bp_exec_select_button_mode_test",
+      "Dispatch": "track-change",
+      "TrackIndex": 3,
+      "IndirectField": null,
+      "AssignmentFunction": "board_panel_bp_init_trame2",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_global_board_panel.c",
+      "AssignmentLine": 1333,
+      "ReferenceVariable": "fct_board_panel_bp_init_board_panel_bp_exec_select_button_mode_test",
+      "ResolvedFunctionKey": "6C00AD90"
+    },
+    {
       "To": "board_panel_bp_mode_aircraft",
       "Dispatch": "set-current-track",
       "TrackIndex": null,
@@ -2515,6 +2697,17 @@
   ],
   "board_panel_bp_mode_enterprise": [
     {
+      "To": "board_panel_bp_exec_affiche_contextuel",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "board_panel_bp_mode_enterprise",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_global_board_panel.c",
+      "AssignmentLine": 10525,
+      "ReferenceVariable": "fct_board_panel_bp_mode_board_panel_bp_exec_affiche_contextuel",
+      "ResolvedFunctionKey": "9E000AF8"
+    },
+    {
       "To": "board_panel_bp_exec_button_valide_look",
       "Dispatch": "execute",
       "TrackIndex": null,
@@ -2535,6 +2728,17 @@
       "AssignmentLine": 10523,
       "ReferenceVariable": "fct_board_panel_bp_mode_enterprise_board_panel_bp_exec_look_init",
       "ResolvedFunctionKey": "9E001C37"
+    },
+    {
+      "To": "board_panel_bp_exec_look_photo",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "board_panel_bp_mode_enterprise",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_global_board_panel.c",
+      "AssignmentLine": 10524,
+      "ReferenceVariable": "fct_board_panel_bp_mode_board_panel_bp_exec_look_photo",
+      "ResolvedFunctionKey": "9E001C34"
     },
     {
       "To": "board_panel_bp_exec_sprite_boutons_on",
@@ -2603,6 +2807,28 @@
       "AssignmentLine": 2318,
       "ReferenceVariable": "fct_board_panel_bp_mode_look_board_panel_bp_exec_look_simple",
       "ResolvedFunctionKey": "9E001C3E"
+    },
+    {
+      "To": "board_panel_bp_exec_sprite_boutons_on",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "board_panel_bp_mode_look",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_global_board_panel.c",
+      "AssignmentLine": 2325,
+      "ReferenceVariable": "fct_board_panel_bp_mode_board_panel_look_bp_exec_sprite_boutons_on",
+      "ResolvedFunctionKey": "9E000016"
+    },
+    {
+      "To": "sc_dummy",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "board_panel_bp_mode_look",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_global_board_panel.c",
+      "AssignmentLine": 2326,
+      "ReferenceVariable": "fct_board_panel_bp_mode_board_panel_look_Global_Library_photo_cheat",
+      "ResolvedFunctionKey": "4901E2ED"
     }
   ],
   "board_panel_bp_mode_normal": [
@@ -3380,6 +3606,19 @@
       "ResolvedFunctionKey": "3500BAE5"
     }
   ],
+  "cine_perledanslesac_init": [
+    {
+      "To": "cine_perledanslesac_loop",
+      "Dispatch": "set-current-track",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "cine_perledanslesac_init",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_perle.c",
+      "AssignmentLine": 3100,
+      "ReferenceVariable": "fct_cine_perledanslesac_init_cine_perledanslesac_cine_perledanslesac_loop",
+      "ResolvedFunctionKey": "49021F2C"
+    }
+  ],
   "cine_perletransformation_init": [
     {
       "To": "cine_perletransformation_params",
@@ -3714,6 +3953,28 @@
       "AssignmentLine": 29295,
       "ReferenceVariable": "fct_companion_co_action_fight_companion_co_exec_test_rayjump",
       "ResolvedFunctionKey": "9E00156B"
+    },
+    {
+      "To": "sc_dummy",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "companion_co_action_fight",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_companion.c",
+      "AssignmentLine": 29305,
+      "ReferenceVariable": "fct_companion_co_action_fight_companion_co_exec_fight_action_tir",
+      "ResolvedFunctionKey": "9E001613"
+    },
+    {
+      "To": "sc_dummy",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "companion_co_action_fight",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_companion.c",
+      "AssignmentLine": 29306,
+      "ReferenceVariable": "fct_companion_co_action_fight_companion_co_exec_fight_action_defense",
+      "ResolvedFunctionKey": "9E001615"
     }
   ],
   "companion_co_action_grab_wall": [
@@ -6478,6 +6739,17 @@
       "AssignmentLine": 5459,
       "ReferenceVariable": "fct_CV_aircraft_CV_exec_afterrec_CV_aircraft_CV_exec_GFX_Smoke",
       "ResolvedFunctionKey": "72004D67"
+    },
+    {
+      "To": "sc_dummy",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "CV_aircraft_CV_exec_afterrec",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_actor_cv_aircraft.c",
+      "AssignmentLine": 5457,
+      "ReferenceVariable": "fct_CV_aircraft_CV_exec_afterrec_CV_aircraft_CV_exec_trace",
+      "ResolvedFunctionKey": "72002FE7"
     }
   ],
   "CV_aircraft_CV_init": [
@@ -7067,6 +7339,17 @@
       "AssignmentLine": 3135,
       "ReferenceVariable": "fct_Domz_Sansue_Domz_Sansue_exec_afterrec_Domz_Sansue_Domz_Sansue_exec_GFX_trace",
       "ResolvedFunctionKey": "7200522C"
+    },
+    {
+      "To": "sc_dummy",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "Domz_Sansue_Domz_Sansue_exec_afterrec",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_actor_domz_sansue.c",
+      "AssignmentLine": 3137,
+      "ReferenceVariable": "fct_Domz_Sansue_Domz_Sansue_exec_afterrec_Domz_Sansue_Domz_Sansue_exec_shoot",
+      "ResolvedFunctionKey": "7200628B"
     }
   ],
   "Domz_Sansue_Domz_Sansue_exec_compute_position": [
@@ -7705,6 +7988,17 @@
       "AssignmentLine": 16702,
       "ReferenceVariable": "fct_Enterprise_Ent_exec_afterrec_Enterprise_Ent_exec_water_trace",
       "ResolvedFunctionKey": "7200277D"
+    },
+    {
+      "To": "sc_dummy",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "Enterprise_Ent_exec_afterrec",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_actor_enterprise.c",
+      "AssignmentLine": 16717,
+      "ReferenceVariable": "fct_Enterprise_Ent_exec_afterrec_Enterprise_Ent_exec_GFX_Fire",
+      "ResolvedFunctionKey": "720060A9"
     }
   ],
   "Enterprise_Ent_exec_change_mode": [
@@ -8254,6 +8548,17 @@
       "ResolvedFunctionKey": "7200469A"
     },
     {
+      "To": "Enterprise_Ent_mode_on_ground",
+      "Dispatch": "track-change",
+      "TrackIndex": 1,
+      "IndirectField": null,
+      "AssignmentFunction": "Enterprise_Ent_unknown_demo_only",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_actor_enterprise.c",
+      "AssignmentLine": 23947,
+      "ReferenceVariable": "fct_Enterprise_Ent_unknown_demo_only_Enterprise_Enterprise_Ent_mode_on_ground",
+      "ResolvedFunctionKey": "72001EC5"
+    },
+    {
       "To": "Enterprise_Ent_mode_takeoff",
       "Dispatch": "replace-current-track",
       "TrackIndex": null,
@@ -8276,6 +8581,17 @@
       "AssignmentLine": 766,
       "ReferenceVariable": "fct_ES_au_sol_esas_enter_the_map_ES_au_sol_esas_checkpoint",
       "ResolvedFunctionKey": "7100DF8E"
+    },
+    {
+      "To": "ES_au_sol_esas_decode_world_key",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "ES_au_sol_esas_enter_the_map",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_es_au_sol.c",
+      "AssignmentLine": 700,
+      "ReferenceVariable": "fct_ES_au_sol_esas_enter_the_map_univVars_ES_au_sol_esas_decode_world_key",
+      "ResolvedFunctionKey": "26000606"
     },
     {
       "To": "ES_au_sol_esas_exit_cinematique",
@@ -9208,6 +9524,17 @@
       "AssignmentLine": 243,
       "ReferenceVariable": "fct_Garde_Barriere_Entrepot_GBE_init_Garde_Barriere_Entrepot_GBE_reflex",
       "ResolvedFunctionKey": "720026ED"
+    },
+    {
+      "To": "sc_dummy",
+      "Dispatch": "register-callback:2",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "Garde_Barriere_Entrepot_GBE_init",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_actor_garde_barriere_entrepot.c",
+      "AssignmentLine": 242,
+      "ReferenceVariable": "fct_Garde_Barriere_Entrepot_GBE_init_Garde_Barriere_Entrepot_GBE_exec_GFX_Reacteur",
+      "ResolvedFunctionKey": "720060FF"
     }
   ],
   "Garde_Barriere_Entrepot_GBE_mode_attente": [
@@ -10375,6 +10702,19 @@
       "ResolvedFunctionKey": "3D001AE7"
     }
   ],
+  "hyllis_gp_manager_hgm_loop": [
+    {
+      "To": "hyllis_gp_manager_hgm_attend",
+      "Dispatch": "replace-current-track",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "hyllis_gp_manager_hgm_loop",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_global_hyllis_manager.c",
+      "AssignmentLine": 175,
+      "ReferenceVariable": "fct_hyllis_gp_manager_hgm_loop_univVars_hyllis_gp_manager_hgm_attend",
+      "ResolvedFunctionKey": "3D002E66"
+    }
+  ],
   "hyllis_meteor_hm_init": [
     {
       "To": "hyllis_meteor_hm_loop",
@@ -10825,6 +11165,17 @@
       "AssignmentLine": 35052,
       "ReferenceVariable": "fct_INV_manager_Cheat_Init_INV_manager_Update_Object",
       "ResolvedFunctionKey": "4900FE2A"
+    },
+    {
+      "To": "sc_dummy",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "INV_manager_Cheat_Init",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_inv_manager.c",
+      "AssignmentLine": 35053,
+      "ReferenceVariable": "fct_INV_manager_Cheat_Init_INV_manager_Cheat_DisplayPage",
+      "ResolvedFunctionKey": "4901C089"
     }
   ],
   "INV_manager_Cheat_Loop": [
@@ -11807,6 +12158,17 @@
       "AssignmentLine": 19366,
       "ReferenceVariable": "fct_INV_manager_MissionPhoto_Loop_INV_manager_Pognes_Init",
       "ResolvedFunctionKey": "4901C2DF"
+    },
+    {
+      "To": "sc_dummy",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "INV_manager_MissionPhoto_Loop",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_inv_manager.c",
+      "AssignmentLine": 19354,
+      "ReferenceVariable": "fct_INV_manager_MissionPhoto_Loop_Global_Library_photo_del",
+      "ResolvedFunctionKey": "49018A17"
     }
   ],
   "INV_manager_Move_3DObject": [
@@ -11970,6 +12332,17 @@
     }
   ],
   "INV_manager_Object_Init": [
+    {
+      "To": "INV_manager_Object_ChargeurMDisk",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "INV_manager_Object_Init",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_inv_manager.c",
+      "AssignmentLine": 9046,
+      "ReferenceVariable": "fct_INV_manager_Object_Init_i_INV_CheatFlags",
+      "ResolvedFunctionKey": "49019F9A"
+    },
     {
       "To": "INV_manager_Object_Loop",
       "Dispatch": "replace-current-track",
@@ -13062,6 +13435,19 @@
       "ResolvedFunctionKey": "4901A4EB"
     }
   ],
+  "INV_SecundoEtLaFacture_firstinit": [
+    {
+      "To": "INV_SecundoEtLaFacture_init",
+      "Dispatch": "set-current-track",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "INV_SecundoEtLaFacture_firstinit",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_inv_secundo_et_la_facture.c",
+      "AssignmentLine": 52,
+      "ReferenceVariable": "fct_INV_SecundoEtLaFacture_firstinit_INV_manager_gao_INV_SecundoEtLaFacture_init",
+      "ResolvedFunctionKey": "4901FC14"
+    }
+  ],
   "INV_SecundoEtLaFacture_init": [
     {
       "To": "INV_SecundoEtLaFacture_loop",
@@ -13337,7 +13723,31 @@
       "ResolvedFunctionKey": "9E0035BD"
     }
   ],
+  "Light_PAF_lp_FarUp_FarDown": [
+    {
+      "To": "Light_PAF_lp_FarUp_FarDown",
+      "Dispatch": "set-current-track",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "Light_PAF_lp_FarUp_FarDown",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_lights.c",
+      "AssignmentLine": 83,
+      "ReferenceVariable": "fct_Light_PAF_lp_FarUp_FarDown_Light_PAF_C_Light_mode_FarDown",
+      "ResolvedFunctionKey": "9E005BD9"
+    }
+  ],
   "Light_PAF_lp_init": [
+    {
+      "To": "Light_PAF_C_Light_mode_FarDown",
+      "Dispatch": "replace-current-track",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "Light_PAF_lp_init",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_lights.c",
+      "AssignmentLine": 38,
+      "ReferenceVariable": "fct_Light_PAF_lp_init_Light_PAF_lp_FarUp_FarDown",
+      "ResolvedFunctionKey": "9E006103"
+    },
     {
       "To": "Light_PAF_lp_FarUp_ColorDown",
       "Dispatch": "replace-current-track",
@@ -13348,6 +13758,17 @@
       "AssignmentLine": 37,
       "ReferenceVariable": "fct_Light_PAF_lp_init_Light_PAF_lp_FarUp_ColorDown",
       "ResolvedFunctionKey": "9E006105"
+    },
+    {
+      "To": "Light_PAF_lp_FarUp_FarDown",
+      "Dispatch": "replace-current-track",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "Light_PAF_lp_init",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_lights.c",
+      "AssignmentLine": 39,
+      "ReferenceVariable": "fct_Light_PAF_lp_init_Light_PAF_C_Light_mode_FarDown",
+      "ResolvedFunctionKey": "9E005BD9"
     }
   ],
   "map_manager_mm_exec_TM": [
@@ -13793,6 +14214,19 @@
       "AssignmentLine": 242,
       "ReferenceVariable": "fct_Monstroplante_mon_init_Monstroplante_mon_reflex",
       "ResolvedFunctionKey": "26002880"
+    }
+  ],
+  "Monstroplante_socle_mp_init": [
+    {
+      "To": "Monstroplante_socle_mp_reflex",
+      "Dispatch": "replace-current-track",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "Monstroplante_socle_mp_init",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_monstroplante.c",
+      "AssignmentLine": 3179,
+      "ReferenceVariable": "fct_onstroplante_socle_mp_init_Monstroplante_socle_mp_reflex",
+      "ResolvedFunctionKey": "3D0028F9"
     }
   ],
   "Monstroplante_socle_mp_meurt": [
@@ -15307,6 +15741,17 @@
       "AssignmentLine": 413,
       "ReferenceVariable": "fct_Pompier_Police_mode_hyllis_Pompier_Police_mode_wait",
       "ResolvedFunctionKey": "72005407"
+    },
+    {
+      "To": "Pompier_Pompier_exec_GFX_Halo",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "Pompier_Police_mode_hyllis",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_actor_pompier.c",
+      "AssignmentLine": 443,
+      "ReferenceVariable": "fct_Pompier_Police_mode_Pompier_Pompier_exec_GFX_Halo",
+      "ResolvedFunctionKey": "72005349"
     }
   ],
   "Pompier_Police_mode_wait": [
@@ -15900,6 +16345,19 @@
       "ResolvedFunctionKey": "3D000CEF"
     }
   ],
+  "Raskass_r_reflexe": [
+    {
+      "To": "sc_dummy",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "Raskass_r_reflexe",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_actor_raskass.c",
+      "AssignmentLine": 1863,
+      "ReferenceVariable": "fct_Raskass_r_reflexe_Raskass_r_trace",
+      "ResolvedFunctionKey": "3D000CE1"
+    }
+  ],
   "Raskass_r_saute": [
     {
       "To": "Raskass_r_move",
@@ -16473,6 +16931,19 @@
       "ResolvedFunctionKey": "260032BD"
     }
   ],
+  "Sally_sa_exec_demi_tour_track": [
+    {
+      "To": "Sally_sa_2D",
+      "Dispatch": "set-current-track",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_demi_tour_track",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 8657,
+      "ReferenceVariable": "fct_Sally_sa_exec_demi_tour_track_GST_Global_gao_Sally_sa_2D",
+      "ResolvedFunctionKey": "71000CDB"
+    }
+  ],
   "Sally_sa_exec_demi_tour": [
     {
       "To": "Sally_sa_exec_demi_tour_track",
@@ -16514,6 +16985,193 @@
   ],
   "Sally_sa_exec_message_select_action": [
     {
+      "To": "Sally_sa_2D",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6818,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_2D",
+      "ResolvedFunctionKey": "71000CDB"
+    },
+    {
+      "To": "Sally_sa_action_animchange",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6838,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_action_animchange",
+      "ResolvedFunctionKey": "320000F1"
+    },
+    {
+      "To": "Sally_sa_action_capture",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6851,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_action_capture",
+      "ResolvedFunctionKey": "7100B9D8"
+    },
+    {
+      "To": "Sally_sa_action_eat",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6856,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_action_eat",
+      "ResolvedFunctionKey": "2600032F"
+    },
+    {
+      "To": "Sally_sa_action_entercode",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6850,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_action_entercode",
+      "ResolvedFunctionKey": "7100F349"
+    },
+    {
+      "To": "Sally_sa_action_interupteur",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6844,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_action_interupteur",
+      "ResolvedFunctionKey": "7100BD43"
+    },
+    {
+      "To": "Sally_sa_action_kickassis",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6848,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_action_kickassis",
+      "ResolvedFunctionKey": "6C006134"
+    },
+    {
+      "To": "Sally_sa_action_kickfight",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6854,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_action_kickfight",
+      "ResolvedFunctionKey": "7100CC55"
+    },
+    {
+      "To": "Sally_sa_action_kicklow",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6855,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_action_kicklow",
+      "ResolvedFunctionKey": "9B000008"
+    },
+    {
+      "To": "Sally_sa_action_lance",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6852,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_action_lance",
+      "ResolvedFunctionKey": "9E000035"
+    },
+    {
+      "To": "Sally_sa_action_morfle",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6836,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_action_morfle",
+      "ResolvedFunctionKey": "7100F7EA"
+    },
+    {
+      "To": "Sally_sa_action_pass",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6847,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_action_pass",
+      "ResolvedFunctionKey": "7100F55C"
+    },
+    {
+      "To": "Sally_sa_action_roulade",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6843,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_action_roulade",
+      "ResolvedFunctionKey": "26000551"
+    },
+    {
+      "To": "Sally_sa_action_speak",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6853,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_action_speak",
+      "ResolvedFunctionKey": "9E0006BA"
+    },
+    {
+      "To": "Sally_sa_action_takeput_virtuel",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6839,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_action_takeput_virtuel",
+      "ResolvedFunctionKey": "2600032C"
+    },
+    {
+      "To": "Sally_sa_action_takeput",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6842,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_action_takeput",
+      "ResolvedFunctionKey": "7100C4DF"
+    },
+    {
+      "To": "Sally_sa_action_tourne",
+      "Dispatch": "track-change",
+      "TrackIndex": 2,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6849,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_action_tourne",
+      "ResolvedFunctionKey": "26000874"
+    },
+    {
       "To": "Sally_sa_cinematique",
       "Dispatch": "track-change",
       "TrackIndex": 2,
@@ -16523,6 +17181,17 @@
       "AssignmentLine": 6817,
       "ReferenceVariable": "fct_Sally_sa_exec_message_select_action_Sally_sa_cinematique",
       "ResolvedFunctionKey": "7100BD0F"
+    },
+    {
+      "To": "Sally_sa_exec_paf_decode_universel",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "Sally_sa_exec_message_select_action",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sally.c",
+      "AssignmentLine": 6825,
+      "ReferenceVariable": "fct_Sally_sa_exec_message_Sally_sa_exec_paf_decode_universel",
+      "ResolvedFunctionKey": "7100BA42"
     }
   ],
   "Sally_sa_exec_paf_decode_universel": [
@@ -17134,6 +17803,17 @@
       "AssignmentLine": 18460,
       "ReferenceVariable": "fct_SFX_Bone_Fire_SFX_Bone_Fire_exec_fire_SFX_Bone_Fire_SFX_Bone_Fire_After_Rec",
       "ResolvedFunctionKey": "72005045"
+    },
+    {
+      "To": "SFX_Bone_Fire_SFX_Bone_Fire_Destroy",
+      "Dispatch": "track-change",
+      "TrackIndex": 0,
+      "IndirectField": null,
+      "AssignmentFunction": "SFX_Bone_Fire_SFX_Bone_Fire_exec_fire",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sfx.c",
+      "AssignmentLine": 18462,
+      "ReferenceVariable": "fct_SFX_Bone_Fire_SFX_Bone_Fire_exec_fire_SFX_Bone_Fire_SFX_Bone_Fire_SFX_Bone_Fire_Destroy",
+      "ResolvedFunctionKey": "2600345A"
     }
   ],
   "SFX_Bone_Fire_SFX_Bone_Fire_exec_smooth_fire": [
@@ -17241,6 +17921,19 @@
       "AssignmentLine": 8940,
       "ReferenceVariable": "fct_sfx_bouclier_phare_sbp_apparition_sfx_bouclier_phare_sbp_exec_pos",
       "ResolvedFunctionKey": "3D002D64"
+    }
+  ],
+  "sfx_bouclier_phare_sbp_apparition0": [
+    {
+      "To": "sfx_bouclier_phare_sbp_apparition",
+      "Dispatch": "replace-current-track",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "sfx_bouclier_phare_sbp_apparition0",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_sfx.c",
+      "AssignmentLine": 8710,
+      "ReferenceVariable": "fct_sfx_bouclier_phare_sbp_apparition_sfx_bouclier_phare_sbp_apparition0",
+      "ResolvedFunctionKey": "3D002D62"
     }
   ],
   "sfx_bouclier_phare_sbp_apparition1": [
@@ -19462,6 +20155,17 @@
       "AssignmentLine": 288,
       "ReferenceVariable": "fct_torpille_tor_mode_mer_torpille_tor_exec_test_collision",
       "ResolvedFunctionKey": "72001C27"
+    },
+    {
+      "To": "torpille_tor_exec_trace",
+      "Dispatch": "execute",
+      "TrackIndex": null,
+      "IndirectField": null,
+      "AssignmentFunction": "torpille_tor_mode_mer",
+      "AssignmentSource": "ai_bge/ai_compiledscripts_actor_torpille.c",
+      "AssignmentLine": 286,
+      "ReferenceVariable": "fct_torpille_tor_mode_mer_aircraft_torpille_tor_exec_trace",
+      "ResolvedFunctionKey": "7200067E"
     },
     {
       "To": "torpille_tor_mode_air",

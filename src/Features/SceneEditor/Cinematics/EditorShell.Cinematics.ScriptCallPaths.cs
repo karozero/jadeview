@@ -59,11 +59,14 @@ public sealed partial class EditorShell
             {
                 string callbacks = string.Join("; ", readerGroup.Select(reader =>
                     $"{reader.FunctionName} · {reader.Source}:{reader.Line}").Distinct(StringComparer.Ordinal));
-                ImGui.BulletText($"ID {readerGroup.Key} → {callbacks}");
+                string messageLabel = readerGroup.Key is { } messageId
+                    ? $"ID {messageId}"
+                    : "any message on current-object queue";
+                ImGui.BulletText($"{messageLabel} → {callbacks}");
                 foreach (var reader in readerGroup.DistinctBy(reader => reader.FunctionName))
                     ImGui.TextDisabled($"Callback path: {reader.CallbackPath}");
             }
-            ImGui.TextDisabled("Source-confirmed MSGGetByID_C reads and MSGGet_C reads followed by a literal message-ID comparison identify possible queue consumers. Delivery, callback execution and field interpretation are not inferred.");
+            ImGui.TextDisabled("Source-confirmed ID tests identify specific consumers. A current-object MSGGet guarded by MSGGetCount is shown as an any-message consumer. Delivery order and callback execution are not inferred.");
         }
         if (messageRoutes.Length > 0)
         {

@@ -6,6 +6,7 @@ internal sealed record CinematicScriptCallbackStateEffect(
     string Api,
     string Variant,
     string[] Arguments,
+    string? ResultVariable,
     CinematicScriptBranchConditionSource[] BranchConditions,
     string FunctionName,
     string Source,
@@ -15,5 +16,6 @@ internal sealed record CinematicScriptCallbackStateEffect(
 {
     internal uint? ReceiverKey { get; init; }
     internal string ReceiverEvidence { get; init; } = "Receiver is unresolved from available callback source.";
+    internal string[] ReceiverGuardAliases { get; init; } = [];
     internal string[] SerializedBranchFindings { get; init; } = [];
 }

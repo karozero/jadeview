@@ -4,7 +4,13 @@ internal sealed record CinematicScriptFunctionCall(string To, string Dispatch, i
     string? IndirectField = null, string? AssignmentFunction = null, string? AssignmentSource = null,
     int? AssignmentLine = null, string? ReferenceVariable = null, string? ResolvedFunctionKey = null);
 
-internal sealed record CinematicScriptFunctionPath(string FunctionName, string Path);
+internal sealed record CinematicScriptFunctionPath(string FunctionName, string Path,
+    CinematicScriptCallbackPathStep[] Steps);
+
+internal sealed record CinematicScriptCallbackPathStep(string FromFunction, string ToFunction,
+    string Dispatch, int? TrackIndex, string? AssignmentFunction, int? AssignmentLine,
+    string? ReferenceVariable, string? ResolvedFunctionKey,
+    CinematicScriptBranchConditionSource[] BranchConditions, bool DispatchConditionsResolved);
 
 internal sealed record CinematicScriptCallbackDispatchSite(int CallbackId, string Api,
     string Source, int Line, string Call, string EnclosingFunction, string ExecutionContext,
@@ -25,7 +31,8 @@ internal sealed record CinematicScriptEngineCallSite(string Api, string Variant,
     CinematicScriptLoopContextSource[]? LoopContexts = null,
     CinematicScriptArgumentAssignmentAlternative[]? ArgumentAssignmentAlternatives = null,
     CinematicScriptOvaFieldWrite[]? OvaFieldWrites = null,
-    CinematicScriptMessageFieldWrite[]? MessageFieldWrites = null);
+    CinematicScriptMessageFieldWrite[]? MessageFieldWrites = null,
+    string? ResultVariable = null);
 
 internal sealed record CinematicScriptReachableEngineCall(string FunctionName, string Api, string Variant,
     string[] Arguments, CinematicScriptArgumentAssignmentSource[] ArgumentAssignments,
@@ -34,22 +41,25 @@ internal sealed record CinematicScriptReachableEngineCall(string FunctionName, s
     CinematicScriptLoopContextSource[]? LoopContexts = null,
     CinematicScriptArgumentAssignmentAlternative[]? ArgumentAssignmentAlternatives = null,
     CinematicScriptOvaFieldWrite[]? OvaFieldWrites = null,
-    CinematicScriptMessageFieldWrite[]? MessageFieldWrites = null);
+    CinematicScriptMessageFieldWrite[]? MessageFieldWrites = null,
+    string? ResultVariable = null);
 
-internal sealed record CinematicScriptMessageReader(int MessageId, string FunctionName,
+internal sealed record CinematicScriptMessageReader(int? MessageId, string FunctionName,
     string Source, int Line, string CallbackPath, string ReadApi, string QueueObject);
 
 internal sealed record CinematicScriptMessageReaderSite(int MessageId, string Source, int Line,
     string QueueObject, string ReadApi);
 
 internal sealed record CinematicScriptArgumentAssignmentSource(string Variable, string Expression, int Line,
-    int Depth, bool IsUnique = true);
+    int Depth, bool IsUnique = true,
+    CinematicScriptBranchConditionSource[]? BranchConditions = null);
 
 internal sealed record CinematicScriptArgumentAssignmentAlternative(string Variable, string Expression,
     int Line, CinematicScriptBranchConditionSource[] BranchConditions);
 
 internal sealed record CinematicScriptOvaFieldWrite(string VariableName, string Expression, int Line,
-    CinematicScriptBranchConditionSource[] BranchConditions);
+    CinematicScriptBranchConditionSource[] BranchConditions,
+    CinematicScriptArgumentAssignmentAlternative[]? ValueAssignmentAlternatives = null);
 
 internal sealed record CinematicScriptArgumentFieldReference(string Name, string? AliasVariable,
     int? AssignmentLine);
@@ -78,6 +88,10 @@ internal sealed record CinematicScriptReachableOvaFieldAccess(string VariableNam
     string Source, string Receiver, string Expression,
     CinematicScriptBranchConditionSource[] BranchConditions, string SourceFile, int Line,
     string FunctionName, string CallbackPath);
+
+internal sealed record CinematicScriptRliValueFlowAssignment(string FunctionName, string Variable,
+    string Expression, CinematicScriptBranchConditionSource[] BranchConditions,
+    string SourceFile, int Line, string CallbackPath);
 
 internal sealed record CinematicScriptReachableSourceReference(string FunctionName, string Kind, string Symbol,
     uint Key, string Source, int Line, string CallbackPath);

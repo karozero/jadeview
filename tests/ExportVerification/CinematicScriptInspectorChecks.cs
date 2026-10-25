@@ -98,7 +98,7 @@ internal static class CinematicScriptInspectorChecks
         Check(indirectTrackPath?.Path.Contains("through pointer field f_track_init", StringComparison.Ordinal) == true
             && indirectTrackPath.Path.Contains("in Cine_Events_cine_init at ai_bge/ai_compiledscripts_global_managers.c:4223", StringComparison.Ordinal)
             && indirectTrackPath.Path.Contains("if (v1->des_i_ripley == 1)", StringComparison.Ordinal),
-            "Callback graph should resolve serialized source function-pointer fields to their assignment and guarded dispatch sites");
+            $"Callback graph should resolve serialized source function-pointer fields to their assignment and guarded dispatch sites: {indirectTrackPath?.Path ?? "missing path"}");
         var soundCompletionOwner = new CinematicScriptOwner(0xD9005D69, 0, 0x71003F69, 0xFF005833,
             uint.MaxValue, uint.MaxValue, "Sound completion callback fixture",
             ["Cine_Events_Cine_exec_EndOfEvents"], [], [])
@@ -1880,6 +1880,20 @@ internal static class CinematicScriptInspectorChecks
                     && reader.Source == "ai/ai_bge/ai_compiledscripts_global_managers.c"
                     && reader.Line == 3049),
             "Generic MSGGet reader index should connect Cine_Textes_CiTxt_init dispatch to its ID 30 branch");
+        var shieldMessageOwner = new CinematicScriptOwner(0x10004AE8, 0, 0x3D002D5B,
+            0xFF0045A2, uint.MaxValue, uint.MaxValue, "shield controller",
+            ["sfx_bouclier_phare_sbp_msg"], [], [])
+        {
+            ModelFunctionNames = ["sfx_bouclier_phare_sbp_msg"]
+        };
+        Check(CinematicScriptReader.ReachableMessageReaders(shieldMessageOwner)
+                .Any(reader => reader.MessageId == null
+                    && reader.FunctionName == "sfx_bouclier_phare_sbp_msg"
+                    && reader.ReadApi == "MSGGet"
+                    && reader.QueueObject == "AI_gpst_CurrentGameObject")
+                && CinematicScriptReader.ReachableMessageReaders(shieldMessageOwner, 49)
+                    .Any(reader => reader.MessageId == null),
+            "Current-object queue handlers without a literal message-ID branch should be indexed as wildcard readers");
         Check(cinematicTextMessageFinding?.Contains("reads message ID 30", StringComparison.Ordinal) == true,
             "Typed message fallback should report literal IDs consumed through MSGGet_C_CURRENT");
         Check(messageRoutes.Any(route => route.MessageId == 30
@@ -1999,7 +2013,11 @@ internal static class CinematicScriptInspectorChecks
             "Message 53 semantics should follow source-mapped nested callbacks from assigned slots and distinguish morph control, lip-sync progression and expression-mode reset");
         string[] schedulerFindings = CinematicScriptSchedulerAnalyzer.Analyze(callbackRegistrationOwner with
         {
-            SerializedGaoFlags = 0x20
+            SerializedGaoFlags = 0x20,
+            CallbackSlots = [
+                new CinematicScriptCallbackSlot(1, 0x350008E4, "camera_cam_1_init"),
+                new CinematicScriptCallbackSlot(3, 0x71001D6D, "camera_cam_1_mainloop")
+            ]
         });
         string[] unscheduledFindings = CinematicScriptSchedulerAnalyzer.Analyze(callbackRegistrationOwner with
         {
@@ -2032,6 +2050,9 @@ internal static class CinematicScriptInspectorChecks
         bool reportsDispatchFilters = schedulerFindings.Any(finding => finding.Contains("extraFlag 0x4", StringComparison.Ordinal)
             && finding.Contains("AIInstance", StringComparison.Ordinal)
             && finding.Contains("AI_RunInstance", StringComparison.Ordinal));
+        bool reportsFreshTracksDue = schedulerFindings.Any(finding => finding.Contains("callback timer to 0", StringComparison.Ordinal)
+            && finding.Contains("first eligible AI_RunInstance pass", StringComparison.Ordinal)
+            && finding.Contains("slots 1, 3", StringComparison.Ordinal));
         Check(schedulerFindings.Any(finding => finding.Contains("remaining delay", StringComparison.Ordinal))
             && schedulerFindings.Any(finding => finding.Contains("stops the remaining AI_MainCall table traversal", StringComparison.Ordinal)),
             "AI scheduling must expose callback timing and world traversal abort dependencies.");
@@ -2039,11 +2060,11 @@ internal static class CinematicScriptInspectorChecks
             && !rawActivationBitFindings.Any(finding => finding.Contains("source-mapped contribution", StringComparison.Ordinal));
         Check(reportsAiCallbackTable && reportsWorldActivation && retainsRuntimeUncertainty
                 && reportsMissingAiTableFlag && reportsOrdinaryActivationBlock && reportsSpecialTimeActivation
-                && reportsDispatchFilters && rejectsRawActivationBit,
+                && reportsDispatchFilters && reportsFreshTracksDue && rejectsRawActivationBit,
             "World AI scheduling checks failed: "
             + $"AI table {reportsAiCallbackTable}, world activation {reportsWorldActivation}, runtime caveat {retainsRuntimeUncertainty}, "
             + $"missing flag {reportsMissingAiTableFlag}, ordinary block {reportsOrdinaryActivationBlock}, "
-            + $"special-time {reportsSpecialTimeActivation}, dispatch filters {reportsDispatchFilters}, raw-bit rejection {rejectsRawActivationBit}.");
+            + $"special-time {reportsSpecialTimeActivation}, dispatch filters {reportsDispatchFilters}, fresh tracks due {reportsFreshTracksDue}, raw-bit rejection {rejectsRawActivationBit}.");
         var eventDispatchOwner = callbackRegistrationOwner with
         {
             EventsKey = 0xD9005D68,
@@ -2059,9 +2080,11 @@ internal static class CinematicScriptInspectorChecks
             finding.Contains("eventGameObjectsTablePF", StringComparison.Ordinal)
             && finding.Contains("0x02000000", StringComparison.Ordinal));
         bool reportsIndependentRuntimeGates = eventDispatchFindings.Any(finding =>
-            finding.Contains("EVE_MainCall", StringComparison.Ordinal)
+            finding.Contains("Retail Iris EVE_MainCall", StringComparison.Ordinal)
             && finding.Contains("0x00400000", StringComparison.Ordinal)
             && finding.Contains("extraFlag 0x4", StringComparison.Ordinal)
+            && finding.Contains("Jaded's comparison path uses different owner gates", StringComparison.Ordinal)
+            && finding.Contains("OptimCulled", StringComparison.Ordinal)
             && finding.Contains("not proven", StringComparison.Ordinal));
         bool reportsClearEventTableFlag = missingEventTableFlagFindings.Any(finding =>
             finding.Contains("flag 0x02000000 is clear", StringComparison.Ordinal));

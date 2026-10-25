@@ -9,6 +9,9 @@ public sealed partial class CinematicPlayback
     private readonly Dictionary<uint, AnimationTrack[]> sceneObjectTracksByTarget;
     private readonly uint[] scriptTrackTargets;
     private readonly FacialPlayback[] facialPlaybacks;
+    private readonly CinematicObjectMorphPlayback? objectMorphPlayback;
+    private readonly CinematicScriptCallbackPlayback? scriptCallbackPlayback;
+    private IReadOnlyDictionary<int, bool?>? savedFlagAssumptions;
     private readonly ResourceResolver resolver;
     private readonly CinematicObjectState objectState;
     private readonly CinematicOrientToTimeline orientTo;
@@ -98,7 +101,9 @@ public sealed partial class CinematicPlayback
         (float Time, CinematicLiteralCall Call)[] nestedEventCommands,
         (float Time, CinematicTimelineMessage Message)[] nestedEventMessages,
         Dictionary<SceneActor, AnimationClip> actorClips, ObjectTrack[] objectTracks,
-        FacialPlayback[] facialPlaybacks, CinematicOrientToTimeline orientTo,
+        FacialPlayback[] facialPlaybacks, CinematicObjectMorphPlayback? objectMorphPlayback,
+        CinematicScriptCallbackPlayback? scriptCallbackPlayback,
+        CinematicOrientToTimeline orientTo,
         CinematicSightSetTimeline sightSet,
         CinematicLocalRotationTimeline localRotations,
         CinematicGameScriptMoveTimeline gameScriptMoves,
@@ -138,6 +143,8 @@ public sealed partial class CinematicPlayback
         ScheduledMessages = scheduledMessages;
         EventRouteDiagnostics = eventRouteDiagnostics;
         this.facialPlaybacks = facialPlaybacks;
+        this.objectMorphPlayback = objectMorphPlayback;
+        this.scriptCallbackPlayback = scriptCallbackPlayback;
         this.resolver = resolver;
         this.world = world;
         videoPlayback = new(sourceClip, world, document, resolver, nestedEventCommands);
@@ -176,7 +183,28 @@ public sealed partial class CinematicPlayback
     internal (float Time, CinematicLiteralCall Call)[] ScriptStateCalls { get; }
     internal (float Time, CinematicTimelineMessage Message)[] ScriptMessages { get; }
     internal IReadOnlyList<uint> ScriptTrackTargets => scriptTrackTargets;
-    internal IEnumerable<SceneObject> VisibilityTargets => objectState.VisibilityTargets;
+    internal IEnumerable<SceneObject> VisibilityTargets => objectState.VisibilityTargets
+        .Concat(scriptCallbackPlayback?.VisibilityTargets ?? [])
+        .Distinct();
+    internal IEnumerable<float> VisibilityChangeTimes => objectState.VisibilityChangeTimes
+        .Concat(scriptCallbackPlayback?.VisibilityChangeTimes ?? [])
+        .Distinct();
+    internal bool RequiresDenseVisibilitySampling =>
+        scriptCallbackPlayback?.RequiresDenseVisibilitySampling ?? false;
+    internal string[] ScriptCallbackPlaybackDiagnostics => scriptCallbackPlayback?.Diagnostics ?? [];
+    internal void BindSavedFlagAssumptions(IReadOnlyDictionary<int, bool?> assumptions)
+    {
+        savedFlagAssumptions = assumptions;
+        if (scriptCallbackPlayback != null)
+            scriptCallbackPlayback.SavedFlagAssumptions = assumptions;
+    }
+    internal void EvaluateVisibilityState(float time)
+    {
+        objectState.Evaluate(time);
+        if (scriptCallbackPlayback == null) return;
+        scriptCallbackPlayback.SavedFlagAssumptions = savedFlagAssumptions;
+        scriptCallbackPlayback.EvaluateVisibilityState(time);
+    }
     internal int EventTrackTransformCount { get; }
     internal CinematicScriptOwnerId[] CallbackSceneEventOwners { get; }
     internal CinematicScriptOwnerId[] PreviewableSceneEventOwners { get; }
@@ -321,6 +349,10 @@ public sealed partial class CinematicPlayback
             .Where(playback => playback != null)
             .Cast<FacialPlayback>()
             .ToArray();
+        var objectMorphPlayback = CinematicObjectMorphPlayback.Create(sourceClip, world,
+            resolver, nestedEventTimeline.Commands, sourceTracks);
+        var scriptCallbackPlayback = CinematicScriptCallbackPlayback.Create(sourceClip,
+            document, world, resolver, nestedEventTimeline.Commands, objectMorphPlayback);
         return new(sourceClip, sourceTracks, eventTrackTransforms.Length,
             nestedEventTimeline.CallbackSceneEventOwners, nestedEventTimeline.PreviewableSceneEventOwners,
             nestedEventTimeline.OwnerExecutionLedger,
@@ -328,7 +360,8 @@ public sealed partial class CinematicPlayback
             nestedEventTimeline.ScheduledMessages,
             nestedEventTimeline.RouteDiagnostics,
             nestedEventTimeline.Commands, nestedEventTimeline.Messages,
-            actorClips, objectTracks, facialPlaybacks, orientTo,
+            actorClips, objectTracks, facialPlaybacks, objectMorphPlayback,
+            scriptCallbackPlayback, orientTo,
             sightSet, localRotations, gameScriptMoves, resolver, world, document, archiveEntries);
     }
 
@@ -373,6 +406,8 @@ public sealed partial class CinematicPlayback
     {
         Pause();
         ClearFacialOverlays();
+        scriptCallbackPlayback?.Reset();
+        objectMorphPlayback?.RestoreOriginalState();
         eventTrackPreview.Clear();
         foreach (var actor in actorClips.Keys) actor.CinematicClockOwned = false;
         foreach (var track in objectTracks) track.Object.PreviewMatrix = null;
@@ -441,6 +476,12 @@ public sealed partial class CinematicPlayback
         RefreshLightState(attackFactor);
         afterEffects.Evaluate(Time);
         AdvanceFacialPlayback(Time);
+        objectMorphPlayback?.Advance(Time);
+        if (scriptCallbackPlayback != null)
+            scriptCallbackPlayback.SavedFlagAssumptions = savedFlagAssumptions;
+        scriptCallbackPlayback?.Evaluate(Time);
+        MaterialState.SetScriptMaterialConstants(scriptCallbackPlayback?.MaterialConstants);
+        MaterialState.SetScriptMaterialAlphas(scriptCallbackPlayback?.MaterialAlphas);
         if (CaptureAllocationDiagnostics) allocatedByEffects += GC.GetAllocatedBytesForCurrentThread() - allocationStart;
         if (CaptureAllocationDiagnostics) allocationFrameCount++;
         if (Time >= Duration) Pause();
@@ -460,6 +501,12 @@ public sealed partial class CinematicPlayback
         RefreshLightState(attackFactor);
         afterEffects.Evaluate(Time);
         AdvanceFacialPlayback(Time);
+        objectMorphPlayback?.Advance(Time);
+        if (scriptCallbackPlayback != null)
+            scriptCallbackPlayback.SavedFlagAssumptions = savedFlagAssumptions;
+        scriptCallbackPlayback?.Evaluate(Time);
+        MaterialState.SetScriptMaterialConstants(scriptCallbackPlayback?.MaterialConstants);
+        MaterialState.SetScriptMaterialAlphas(scriptCallbackPlayback?.MaterialAlphas);
     }
 
     private void EvaluateObject(SceneObject sceneObject, AnimationTrack[] tracks, float time) =>

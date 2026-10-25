@@ -4,6 +4,28 @@ internal static class CinematicEngineFunctionCatalogChecks
 {
     internal static void Verify()
     {
+        CinematicEngineFunctionSelectorEvidence? invisibleFlagEvidence =
+            CinematicEngineFunctionCatalog.SourceEvidenceFor(0x1FD8);
+        if (invisibleFlagEvidence is not { Status: "both-same-name" }
+            || !invisibleFlagEvidence.IrisNames.Contains("OBJ_FlagInvisibleSet", StringComparer.Ordinal)
+            || !invisibleFlagEvidence.JadedNames.Contains("OBJ_FlagInvisibleSet", StringComparer.Ordinal))
+            throw new InvalidDataException("The invisible-flag selector must retain matching Iris and Jaded provenance.");
+
+        CinematicEngineFunctionSelectorEvidence? positionEvidence =
+            CinematicEngineFunctionCatalog.SourceEvidenceFor(0x1FFB);
+        if (positionEvidence is not { Status: "both-name-divergence" }
+            || !positionEvidence.IrisNames.Contains("OBJSetPos", StringComparer.Ordinal)
+            || !positionEvidence.JadedNames.Contains("OBJ_PosSet_Teleport", StringComparer.Ordinal)
+            || CinematicEngineFunctionCatalog.NameFor(0x1FFB) != "OBJSetPos")
+            throw new InvalidDataException("The PC selector name must follow Iris and preserve Jaded's divergent label as provenance.");
+
+        CinematicEngineFunctionSelectorEvidence? jadedOnlyEvidence =
+            CinematicEngineFunctionCatalog.SourceEvidenceFor(0x36B6);
+        if (jadedOnlyEvidence is not { Status: "jaded-only" }
+            || jadedOnlyEvidence.IrisNames.Length != 0
+            || !jadedOnlyEvidence.JadedNames.Contains("NET_Pushi", StringComparer.Ordinal))
+            throw new InvalidDataException("Jaded-only selector evidence must not be presented as Iris-confirmed.");
+
         Check(0x2C26, [0, 1], "target collision-map activation bits 0x0, clear 0x1");
         Check(0x1F4D, [3, 0xFF804020], "world-table slot 3 ambient color 1 to 0xFF804020");
         Check(0x1F55, [3, 0xFF102030], "world-table slot 3 ambient color 2 to 0xFF102030");

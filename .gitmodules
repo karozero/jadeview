@@ -1,0 +1,9 @@
+[submodule "external/irisEng"]
+	path = external/irisEng
+	url = https://github.com/ka87/irisEng.git
+[submodule "external/iristool"]
+	path = external/iristool
+	url = https://github.com/ka87/iristool.git
+[submodule "external/jaded"]
+	path = external/jaded
+	url = https://github.com/hogsy/jaded.git

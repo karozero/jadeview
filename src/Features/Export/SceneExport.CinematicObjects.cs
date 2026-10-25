@@ -25,7 +25,9 @@ public sealed partial class SceneExporter
             foreach (string diagnostic in gameScriptMoves.Diagnostics)
                 warnings.Add($"Cinematic '{clip.Name}': {diagnostic}");
             var state = CreateCinematicObjectState(clip, world);
+            CinematicPlayback? playback = CinematicPlaybackFor(clip, world);
             var times = AnimationExportSampling.Times(clip, tracks).Concat(state.VisibilityChangeTimes
+                    .Concat(playback?.VisibilityChangeTimes ?? [])
                     .SelectMany(time => time > 0 && time <= clip.Duration
                         ? new[] { MathF.BitDecrement(time), time } : new[] { time }))
                 .Concat(orientTo.ChangeTimes.SelectMany(time => time > 0 && time <= clip.Duration
@@ -39,7 +41,7 @@ public sealed partial class SceneExporter
                         ? new[] { MathF.BitDecrement(time), time } : new[] { time }))
                 .Where(time => time >= 0 && time <= clip.Duration).Distinct().Order().ToArray();
             if (times.Length == 0) continue;
-            var visibility = SampleCinematicVisibility(state, world, objects, times);
+            var visibility = SampleCinematicVisibility(state, world, objects, times, playback);
             var orientation = SampleCinematicOrientations(orientTo, sightSet, world, objects,
                 tracks, sceneObjectTracks, times);
             var scriptHierarchy = SampleScriptHierarchyWorldMatrices(clip, world, times,
@@ -119,22 +121,46 @@ public sealed partial class SceneExporter
         return samples;
     }
 
-    private static Dictionary<SceneObject, bool[]> SampleCinematicVisibility(CinematicObjectState state,
-        WorldData world, List<SceneObject> objects, float[] times)
+    private Dictionary<SceneObject, bool[]> SampleCinematicVisibility(CinematicObjectState state,
+        WorldData world, List<SceneObject> objects, float[] times,
+        CinematicPlayback? playback = null)
     {
-        var targets = state.VisibilityTargets.Where(objects.Contains).ToArray();
+        var targets = (playback?.VisibilityTargets ?? state.VisibilityTargets)
+            .Where(objects.Contains).ToArray();
         var sampled = targets.ToDictionary(target => target, _ => new bool[times.Length]);
-        var snapshots = world.Objects.Select(target => (Target: target, target.PreviewControlFlags,
-            target.PreviewDrawFlags,
-            target.PreviewCapabilities, target.CinematicExcluded)).ToArray();
+        if (targets.Length == 0 || times.Length == 0) return sampled;
+        SceneObject[] sceneObjects = world.Objects.Concat(world.Actors.SelectMany(actor => actor.Members))
+            .Distinct().ToArray();
+        var snapshots = sceneObjects.Select(target => (Target: target, target.PreviewControlFlags,
+            target.PreviewDrawFlags, target.PreviewCapabilities,
+            target.PreviewCollisionActivationMask, target.CinematicExcluded)).ToArray();
         try
         {
+            float[] evaluationTimes = playback == null || playback.RequiresDenseVisibilitySampling
+                ? times
+                : state.VisibilityChangeTimes.Concat(playback.VisibilityChangeTimes).Append(0)
+                    .Where(time => float.IsFinite(time) && time >= 0 && time <= times[^1])
+                    .SelectMany(time => time > 0
+                        ? new[] { MathF.BitDecrement(time), time } : new[] { time })
+                    .Distinct().Order().ToArray();
+            var stateSamples = targets.ToDictionary(target => target,
+                _ => new bool[evaluationTimes.Length]);
+            for (int sampleIndex = 0; sampleIndex < evaluationTimes.Length; sampleIndex++)
+            {
+                if (playback != null) playback.EvaluateVisibilityState(evaluationTimes[sampleIndex]);
+                else state.Evaluate(evaluationTimes[sampleIndex]);
+                foreach (var target in targets)
+                    stateSamples[target][sampleIndex] = target.IsControlHidden
+                        || (target.EffectiveDrawFlags & SceneObject.DrawVisibilityMask) == 0;
+            }
+            int stateSampleIndex = 0;
             for (int sampleIndex = 0; sampleIndex < times.Length; sampleIndex++)
             {
-                state.Evaluate(times[sampleIndex]);
+                while (stateSampleIndex + 1 < evaluationTimes.Length
+                    && evaluationTimes[stateSampleIndex + 1] <= times[sampleIndex])
+                    stateSampleIndex++;
                 foreach (var target in targets)
-                    sampled[target][sampleIndex] = target.IsControlHidden
-                        || (target.EffectiveDrawFlags & SceneObject.DrawVisibilityMask) == 0;
+                    sampled[target][sampleIndex] = stateSamples[target][stateSampleIndex];
             }
         }
         finally
@@ -144,6 +170,7 @@ public sealed partial class SceneExporter
                 snapshot.Target.PreviewControlFlags = snapshot.PreviewControlFlags;
                 snapshot.Target.PreviewDrawFlags = snapshot.PreviewDrawFlags;
                 snapshot.Target.PreviewCapabilities = snapshot.PreviewCapabilities;
+                snapshot.Target.PreviewCollisionActivationMask = snapshot.PreviewCollisionActivationMask;
                 snapshot.Target.CinematicExcluded = snapshot.CinematicExcluded;
             }
         }
@@ -158,14 +185,16 @@ public sealed partial class SceneExporter
         foreach (var clip in SelectedCinematicClips(exportWorld, options))
         {
             var state = CreateCinematicObjectState(clip, exportWorld);
+            CinematicPlayback? playback = CinematicPlaybackFor(clip, exportWorld);
             SceneObject[] targets = state.VisibilityTargets
+                .Concat(playback?.VisibilityTargets ?? [])
                 .Where(target => target.Actor == actor && actorObjects.Contains(target)
                     && visualNodes.ContainsKey(target)).Distinct().ToArray();
             if (targets.Length == 0) continue;
 
-            float[] times = CinematicVisibilityTimes(state, clip);
+            float[] times = CinematicVisibilityTimes(state, clip, playback);
             if (times.Length == 0) continue;
-            var visibility = SampleCinematicVisibility(state, exportWorld, actorObjects, times);
+            var visibility = SampleCinematicVisibility(state, exportWorld, actorObjects, times, playback);
             int input = Floats(times, 1, "SCALAR", true);
             var channels = new List<Obj>();
             var samplers = new List<Obj>();
@@ -182,8 +211,9 @@ public sealed partial class SceneExporter
         }
     }
 
-    private static float[] CinematicVisibilityTimes(CinematicObjectState state, AnimationClip clip) =>
-        state.VisibilityChangeTimes
+    private static float[] CinematicVisibilityTimes(CinematicObjectState state, AnimationClip clip,
+        CinematicPlayback? playback) => state.VisibilityChangeTimes
+            .Concat(playback?.VisibilityChangeTimes ?? [])
             .Where(time => time > 0 && time <= clip.Duration)
             .SelectMany(time => new[] { MathF.BitDecrement(time), time })
             .Append(0)

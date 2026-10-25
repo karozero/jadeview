@@ -78,7 +78,7 @@ public sealed partial class SceneExporter
         int subMaterialIndex)
     {
         Vector4 original = MaterialLayerTint.ReadConstant(source);
-        return options.CinematicMaterialLayers?.ApplyConstant(sceneObject.GaoKey,
+        return options.CinematicMaterialLayers?.ApplyConstant(source?.Id.Key ?? 0, sceneObject.GaoKey,
             subMaterialIndex, original) ?? original;
     }
 }

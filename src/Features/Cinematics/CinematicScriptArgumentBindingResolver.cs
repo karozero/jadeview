@@ -112,6 +112,18 @@ internal static class CinematicScriptArgumentBindingResolver
             .ToArray();
     }
 
+    internal static CinematicScriptOvaFieldBinding[] ResolveArgumentOwnerFields(
+        CinematicScriptReachableEngineCall call, int argumentIndex, CinematicScriptOwner owner)
+    {
+        if (argumentIndex < 0 || argumentIndex >= call.Arguments.Length) return [];
+        string[] argumentFlow = ResolveArgumentFlow(call, argumentIndex);
+        return ResolveOwnerFields(call, owner)
+            .Where(binding => argumentFlow.Any(expression =>
+                ReferencesMemberField(expression, binding.VariableName)
+                || ContainsIdentifier(expression, binding.VariableName)))
+            .ToArray();
+    }
+
     private static CinematicScriptOvaFieldBinding? BindField(CinematicScriptOwner owner, string fieldName)
     {
         var objectReference = owner.EffectiveObjectReference(fieldName);

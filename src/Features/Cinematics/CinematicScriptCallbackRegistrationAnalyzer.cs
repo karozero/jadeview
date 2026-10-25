@@ -125,10 +125,18 @@ internal static class CinematicScriptCallbackRegistrationAnalyzer
     {
         if (CinematicScriptArgumentBindingResolver.ArgumentUsesCurrentGameObject(call, argumentIndex))
             return owner.OwnerKey;
-        CinematicScriptReachableSourceReference[] matches =
-            CinematicScriptArgumentBindingResolver.ResolveArgumentObjectReferences(call,
-                argumentIndex, references);
-        return matches.Select(reference => reference.Key).Distinct().Take(2).ToArray() is [uint key]
+        uint[] serializedOvaTargets = CinematicScriptArgumentBindingResolver
+            .ResolveArgumentOwnerFields(call, argumentIndex, owner)
+            .Where(binding => binding.ObjectKey != null)
+            .Select(binding => binding.ObjectKey!.Value)
+            .ToArray();
+        uint[] sourceTargets = CinematicScriptArgumentBindingResolver
+            .ResolveArgumentObjectReferences(call, argumentIndex, references)
+            .Select(reference => reference.Key)
+            .ToArray();
+        uint[] matches = serializedOvaTargets.Concat(sourceTargets)
+            .Distinct().Take(2).ToArray();
+        return matches is [uint key]
             ? key
             : null;
     }

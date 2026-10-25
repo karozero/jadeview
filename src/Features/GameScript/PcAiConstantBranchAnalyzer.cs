@@ -1,7 +1,8 @@
 namespace JadeView;
 
 /// <summary>
-/// Resolves only a constant-return engine call, optional logical Not, and a conditional jump.
+/// Resolves a constant-return engine call, an optional integer literal operation/Not,
+/// and a conditional jump.
 /// It does not evaluate variables, general expressions, or function execution.
 /// </summary>
 internal static class PcAiConstantBranchAnalyzer
@@ -20,9 +21,19 @@ internal static class PcAiConstantBranchAnalyzer
             if (contract.ArgumentCount != 0 || contract.ConstantReturnValue is not int constantValue)
                 continue;
 
-            int conditionNodeIndex = call.Index + 1;
             bool conditionIsTrue = constantValue != 0;
             string conditionDescription = $"{call.SymbolName}() = {constantValue}";
+            int conditionNodeIndex = call.Index + 1;
+            if (PcAiConstantIntegerEvaluator.TryReadLiteral(NodeAt(function, conditionNodeIndex),
+                    out int rightOperand)
+                && PcAiConstantIntegerEvaluator.TryEvaluate(SymbolAt(function, conditionNodeIndex + 1),
+                    constantValue, rightOperand, out int expressionValue, out string expression))
+            {
+                conditionIsTrue = expressionValue != 0;
+                conditionDescription = $"{call.SymbolName}() = {constantValue}; {expression} = {expressionValue}";
+                conditionNodeIndex += 2;
+            }
+
             if (SymbolAt(function, conditionNodeIndex) == NotKeyword)
             {
                 conditionIsTrue = !conditionIsTrue;
@@ -43,7 +54,7 @@ internal static class PcAiConstantBranchAnalyzer
             string edge = takesBranch ? "branch target" : "fallthrough";
             branches.Add(new(call.Index, call.SymbolName!, jump.Index, conditionDescription,
                 conditionIsTrue, branchTarget, fallthrough, chosenNode, edge,
-                $"{contract.Evidence}; external/irisEng/ai/ai_keywords.c:239-264,576-607; "
+                $"{contract.Evidence}; external/irisEng/ai/ai_keywords.c:270-577,576-607; "
                 + "external/jaded/src/libraries/AIinterp/Sources/Keywords/AIkeywords.c:387-400,466-483"));
         }
 

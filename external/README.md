@@ -1,8 +1,9 @@
 # External source references
 
-These are local, shallow Git checkouts requested for comparative research. They
-are separate upstream repositories, not JadeView code or submodules. Their
-contents are not included in JadeView builds.
+These are Git submodules pinned to upstream revisions for comparative research.
+They are not JadeView code, and their contents are not included in JadeView
+builds. Initialize them with `git submodule update --init --recursive` after
+cloning JadeView.
 
 | Repository | Upstream revision checked out | Purpose | License notes |
 |---|---|---|---|

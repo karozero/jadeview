@@ -35,6 +35,10 @@ public sealed class SceneObject
     [System.Text.Json.Serialization.JsonIgnore]
     internal uint? PreviewCapabilities { get; set; }
     [System.Text.Json.Serialization.JsonIgnore]
+    internal ushort? PreviewCollisionActivationMask { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal CinematicRliDrawState? PreviewRliDrawState { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
     public uint[] GroupMemberKeys { get; set; } = [];
     [System.Text.Json.Serialization.JsonIgnore]
     public uint? PreviewControlFlags { get; set; }

@@ -166,6 +166,7 @@ public sealed partial class SceneRenderer
                 }
                 var geo = GetOrUploadGeometryForOwner(obj); if (geo == null) continue;
                 bool geometryDeformsThisFrame = obj.Actor != null
+                    || obj.Modifiers.Any(modifier => modifier.Type == 4)
                     || geo.Source is { Billboards.Count: > 0 }
                     || geo.Source?.Particles != null
                     || obj.CinematicParticles != null;
@@ -228,6 +229,9 @@ public sealed partial class SceneRenderer
                 }
                 else foreach (var pass in packet.Materials!.Passes[i])
                 {
+                    var materialPasses = packet.Materials.Passes[i];
+                    CinematicRliDrawState rliState = CinematicRliDrawState.Resolve(
+                        CinematicRliColor, CinematicRliFactor, obj.PreviewRliDrawState);
                     var layer = EffectiveLayer(obj, pass);
                     if (layer.Disabled) continue;
                     SetUvSpace(obj, layer);
@@ -241,12 +245,16 @@ public sealed partial class SceneRenderer
                         && sourceGeometry.IsBillboardVertex(sourceGeometry.Parts[i].VertexIndices[0]);
                     // Jaded forces UseRLI for sprite primitives before selecting color inputs.
                     uint effectiveDrawFlags = obj.EffectiveDrawFlags | (spritePart ? 0x40u : 0u);
+                    if (obj.PreviewRliDrawState is not null)
+                        effectiveDrawFlags = CinematicRliDrawState.ApplyRliFactorUsage(
+                            effectiveDrawFlags, rliState.FactorIsUsed);
                     bool particlePart = (obj.CinematicParticles ?? geo.Source?.Particles) != null
                         && i >= geo.Source!.ParticlePart;
                     if (particlePart) effectiveDrawFlags &= ~0x08000100u; // PAG clears Lighted and UseAmbient.
                     JadeUniform("objectDrawFlags", unchecked((int)effectiveDrawFlags));
                     bool computedLighting = !particlePart && layer.ColorMode is 0 or 6
-                        && UpdateDiffuseLighting(world, obj, geo, i, effectiveDrawFlags);
+                        && UpdateDiffuseLighting(world, obj, geo, i, effectiveDrawFlags,
+                            rliState.DestinationColor, rliState.Factor);
                     JadeUniform("computedLighting", computedLighting ? 1 : 0);
                     bool hasAmbient = TryGetWorldAmbient(world, effectiveDrawFlags, out Vector4 ambient);
                     JadeUniform("ambientColor", ambient);
@@ -254,15 +262,20 @@ public sealed partial class SceneRenderer
                     bool usesPaint = computedLighting || spritePart || hasAuthoredPointColors || particlePart || hasAmbient
                         || obj.RliColors.Length > 0 && layer.Blend is not (0 or 7);
                     JadeUniform("effectColor", usesPaint ? 1 : 0);
-                    JadeUniform("useRliAlpha", layer.Blend != 0 && (obj.RliColors.Length > 0 || spritePart) ? 1 : 0);
-                    JadeUniform("rliDestColor", CinematicRliColor);
-                    JadeUniform("rliFactor", CinematicRliFactor);
+                    JadeMaterialLayer? nextLayer = pass.LayerIndex + 1 < materialPasses.Count
+                        ? materialPasses[pass.LayerIndex + 1].Layer : null;
+                    bool materialUsesRliAlpha = MaterialRliAlphaPolicy.UsesRliAlpha(layer, nextLayer);
+                    JadeUniform("useRliAlpha", materialUsesRliAlpha
+                        && (obj.RliColors.Length > 0 || spritePart) ? 1 : 0);
+                    JadeUniform("rliDestColor", rliState.DestinationColor);
+                    JadeUniform("rliFactor", rliState.Factor);
                     bool foggedObject = (obj.EffectiveDrawFlags & 0x4000) != 0;
                     JadeUniform("fogEnabled", foggedObject && CinematicFogFar > CinematicFogNear ? 1 : 0);
                     JadeUniform("fogColor", FogColorForBlend(layer.Blend));
                     JadeUniform("fogNear", CinematicFogNear);
                     JadeUniform("fogFar", CinematicFogFar);
-                    var constant = CinematicMaterials?.ApplyConstant(obj.GaoKey, pass.SubMaterialIndex, pass.Constant)
+                    var constant = CinematicMaterials?.ApplyConstant(pass.MaterialKey, obj.GaoKey,
+                        pass.SubMaterialIndex, pass.Constant)
                         ?? pass.Constant;
                     JadeUniform("constantColor", layer.ColorMode == 4 ? Vector4.One : constant);
                     JadeUniform("alphaTest", (layer.Flags & 0x10) == 0 ? -1 : (layer.Flags & 0x80) == 0 ? 5 : 2);

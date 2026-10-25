@@ -120,6 +120,7 @@ internal sealed class CinematicObjectState
             sceneObject.PreviewControlFlags = sceneObject.ControlFlags;
             sceneObject.PreviewDrawFlags = sceneObject.DrawFlags;
             sceneObject.PreviewCapabilities = sceneObject.InitialCapabilities;
+            sceneObject.PreviewRliDrawState = null;
             sceneObject.CinematicExcluded = sceneObject.Actor is { } actor
                 && sceneObject == actor.Root && !actor.IsCinematicWorldResident
                 && !participants.Contains(actor);
@@ -162,6 +163,7 @@ internal sealed class CinematicObjectState
             sceneObject.PreviewControlFlags = null;
             sceneObject.PreviewDrawFlags = null;
             sceneObject.PreviewCapabilities = null;
+            sceneObject.PreviewRliDrawState = null;
             sceneObject.CinematicExcluded = false;
         }
     }

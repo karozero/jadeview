@@ -81,15 +81,18 @@ public sealed partial class SceneRenderer
     }
 
     private unsafe bool UpdateDiffuseLighting(WorldData world, SceneObject owner,
-        GpuGeometry geometry, int partIndex, uint drawFlags)
+        GpuGeometry geometry, int partIndex, uint drawFlags,
+        Vector4 rliDestination, float rliFactor)
     {
         if (!CapturePerformanceDiagnostics)
-            return UpdateDiffuseLightingCore(world, owner, geometry, partIndex, drawFlags);
+            return UpdateDiffuseLightingCore(world, owner, geometry, partIndex, drawFlags,
+                rliDestination, rliFactor);
 
         long startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
         try
         {
-            return UpdateDiffuseLightingCore(world, owner, geometry, partIndex, drawFlags);
+            return UpdateDiffuseLightingCore(world, owner, geometry, partIndex, drawFlags,
+                rliDestination, rliFactor);
         }
         finally
         {
@@ -99,7 +102,8 @@ public sealed partial class SceneRenderer
     }
 
     private unsafe bool UpdateDiffuseLightingCore(WorldData world, SceneObject owner,
-        GpuGeometry geometry, int partIndex, uint drawFlags)
+        GpuGeometry geometry, int partIndex, uint drawFlags,
+        Vector4 rliDestination, float rliFactor)
     {
         if (!DynamicLighting || (drawFlags & 0x08000000) == 0 || frameLights.Count == 0) return false;
         var key = new LightingKey(lightingRevision, world.Objects.Count, owner.Flags,
@@ -130,7 +134,7 @@ public sealed partial class SceneRenderer
         bool unchanged = cache.HasSample
             && cache.Signature == preparation.Plan.Signature && cache.PoseRevision == poseRevision
             && cache.AppearanceRevision == owner.AppearanceRevision
-            && cache.RliDestination == CinematicRliColor && cache.RliFactor == CinematicRliFactor;
+            && cache.RliDestination == rliDestination && cache.RliFactor == rliFactor;
         if (!unchanged)
         {
             long evaluationStartedAt = CapturePerformanceDiagnostics ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
@@ -144,15 +148,15 @@ public sealed partial class SceneRenderer
                     | (uint)mesh.Colors[colorOffset + 2] << 16 | (uint)mesh.Colors[colorOffset + 3] << 24;
             }
             SceneObjectDiffuseLightingEvaluator.Evaluate(preparation.Plan, cache.Positions, cache.Normals,
-                cache.RawPaint, CinematicRliColor, CinematicRliFactor, Vector4.Zero, cache.ComputedColors);
+                cache.RawPaint, rliDestination, rliFactor, Vector4.Zero, cache.ComputedColors);
             if (CapturePerformanceDiagnostics)
                 StatDiffuseLightingEvaluationMilliseconds += (float)System.Diagnostics.Stopwatch.GetElapsedTime(evaluationStartedAt).TotalMilliseconds;
             StatDiffuseLightingUpdates++;
             cache.Signature = preparation.Plan.Signature;
             cache.PoseRevision = poseRevision;
             cache.AppearanceRevision = owner.AppearanceRevision;
-            cache.RliDestination = CinematicRliColor;
-            cache.RliFactor = CinematicRliFactor;
+            cache.RliDestination = rliDestination;
+            cache.RliFactor = rliFactor;
             cache.HasSample = true;
             cache.Revision++;
         }

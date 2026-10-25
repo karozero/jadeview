@@ -111,11 +111,11 @@ internal static class CinematicScaleChecks
             if (rootSampleIndex < 0 || Math.Abs(rootScales[rootSampleIndex][0] - .75f) > .001f)
                 throw new InvalidDataException("GLB export omitted the scripted OBJ_ZoomSet actor scale.");
         }
-        if (CinematicEngineFunctionCatalog.NameFor(0x1ffb) != "OBJSetPos_Teleport"
+        if (CinematicEngineFunctionCatalog.NameFor(0x1ffb) != "OBJSetPos"
             || !CinematicEngineFunctionCatalog.Describe(new(2, 0x1ffb,
                 [BitConverter.SingleToUInt32Bits(7), BitConverter.SingleToUInt32Bits(8),
-                    BitConverter.SingleToUInt32Bits(9)])).Contains("teleport", StringComparison.Ordinal))
-            throw new InvalidDataException("The teleport position selector is not identified separately.");
+                    BitConverter.SingleToUInt32Bits(9)])).Contains("set target absolute position", StringComparison.Ordinal))
+            throw new InvalidDataException("Position selector 0x1FFB must use Iris's PC source mapping.");
 
         Console.WriteLine("PASS: cinematic ScaleSet/ZoomSet/PosSet events preview and export for actor roots and scene props");
 

@@ -18,6 +18,8 @@ internal static class ComputedVertexColorChecks
 
         Check(Evaluate(raw, 0x40, destination, .02f).ComputedPackedColor == raw,
             "RLI factor 0.02 must skip destination subtraction at the lower strict boundary.");
+        Check(Evaluate(raw, 0x40, destination, -.42f).ComputedPackedColor == raw,
+            "Negative RLI factors must match the native COLOR_ul_Mul early-out and leave the source color unchanged.");
         Check(Evaluate(raw, 0x40, destination, .98f).ComputedPackedColor == 0x40180000,
             "RLI factor 0.98 must use the full packed destination and saturate each channel.");
 

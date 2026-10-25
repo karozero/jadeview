@@ -35,7 +35,7 @@ public sealed partial class EditorShell
         ImGui.TableSetupColumn("Preview", ImGuiTableColumnFlags.WidthFixed, 104 * _scale);
         ImGui.TableSetupColumn("Channels / start", ImGuiTableColumnFlags.WidthStretch, 1.1f);
         ImGui.TableSetupColumn("EVE state at playhead", ImGuiTableColumnFlags.WidthStretch, 1.2f);
-        ImGui.TableSetupColumn("Runtime gate", ImGuiTableColumnFlags.WidthFixed, 112 * _scale);
+        ImGui.TableSetupColumn("Runtime / fresh-load", ImGuiTableColumnFlags.WidthFixed, 168 * _scale);
         ImGui.TableHeadersRow();
 
         foreach (var entry in entries)
@@ -71,9 +71,9 @@ public sealed partial class EditorShell
                 ImGui.SetTooltip("State is evaluated from the reconstructed EVE preview clock at the current playhead. It is not a capture of the game's runtime scheduler.");
 
             ImGui.TableSetColumnIndex(5);
-            ImGui.TextDisabled("Unknown");
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Static source analysis does not evaluate live save flags, message queues, collision state, scheduler timing, or callback dispatch.");
+            string activationSummary = GetFreshLoadEveSummary(owner);
+            ImGui.TextDisabled(activationSummary);
+            if (ImGui.IsItemHovered()) DrawFreshLoadEveTooltip(owner);
         }
 
         ImGui.EndTable();
@@ -128,6 +128,54 @@ public sealed partial class EditorShell
         CinematicOwnerPreviewStatus.Available => "Available",
         _ => status.ToString()
     };
+
+    private static string GetFreshLoadEveSummary(CinematicScriptOwner? owner)
+    {
+        if (owner == null) return "Unknown · no owner record";
+
+        const uint eventTableFlag = (uint)GameScriptEotTable.EventObjects;
+        bool eventTableRequested = (owner.SerializedGaoFlags & eventTableFlag) != 0;
+        if (!eventTableRequested) return "Unknown · EVE bit clear";
+
+        GameScriptInitialActivationForecast forecast = GameScriptInitialActivationForecaster
+            .Evaluate(owner.SerializedGaoFlags, owner.SerializedStateFlags);
+        bool eligiblePath = forecast.Paths.Any(path =>
+            path.Eligibility == GameScriptActivationEligibility.Eligible
+            && path.EotMembership?.Tables.HasFlag(GameScriptEotTable.EventObjects) == true);
+        return eligiblePath
+            ? "Unknown · fresh-load EVE candidate"
+            : "Unknown · initial activation blocked";
+    }
+
+    private static void DrawFreshLoadEveTooltip(CinematicScriptOwner? owner)
+    {
+        ImGui.BeginTooltip();
+        ImGui.TextWrapped("This preview status is not a runtime trace. The forecast below uses serialized flags at fresh load; later script changes, world activation, EOT rebuilds, live gates, and scheduler execution remain unknown.");
+        if (owner == null)
+        {
+            ImGui.Separator();
+            ImGui.TextWrapped("The script-owner record could not be resolved.");
+            ImGui.EndTooltip();
+            return;
+        }
+
+        GameScriptInitialActivationForecast forecast = GameScriptInitialActivationForecaster
+            .Evaluate(owner.SerializedGaoFlags, owner.SerializedStateFlags);
+        ImGui.Separator();
+        ImGui.TextWrapped($"GAO identity flags: 0x{owner.SerializedGaoFlags:X8} · state flags: 0x{owner.SerializedStateFlags:X8}");
+        ImGui.TextWrapped(forecast.Scope);
+        foreach (GameScriptActivationPathForecast path in forecast.Paths)
+        {
+            string eligibility = path.Eligibility == GameScriptActivationEligibility.Eligible
+                ? "eligible" : "blocked";
+            string tables = path.EotMembership is { } membership
+                ? string.Join(", ", membership.TableNames)
+                : "no EOT tables forecast";
+            ImGui.BulletText($"{path.WorldMode}: {eligibility}; {path.Reason} EOT: {tables}.");
+        }
+
+        ImGui.EndTooltip();
+    }
 
     private static void DrawExecutionEvidenceTooltip(CinematicOwnerExecutionLedgerEntry entry)
     {

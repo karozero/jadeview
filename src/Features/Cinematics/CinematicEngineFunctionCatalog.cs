@@ -7,11 +7,24 @@ namespace JadeView;
 internal static class CinematicEngineFunctionCatalog
 {
     private const string ResourceName = "JadeView.EngineFunctionSelectors";
+    private const string EvidenceResourceName = "JadeView.EngineFunctionSelectorEvidence";
     private static readonly Lazy<IReadOnlyDictionary<int, string>> Names = new(ReadNames);
+    private static readonly Lazy<IReadOnlyDictionary<int, CinematicEngineFunctionSelectorEvidence>> Evidence = new(ReadEvidence);
 
-    internal static string NameFor(int selector) => Names.Value.TryGetValue(selector, out string? name)
-        ? name.Replace("AI_EvalFunc_", "", StringComparison.Ordinal)
-        : $"EngineFunction_{selector:X4}";
+    internal static string NameFor(int selector)
+    {
+        if (Evidence.Value.TryGetValue(selector, out CinematicEngineFunctionSelectorEvidence? evidence)
+            && evidence.IrisNames.Length == 1)
+            return evidence.IrisNames[0];
+
+        return Names.Value.TryGetValue(selector, out string? name)
+            ? name.Replace("AI_EvalFunc_", "", StringComparison.Ordinal)
+            : $"EngineFunction_{selector:X4}";
+    }
+
+    internal static CinematicEngineFunctionSelectorEvidence? SourceEvidenceFor(int selector) =>
+        Evidence.Value.TryGetValue(selector, out CinematicEngineFunctionSelectorEvidence? evidence)
+            ? evidence : null;
 
     internal static bool TryReadMessageGateFields(CinematicLiteralCall call, out int messageId,
         out int messageInt1, out CinematicMessageQueueDestination destination)
@@ -645,7 +658,22 @@ internal static class CinematicEngineFunctionCatalog
             ?? throw new InvalidDataException("Embedded function selector map is empty.");
         return serialized.ToDictionary(pair => Convert.ToInt32(pair.Key, 16), pair => pair.Value);
     }
+
+    private static IReadOnlyDictionary<int, CinematicEngineFunctionSelectorEvidence> ReadEvidence()
+    {
+        using Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(EvidenceResourceName)
+            ?? throw new InvalidDataException($"Embedded selector evidence '{EvidenceResourceName}' is missing.");
+        var serialized = JsonSerializer.Deserialize<Dictionary<string, CinematicEngineFunctionSelectorEvidence>>(stream)
+            ?? throw new InvalidDataException("Embedded engine function selector evidence is empty.");
+        return serialized.ToDictionary(pair => Convert.ToInt32(pair.Key, 16), pair => pair.Value);
+    }
 }
+
+internal sealed record CinematicEngineFunctionSelectorEvidence(
+    string CatalogName,
+    string[] IrisNames,
+    string[] JadedNames,
+    string Status);
 
 internal enum CinematicMessageQueueDestination
 {

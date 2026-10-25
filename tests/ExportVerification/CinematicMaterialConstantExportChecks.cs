@@ -78,6 +78,7 @@ internal static class CinematicMaterialConstantExportChecks
         var snapshot = new CinematicMaterialLayerSnapshot(2, new Dictionary<(uint, int), JadeMaterialLayer>(),
             new Dictionary<(uint, int, int), byte>(),
             new Dictionary<(uint, int), Vector4> { [(objectKey, 1)] = new(0, .5f, 1, .8f) },
+            new Dictionary<uint, Vector4> { [firstMaterialKey] = new(0, 1, 0, 1) },
             new Dictionary<uint, float> { [objectKey] = .25f });
 
         string path = Path.Combine(output, "cinematic-mode2-constant.glb");
@@ -87,11 +88,11 @@ internal static class CinematicMaterialConstantExportChecks
         var primitives = glb.Root.GetProperty("meshes")[0].GetProperty("primitives");
         float[] first = MaterialColor(glb, primitives[0]);
         float[] second = MaterialColor(glb, primitives[1]);
-        Vector4 expectedFirst = Vector4.Lerp(new(0x33 / 255f, 0x22 / 255f, 0x11 / 255f, 1), Vector4.Zero, .25f);
+        Vector4 expectedFirst = Vector4.Lerp(new(0, 1, 0, 1), Vector4.Zero, .25f);
         Vector4 expectedSecond = Vector4.Lerp(new(0, .5f, 1, .8f), Vector4.Zero, .25f);
         Require(Near(first, expectedFirst)
             && Near(second, expectedSecond),
-            $"Mode-2 glTF factors must use RGB with baseline alpha 1, apply shockwave fade to submaterials 0/1, and use frozen object/submaterial overrides. Got {string.Join(',', first)} / {string.Join(',', second)}.");
+            $"Mode-2 glTF factors must use RGB with baseline alpha 1, apply shockwave fade, and combine material-key and object/submaterial overrides. Got {string.Join(',', first)} / {string.Join(',', second)}.");
     }
 
     private static void VerifyBakedModeTwoTintUsesFrozenConstant(string output)
@@ -113,7 +114,7 @@ internal static class CinematicMaterialConstantExportChecks
         RegisterTexture(resolver, blackTextureKey, [0, 0, 0, 255]);
         byte[] bytes = new byte[76];
         BitConverter.GetBytes(5).CopyTo(bytes, 0);
-        BitConverter.GetBytes(0xffff0000u).CopyTo(bytes, 12); // source red; preview overrides it with green
+        BitConverter.GetBytes(0xff0000ffu).CopyTo(bytes, 16); // source red; preview overrides it with green
         Layer(bytes, 36, 0, 0x00202004, whiteTextureKey);
         // Inverse/additive reflection has OverrideAlpha set; provide full local alpha
         // so the test isolates the base layer's mode-2 constant tint.
@@ -143,7 +144,7 @@ internal static class CinematicMaterialConstantExportChecks
     {
         byte[] bytes = new byte[56];
         BitConverter.GetBytes(5).CopyTo(bytes, 0);
-        BitConverter.GetBytes(constant).CopyTo(bytes, 12);
+        BitConverter.GetBytes(constant).CopyTo(bytes, 16);
         BitConverter.GetBytes(0x00002000u).CopyTo(bytes, 40); // ColorMode 2
         return new() { Id = new(key), Type = 5, SourceBytes = bytes };
     }
